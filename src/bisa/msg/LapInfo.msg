@@ -1,0 +1,6 @@
+int32 lap_count
+float32 progress
+int32 current_waypoint
+int32 total_waypoints
+float32 elapsed_time
+float32 total_distance
