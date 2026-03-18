@@ -1,0 +1,6 @@
+<launch>
+    <!-- 1. ESKF Node: 항상 작동하며 /eskf/odom 발행 -->
+    <node pkg="moraimpc" type="eskf_node.py" name="eskf_node" output="screen" />
+    
+    <!-- GUI는 통합 GUI에서 보므로 여기서는 뺌 -->
+</launch>

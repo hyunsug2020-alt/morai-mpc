@@ -1,0 +1,20 @@
+(cl:in-package morai_msgs-msg)
+(cl:export '(HEADER-VAL
+          HEADER
+          FILE_NAME-VAL
+          FILE_NAME
+          DELETE_ALL-VAL
+          DELETE_ALL
+          LOAD_NETWORK_CONNECTION_DATA-VAL
+          LOAD_NETWORK_CONNECTION_DATA
+          LOAD_EGO_VEHICLE_DATA-VAL
+          LOAD_EGO_VEHICLE_DATA
+          LOAD_SURROUNDING_VEHICLE_DATA-VAL
+          LOAD_SURROUNDING_VEHICLE_DATA
+          LOAD_PEDESTRIAN_DATA-VAL
+          LOAD_PEDESTRIAN_DATA
+          LOAD_OBSTACLE_DATA-VAL
+          LOAD_OBSTACLE_DATA
+          SET_PAUSE-VAL
+          SET_PAUSE
+))

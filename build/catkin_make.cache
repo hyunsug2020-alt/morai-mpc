@@ -1,0 +1,2 @@
+morai_msgs:moraimpc
+-DCATKIN_DEVEL_PREFIX=/home/david/moraimpc_ros1/devel -DCMAKE_INSTALL_PREFIX=/home/david/moraimpc_ros1/install -G Unix Makefiles

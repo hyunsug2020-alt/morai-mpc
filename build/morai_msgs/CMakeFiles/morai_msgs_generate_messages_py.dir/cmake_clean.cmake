@@ -1,0 +1,40 @@
+file(REMOVE_RECURSE
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_CollisionData.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_CtrlCmd.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_EgoVehicleStatus.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_EventInfo.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_GPSMessage.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_GetTrafficLightStatus.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_GhostCmd.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_IntersectionControl.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_IntersectionStatus.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_Lamps.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_MapSpec.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_MoraiSimProcHandle.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_MoraiSimProcStatus.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_MoraiSrvResponse.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_MultiEgoSetting.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_NpcGhostCmd.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_NpcGhostInfo.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_ObjectStatus.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_ObjectStatusList.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_RadarDetection.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_RadarDetections.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_ReplayInfo.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_SaveSensorData.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_ScenarioLoad.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_SensorPosControl.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_SetTrafficLight.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_TrafficLightIndex.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_TrafficLightInfo.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_VehicleCollisionData.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_VehicleSpec.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/_VehicleSpecIndex.py"
+  "/home/david/moraimpc_ros1/devel/lib/python3/dist-packages/morai_msgs/msg/__init__.py"
+  "CMakeFiles/morai_msgs_generate_messages_py"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang )
+  include(CMakeFiles/morai_msgs_generate_messages_py.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

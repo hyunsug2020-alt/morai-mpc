@@ -1,0 +1,64 @@
+version: "3.3"
+
+# ============================================================
+# MORAI MPC 풀 스택
+# ros1 (rosbridge:9090) ←→ bridge (ros1_bridge) ←→ ros2 (moraimpc)
+# ============================================================
+
+services:
+
+  # ── 1. ROS1 Noetic: MORAI rosbridge ──────────────────────
+  ros1:
+    build:
+      context: .
+      dockerfile: Dockerfile.ros1
+    image: moraimpc:noetic
+    container_name: morai_ros1
+    network_mode: host
+    environment:
+      - TERM=xterm-256color
+      - ROS_MASTER_URI=http://localhost:11311
+    stdin_open: true
+    tty: true
+
+  # ── 2. ros1_bridge: ROS1 ↔ ROS2 브릿지 ──────────────────
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge
+    image: moraimpc:bridge
+    container_name: morai_bridge
+    network_mode: host
+    environment:
+      - TERM=xterm-256color
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_DOMAIN_ID=100
+    depends_on:
+      - ros1
+    stdin_open: true
+    tty: true
+
+  # ── 3. ROS2 Humble: 기존 moraimpc 노드 ───────────────────
+  ros2:
+    image: moraimpc:humble
+    container_name: moraimpc_ros2
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - TERM=xterm-256color
+      - ROS_DOMAIN_ID=100
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /home/david/moraimpc/src:/home/moraimpc/src:rw
+    depends_on:
+      - bridge
+    stdin_open: true
+    tty: true
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /home/moraimpc/install/setup.bash 2>/dev/null || true &&
+        ros2 launch moraimpc morai_full.launch.py
+      "

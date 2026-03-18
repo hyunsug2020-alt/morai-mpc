@@ -1,0 +1,8 @@
+prefix=/home/david/moraimpc_ros1/install
+
+Name: moraimpc
+Description: Description of moraimpc
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib -lmoraimpc
+Requires: roscpp rospy std_msgs sensor_msgs nav_msgs morai_msgs tf
