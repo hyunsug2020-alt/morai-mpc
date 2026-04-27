@@ -22,7 +22,6 @@ private:
     LTVMPCConfig cfg_;
     OSQPWorkspace* work_ = nullptr;
     OSQPSettings* settings_ = nullptr;
-    OSQPData* data_ = nullptr;
 
     csc* eigenToCsc(const Eigen::SparseMatrix<double>& mat);
 };
