@@ -58,11 +58,12 @@ private:
     // ═══════════════════════════════════════════════════════════════
     // 상수
     // ═══════════════════════════════════════════════════════════════
-    static constexpr int    kSearchWindow = 300;
-    static constexpr int    kMaxIndexStep = 30;
-    static constexpr double kRecovDist    = 4.0;   // [m] 경로 이탈 판단 거리
-    static constexpr double kDotThreshold = 0.1;   // 전방 필터 임계값 (cosine)
-    static constexpr double kRecovMaxVel  = 10.0;  // [km/h] 복구 모드 최대 속도
+    static constexpr int    kSearchWindow  = 300;
+    static constexpr int    kMaxIndexStep  = 30;
+    static constexpr double kRecovDist     = 1.5;            // [m]  거리 이탈 판단 (4.0→1.5: MPC는 1.5m 이내에서만 사용)
+    static constexpr double kRecovHdgThresh= 60.0*M_PI/180.0;// [rad] 헤딩 이탈 판단
+    static constexpr double kDotThreshold  = 0.1;            // 전방 필터 임계값
+    static constexpr double kRecovMaxVel   = 10.0;           // [km/h] RECOV 최대 속도
 
     // ═══════════════════════════════════════════════════════════════
     // MPC
@@ -100,8 +101,8 @@ private:
     double curve_spd_hdg_thresh_ = 0.20;
     double curve_spd_gain_       = 0.06;
     double curve_spd_min_ratio_  = 0.70;
-    double overshoot_dist_       = 0.15;
-    double overshoot_damp_       = 0.55;
+    double overshoot_dist_       = 0.10;
+    double overshoot_damp_       = 0.40;
     double osc_cte_db_           = 0.08;
     double osc_hdg_db_           = 0.10;
     double osc_damp_             = 0.65;
@@ -109,6 +110,7 @@ private:
     double near_hdg_thresh_      = 0.06;
     double near_steer_damp_      = 0.90;
     double near_v_scale_         = 0.98;
+    double k_stanley_            = 0.0;   // Stanley 제거 (k=5: MPC 역방향 폭주 유발)
     double max_steer_rate_       = 50.0;
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;

@@ -10,26 +10,23 @@ static constexpr int kNx = 5;
 static constexpr int kNu = 1; // input: kappa_dot
 
 struct LTVMPCConfig {
-    int N = 20;            // Horizon
+    int N = 20;            // Horizon (30→20: Stanley가 방향을 올바르게 잡아줘 긴 horizon 불필요)
     double Ts = 0.05;      // Sampling time (20Hz)
     double L = 2.7;        // Wheelbase
 
-    // Weights
-    // ── 수정 이유 ────────────────────────────────────────
-    // w_dr=1, w_theta=1은 경로 추종력이 너무 약해 직선조차 못 따라감.
-    // bisa ROS2 버전 기준(w_d=130, w_theta=165) 참고하여 적정값으로 상향.
-    double w_dr    = 120.0;  // 횡방향 오차 가중치 (1→120)
-    double w_theta =  80.0;  // 헤딩 오차 가중치  (1→80)
-    double w_kappa =   5.0;  // 곡률 가중치       (1→5)
-    double w_u     =  20.0;  // 입력 변화율 패널티 (50→20, 너무 높으면 반응성 저하)
+    // Weights — Stanley 제거 후 CTE 직접 제어
+    // w_dr >> w_theta: CTE 교정을 최우선, 헤딩은 보조만
+    double w_dr    = 100.0;  // CTE 가중치 (경로 추종 주 목표)
+    double w_theta =   5.0;  // 헤딩 가중치 최소화 (MPC가 헤딩 집착 → CTE 발산 방지)
+    double w_kappa =   5.0;  // kappa 억제 완화
+    double w_u     =  20.0;  // 빠른 응답 허용
 
     // Constraints
-    // max_steer_deg=35° 기준으로 kappa_max 통일: tan(35°)/L
     double max_steer_deg = 35.0;
     double kappa_max =  std::tan(35.0 * M_PI / 180.0) / L;  // ≈ 0.259
     double kappa_min = -std::tan(35.0 * M_PI / 180.0) / L;
-    double u_max =  0.8;   // kappa 변화율 제한 (2.0→0.8): 3스텝 폭주 방지
-    double u_min = -0.8;
+    double u_max =  0.5;   // kappa 변화율 제한 유지
+    double u_min = -0.5;
 
     double target_vel = 5.55; // 20 km/h (m/s)
 };

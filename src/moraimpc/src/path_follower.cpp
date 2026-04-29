@@ -190,13 +190,13 @@ PathFollower::NearResult PathFollower::findNearest() {
                           closest, min_d);
     }
 
-    // ── Step3: jump suppression (정상 추종 구간만 적용) ────────────
-    if (min_d <= kRecovDist) {
+    // ── Step3: jump suppression ────────────────────────────────────
+    {
         int delta = closest - nearest_idx_;
         if (delta < 0) {
-            closest = nearest_idx_;                      // 역방향 점프 차단
-        } else if (delta > kMaxIndexStep) {
-            closest = nearest_idx_ + kMaxIndexStep;      // 과도한 전방 점프 제한
+            closest = nearest_idx_;                           // 역방향 점프 무조건 차단
+        } else if (delta > kMaxIndexStep && min_d <= kRecovDist) {
+            closest = nearest_idx_ + kMaxIndexStep;          // 과도한 전방 점프는 정상 추종만 제한
         }
     }
     nearest_idx_ = std::min(closest, n - 1);
@@ -280,10 +280,20 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
     // ══════════════════════════════════════════════════════════════
     // 경로 이탈 복구 모드
+    //   조건: 거리 이탈(dist > kRecovDist) OR 헤딩 크게 어긋남(|hErr| > 60°)
+    //   타겟: nearest_idx_ 대신 lookahead 포인트 사용
+    //         → idx 역방향 점프로 인한 반대 방향 조향 방지
     // ══════════════════════════════════════════════════════════════
-    if (near.dist > kRecovDist) {
-        double dx_to  = wp_x_[nearest_idx_] - cur_x_;
-        double dy_to  = wp_y_[nearest_idx_] - cur_y_;
+    bool need_recov = (near.dist > kRecovDist) ||
+                      (std::abs(near.heading_err) > kRecovHdgThresh);
+
+    if (need_recov) {
+        // 전방 10m 지점을 타겟으로 (역방향 타겟 문제 해결)
+        int lookahead = std::max(1, static_cast<int>(std::round(10.0 / wp_spacing_)));
+        int target_idx = std::min(nearest_idx_ + lookahead, n - 1);
+
+        double dx_to  = wp_x_[target_idx] - cur_x_;
+        double dy_to  = wp_y_[target_idx] - cur_y_;
         double alpha  = wrapAngle(std::atan2(dy_to, dx_to) - cur_yaw_);
         steer_deg     = std::clamp(alpha * (180.0 / M_PI), -max_steer_deg_, max_steer_deg_);
         double facing = std::max(0.0, std::cos(alpha));
@@ -295,16 +305,19 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         cmd_init_   = true;
         v_cmd = velocitySigmoid(v_cmd, dt);
 
-        rec["mode"]      = "RECOV";
-        rec["alpha_deg"] = alpha * (180.0 / M_PI);
-        rec["steer_cmd"] = steer_deg;
-        rec["v_cmd"]     = v_cmd;
+        rec["mode"]        = need_recov && (std::abs(near.heading_err) > kRecovHdgThresh)
+                                 && !(near.dist > kRecovDist) ? "HDG_RECOV" : "RECOV";
+        rec["alpha_deg"]   = alpha * (180.0 / M_PI);
+        rec["target_idx"]  = target_idx;
+        rec["steer_cmd"]   = steer_deg;
+        rec["v_cmd"]       = v_cmd;
         log_recs_.push_back(rec);
 
         publishCmd(v_cmd, steer_deg);
         ROS_WARN_THROTTLE(1.0,
-            "[PathFollower][RECOV] idx=%d/%d dist=%.1fm α=%.1f° steer=%.1f° vel=%.1f",
-            nearest_idx_, n, near.dist, alpha * (180.0 / M_PI), steer_deg, v_cmd);
+            "[PathFollower][RECOV] idx=%d→tgt=%d dist=%.1fm hErr=%.1f° α=%.1f° steer=%.1f°",
+            nearest_idx_, target_idx, near.dist,
+            near.heading_err * (180.0 / M_PI), alpha * (180.0 / M_PI), steer_deg);
 
         if (++log_tick_ % 200 == 0) flushLog();
         return;
@@ -323,12 +336,20 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     double dr     = -std::sin(theta_ref) * dx_ref + std::cos(theta_ref) * dy_ref;
 
     double delta_theta_raw = wrapAngle(cur_yaw_ - theta_ref);
-    double delta_theta     = delta_theta_raw;
-    constexpr double kDeltaThetaMax = 0.349;   // ~20°
+
+    // ── Stanley 교정: MPC heading 목표에 CTE 비례 오프셋 추가 ──────
+    // 목표: delta_theta_eff = raw_hErr - atan(k_s * CTE / v)
+    //   CTE>0 (우측) → 교정항 음수 → delta_theta 더 음수 → MPC가 kappa>0 적용 → CTE 감소 ✓
+    //   CTE<0 (좌측) → 교정항 양수 → delta_theta 더 양수 → MPC가 kappa<0 적용 → CTE 증가 ✓
+    // 부호 주의: -atan(k * signed_cte / v)
+    double stanley_corr = -std::atan2(k_stanley_ * near.signed_cte,
+                                      std::max(cur_v_, 0.5));
+    stanley_corr = std::clamp(stanley_corr, -0.52, 0.52);   // ±30° 상한
+    double delta_theta = delta_theta_raw + stanley_corr;
+
+    constexpr double kDeltaThetaMax = 0.524;   // ~30° (Stanley 포함해서 넓힘)
     bool kappa_reset = false;
     if (std::abs(delta_theta) > kDeltaThetaMax) {
-        // kappa는 리셋 안 함 — bang-bang 발진 원인이었음
-        // 상태 포화만 적용해 LTV 선형화 범위 내로 유지
         delta_theta = std::clamp(delta_theta, -kDeltaThetaMax, kDeltaThetaMax);
         kappa_reset = true;
     }
@@ -338,7 +359,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     x0 << dr, theta_aligned, current_kappa_, theta_ref, kappa_ref;
 
     // ── 3. 배치 행렬 + 참조 곡률 입력 ────────────────────────────
-    double v_ref = std::max(cfg_.target_vel, cur_v_);
+    // 실제 속도 기반 LTV 모델 → 저속 시 모델 불일치 방지
+    double v_ref = std::max(cur_v_, 0.5);
     std::vector<double> v_profile(cfg_.N, v_ref);
     Eigen::MatrixXd A_bar, B_bar, E_bar;
     model_->buildBatchMatrices(v_profile, A_bar, B_bar, E_bar);
@@ -384,8 +406,18 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     // ── 5. kappa 적분 + 조향 변환 ─────────────────────────────────
     double kappa_before = current_kappa_;
     current_kappa_ += kappa_dot_sol * cfg_.Ts;
-    current_kappa_  = (1.0 - 0.35) * current_kappa_ + 0.35 * kappa_ref;
+    current_kappa_  = (1.0 - 0.03) * current_kappa_ + 0.03 * kappa_ref;
     current_kappa_  = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
+
+    // ── 5b. kappa 발산 억제 ────────────────────────────────────────
+    // CTE 부호 반전 후 kappa가 발산 방향(CTE와 반대 부호)으로 남아있으면
+    // kappa를 0 방향으로 끌어당겨 오버슈트 억제.
+    // steer*CTE < 0 = 경로 반대 방향으로 꺾임 = 발산 상태.
+    if (std::abs(near.signed_cte) > 0.05 &&
+        near.signed_cte * current_kappa_ < 0.0) {
+        current_kappa_ *= 0.92;  // Stanley 교정 후 보조 억제만 (0.82→0.92)
+    }
+
     steer_deg = std::atan(current_kappa_ * cfg_.L) * (180.0 / M_PI);
     double steer_after_kappa = steer_deg;
 
@@ -398,22 +430,26 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     }
 
     // ── 6. 후처리 B: 오버슈트 방지 ───────────────────────────────
+    // 경로 근접(0.10m < |CTE| < 0.50m) 시에만 적용
+    // 대형 이탈(|CTE| >= 0.50m)에서는 발동하지 않아 kappa 누적 허용
     double steer_rad = steer_deg * M_PI / 180.0;
     if (std::abs(near.signed_cte) > overshoot_dist_ &&
+        std::abs(near.signed_cte) < 0.5 &&
         (steer_rad * near.signed_cte) > 0.0) {
         steer_deg *= overshoot_damp_;
+        current_kappa_ = std::tan(steer_deg * M_PI / 180.0) / cfg_.L;
     }
 
     // ── 6. 후처리 C: 진동 감지 → 감쇠 ───────────────────────────
+    // 부호 반전 조건: 이전·현재 중 한쪽만 deadband 바깥이어도 발동
+    // (이전: both-outside 조건은 부호 반전 직후 current가 deadband 안에 있어 무효화됨)
     bool osc_damped = false;
     if (has_prev_errors_) {
         bool cte_flip =
-            (std::abs(near.signed_cte) > osc_cte_db_) &&
-            (std::abs(prev_cte_)       > osc_cte_db_) &&
+            (std::max(std::abs(near.signed_cte), std::abs(prev_cte_)) > osc_cte_db_) &&
             (near.signed_cte * prev_cte_ < 0.0);
         bool hdg_flip =
-            (std::abs(near.heading_err) > osc_hdg_db_) &&
-            (std::abs(prev_hdg_)        > osc_hdg_db_) &&
+            (std::max(std::abs(near.heading_err), std::abs(prev_hdg_)) > osc_hdg_db_) &&
             (near.heading_err * prev_hdg_ < 0.0);
         if (cte_flip || hdg_flip) { steer_deg *= osc_damp_; osc_damped = true; }
     }
