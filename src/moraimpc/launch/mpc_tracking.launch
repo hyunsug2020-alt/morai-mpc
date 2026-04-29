@@ -4,8 +4,8 @@
 
     <!-- 1. LTV-MPC 경로 추종기 (C++) -->
     <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
-        <param name="path_file"  value="/tmp/waypoints.json" />
+        <param name="path_file"  value="$(find moraimpc)/data/waypoints.json" />
         <param name="target_vel" value="20.0" />             <!-- km/h -->
-        <param name="log_file"   value="/tmp/mpc_log.json" />
+        <param name="log_file"   value="$(find moraimpc)/logs/mpc_log.json" />
     </node>
 </launch>

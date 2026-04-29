@@ -28,8 +28,8 @@ struct LTVMPCConfig {
     double max_steer_deg = 35.0;
     double kappa_max =  std::tan(35.0 * M_PI / 180.0) / L;  // ≈ 0.259
     double kappa_min = -std::tan(35.0 * M_PI / 180.0) / L;
-    double u_max =  2.0;
-    double u_min = -2.0;
+    double u_max =  0.8;   // kappa 변화율 제한 (2.0→0.8): 3스텝 폭주 방지
+    double u_min = -0.8;
 
     double target_vel = 5.55; // 20 km/h (m/s)
 };

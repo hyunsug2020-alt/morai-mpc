@@ -49,6 +49,19 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
 // ── 소멸자 ─────────────────────────────────────────────────────────
 PathFollower::~PathFollower() {
     flushLog();
+    // 주행 종료 후 분석 이미지 자동 생성
+    if (!log_file_.empty()) {
+        std::string script = log_file_;
+        // logs/mpc_log.json -> scripts/analyze_mpc.py 경로 추정
+        auto pos = script.rfind("/logs/");
+        if (pos != std::string::npos) {
+            std::string pkg_dir = script.substr(0, pos);
+            std::string analyze = pkg_dir + "/scripts/analyze_mpc.py";
+            std::string cmd = "python3 " + analyze + " " + log_file_ + " &";
+            std::system(cmd.c_str());
+            ROS_INFO("[PathFollower] 분석 이미지 생성 중 -> logs/mpc_analysis.png");
+        }
+    }
 }
 
 // ── 주행 기록 저장 ──────────────────────────────────────────────────
@@ -64,7 +77,7 @@ void PathFollower::flushLog() {
     Json::StreamWriterBuilder wb;
     wb["indentation"] = " ";
     ofs << Json::writeString(wb, root);
-    ROS_INFO("[PathFollower] 기록 저장 완료: %d ticks → %s",
+    ROS_INFO("[PathFollower] 기록 저장 완료: %d ticks -> %s",
              static_cast<int>(log_recs_.size()), log_file_.c_str());
 }
 
@@ -284,14 +297,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
         rec["mode"]      = "RECOV";
         rec["alpha_deg"] = alpha * (180.0 / M_PI);
-        rec["steer_cmd"] = -steer_deg;
+        rec["steer_cmd"] = steer_deg;
         rec["v_cmd"]     = v_cmd;
         log_recs_.push_back(rec);
 
         publishCmd(v_cmd, steer_deg);
         ROS_WARN_THROTTLE(1.0,
             "[PathFollower][RECOV] idx=%d/%d dist=%.1fm α=%.1f° steer=%.1f° vel=%.1f",
-            nearest_idx_, n, near.dist, alpha * (180.0 / M_PI), -steer_deg, v_cmd);
+            nearest_idx_, n, near.dist, alpha * (180.0 / M_PI), steer_deg, v_cmd);
 
         if (++log_tick_ % 200 == 0) flushLog();
         return;
@@ -314,9 +327,10 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     constexpr double kDeltaThetaMax = 0.349;   // ~20°
     bool kappa_reset = false;
     if (std::abs(delta_theta) > kDeltaThetaMax) {
-        current_kappa_ = kappa_ref;
-        delta_theta    = std::clamp(delta_theta, -kDeltaThetaMax, kDeltaThetaMax);
-        kappa_reset    = true;
+        // kappa는 리셋 안 함 — bang-bang 발진 원인이었음
+        // 상태 포화만 적용해 LTV 선형화 범위 내로 유지
+        delta_theta = std::clamp(delta_theta, -kDeltaThetaMax, kDeltaThetaMax);
+        kappa_reset = true;
     }
     double theta_aligned = theta_ref + delta_theta;
 
@@ -370,7 +384,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     // ── 5. kappa 적분 + 조향 변환 ─────────────────────────────────
     double kappa_before = current_kappa_;
     current_kappa_ += kappa_dot_sol * cfg_.Ts;
-    current_kappa_  = (1.0 - 0.12) * current_kappa_ + 0.12 * kappa_ref;
+    current_kappa_  = (1.0 - 0.35) * current_kappa_ + 0.35 * kappa_ref;
     current_kappa_  = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
     steer_deg = std::atan(current_kappa_ * cfg_.L) * (180.0 / M_PI);
     double steer_after_kappa = steer_deg;
@@ -436,7 +450,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     rec["current_kappa"]       = current_kappa_;
     rec["steer_kappa_deg"]     = steer_after_kappa;        // kappa→steer 직후
     rec["steer_pre_rl_deg"]    = steer_before_ratelim;     // rate limit 직전
-    rec["steer_cmd"]           = -steer_deg;               // MORAI 전송값 (음수=좌)
+    rec["steer_cmd"]           = steer_deg;                // MORAI 전송값 (양수=좌)
     rec["v_cmd"]               = v_cmd;
     rec["osc_damped"]          = osc_damped;
     rec["solve_ms"]            = solve_ms;
@@ -459,7 +473,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     ROS_INFO_THROTTLE(1.0,
         "[PathFollower] idx=%d/%d dist=%.2f CTE=%.2f hErr=%.1f° steer=%.1f° solve=%.1fms",
         nearest_idx_, n, near.dist, near.signed_cte,
-        near.heading_err * (180.0 / M_PI), -steer_deg, solve_ms);
+        near.heading_err * (180.0 / M_PI), steer_deg, solve_ms);
 
     if (++log_tick_ % 200 == 0) flushLog();
 }
@@ -469,7 +483,7 @@ void PathFollower::publishCmd(double vel_kmh, double steer_deg) {
     morai_msgs::CtrlCmd cmd;
     cmd.longlCmdType = 2;
     cmd.velocity = std::max(0.0, vel_kmh);
-    cmd.steering = -steer_deg;   // MORAI: 음수=좌회전
+    cmd.steering = steer_deg;    // MORAI: 양수=좌회전 (실측 확인)
     ctrl_pub_.publish(cmd);
 }
 
