@@ -1,9 +1,11 @@
 <launch>
-    <!-- 1. LTV-MPC Node (C++): High Performance Robust Tracking -->
-    <node pkg="moraimpc" type="ltv_mpc_node" name="ltv_mpc_node" output="screen">
-        <param name="path_file" value="/home/david/recorded_path.json" />
-    </node>
+    <!-- 0. MORAI 자율주행 모드 초기화 (ctrl_mode=3, gear=4) -->
+    <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
 
-    <!-- 2. Unified GUI: 경로 시각화, ESKF 헤딩, MPC 성능 통합 모니터링 -->
-    <node pkg="moraimpc" type="unified_gui.py" name="unified_gui" output="screen" args="/home/david/recorded_path.json" />
+    <!-- 1. LTV-MPC 경로 추종기 (C++) -->
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
+        <param name="path_file"  value="/tmp/waypoints.json" />
+        <param name="target_vel" value="20.0" />             <!-- km/h -->
+        <param name="log_file"   value="/tmp/mpc_log.json" />
+    </node>
 </launch>

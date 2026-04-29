@@ -3,49 +3,45 @@
 """
 경로 생성 노드 (ROS1 Noetic)
 ==============================
-- 수동 주행 중 /Ego_topic에서 위치 기록
+- /Ego_topic (MORAI ground truth) 에서 위치 기록
 - 일정 거리 간격으로 웨이포인트 저장
 - Ctrl+C 시 JSON 파일로 저장
 
 실행:
   python3 path_maker.py [저장파일경로]
-  python3 path_maker.py /tmp/my_path.json
+  python3 path_maker.py /home/david/recorded_path.json
 """
-import sys
-import json
-import math
-import signal
+import sys, json, math, signal
 import rospy
-from nav_msgs.msg import Odometry
-from tf.transformations import euler_from_quaternion
+from morai_msgs.msg import EgoVehicleStatus
 
 
 class PathMaker:
     def __init__(self, save_path='/tmp/waypoints.json', min_dist=0.5):
         self.save_path = save_path
-        self.min_dist  = min_dist   # 최소 기록 간격 [m]
+        self.min_dist  = min_dist
         self.waypoints = []
         self.last_x    = None
         self.last_y    = None
 
         rospy.init_node('path_maker_node')
-        # /Ego_topic 대신 ESKF의 결과인 /eskf/odom을 구독
-        rospy.Subscriber('/eskf/odom', Odometry, self._odom_cb)
 
-        # Ctrl+C 시 저장
+        # Ego_topic: MORAI ground truth (노이즈 없음)
+        rospy.Subscriber('/Ego_topic', EgoVehicleStatus, self._ego_cb)
+
         signal.signal(signal.SIGINT, self._save_and_exit)
 
-        rospy.loginfo(f"ESKF 기반 경로 기록 시작 - 간격: {min_dist}m, 저장: {save_path}")
+        rospy.loginfo(f"Ego_topic 기반 경로 기록 시작 - 간격: {min_dist}m, 저장: {save_path}")
         rospy.loginfo("차량을 수동으로 주행하세요. Ctrl+C로 저장 종료.")
         rospy.spin()
 
-    def _odom_cb(self, msg: Odometry):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
-        
-        q = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, 
-             msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
-        _, _, heading = euler_from_quaternion(q)
+    def _ego_cb(self, msg: EgoVehicleStatus):
+        x = msg.position.x
+        y = msg.position.y
+
+        # MORAI heading: 0=North CW [deg] → ROS yaw: 0=East CCW [rad]
+        heading = math.radians(90.0 - msg.heading)
+        heading = math.atan2(math.sin(heading), math.cos(heading))  # wrap
 
         if self.last_x is None:
             self._record(x, y, heading)
@@ -59,7 +55,7 @@ class PathMaker:
         self.last_x = x
         self.last_y = y
         self.waypoints.append({'x': x, 'y': y, 'heading': heading})
-        rospy.loginfo(f"[{len(self.waypoints):4d}] x={x:.2f}, y={y:.2f}, hdg={heading:.1f}")
+        rospy.loginfo(f"[{len(self.waypoints):4d}] x={x:.2f}, y={y:.2f}, hdg={math.degrees(heading):.1f}deg")
 
     def _save_and_exit(self, sig, frame):
         with open(self.save_path, 'w') as f:

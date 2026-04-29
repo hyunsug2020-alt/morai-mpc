@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
+set(CMAKE_CXX_STANDARD 17)
 project(moraimpc)
 
 find_package(catkin REQUIRED COMPONENTS
@@ -12,8 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(Eigen3 REQUIRED)
-find_library(OSQP_LIBRARY NAMES osqp)
-find_path(OSQP_INCLUDE_DIR NAMES osqp.h)
+find_library(OSQP_LIBRARY NAMES osqp PATHS /usr/local/lib)
+find_path(OSQP_INCLUDE_DIR NAMES osqp.h PATHS /usr/local/include/osqp)
 
 # JSONCPP
 find_library(JSONCPP_LIBRARY NAMES jsoncpp)
@@ -40,6 +41,6 @@ add_library(moraimpc_core
 )
 target_link_libraries(moraimpc_core ${catkin_LIBRARIES} ${OSQP_LIBRARY} ${JSONCPP_LIBRARY})
 
-# Main Node (C++)
-add_executable(ltv_mpc_node src/ltv_mpc_node.cpp)
-target_link_libraries(ltv_mpc_node moraimpc_core ${catkin_LIBRARIES})
+# Path Follower Node (C++)
+add_executable(path_follower_node src/path_follower.cpp)
+target_link_libraries(path_follower_node moraimpc_core ${catkin_LIBRARIES})
