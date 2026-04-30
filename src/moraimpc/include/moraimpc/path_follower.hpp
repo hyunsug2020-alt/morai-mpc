@@ -113,7 +113,7 @@ private:
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
     double k_stanley_            = 0.5;
-    double max_steer_rate_       = 30.0;
+    double max_steer_rate_       = 15.0; // 30.0 -> 15.0
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;

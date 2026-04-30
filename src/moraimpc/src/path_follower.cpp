@@ -160,8 +160,11 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     const int n = static_cast<int>(wp_x_.size());
 
     Json::Value rec(Json::objectValue);
-    rec["t"] = (now - log_t0_).toSec(); rec["v_kmh"] = cur_v_ * 3.6;
-    rec["cte"] = near.signed_cte; rec["hdg_err_deg"] = near.heading_err * 180.0 / M_PI;
+    rec["t"] = (now - log_t0_).toSec(); 
+    rec["x"] = cur_x_; rec["y"] = cur_y_;
+    rec["v_kmh"] = cur_v_ * 3.6;
+    rec["cte"] = near.signed_cte; 
+    rec["hdg_err_deg"] = near.heading_err * 180.0 / M_PI;
 
     if (nearest_idx_ >= n - 2) {
         if (std::hypot(wp_x_.back() - cur_x_, wp_y_.back() - cur_y_) < 2.0) {
@@ -177,12 +180,26 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         double la_dist = std::max(4.0, 10.0 - near.dist * 2.0);
         int target_idx = std::min(nearest_idx_ + (int)std::round(la_dist / wp_spacing_), n - 1);
         double alpha = wrapAngle(std::atan2(wp_y_[target_idx] - cur_y_, wp_x_[target_idx] - cur_x_) - cur_yaw_);
-        double steer_deg = std::clamp(alpha * 180.0 / M_PI, -max_steer_deg_, max_steer_deg_);
+        
+        // RECOV mode output also in RADIANS
+        double steer_rad = std::clamp(alpha, -max_steer_deg_ * M_PI / 180.0, max_steer_deg_ * M_PI / 180.0);
         double v_cmd = velocitySigmoid(kRecovMaxVel, dt);
-        prev_steer_ = steer_deg; prev_was_recov_ = true;
-        publishCmd(v_cmd, steer_deg); return;
+        
+        // Apply rate limit and unify sign (- for MORAI)
+        double steer_deg_limited = steerRateLimit(steer_rad * 180.0 / M_PI, dt);
+        double final_steer_rad = steer_deg_limited * M_PI / 180.0;
+
+        prev_steer_ = steer_deg_limited; 
+        prev_was_recov_ = true;
+
+        rec["mode"] = "RECOV";
+        rec["steer_cmd"] = final_steer_rad;
+        log_recs_.push_back(rec);
+
+        publishCmd(v_cmd, final_steer_rad); return;
     }
 
+    rec["mode"] = "NORMAL";
     // ── NORMAL MPC (Mobility Structure) ──────────────────────────
     double theta_ref = wp_h_[nearest_idx_], kappa_ref = wp_k_[nearest_idx_];
     double dx = cur_x_ - wp_x_[nearest_idx_], dy = cur_y_ - wp_y_[nearest_idx_];
@@ -241,14 +258,33 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
         double steer_rad = std::atan(current_kappa_ * cfg_.L);
         // Apply kappa_gain for MORAI responsiveness
-        double final_steer = steer_rad * cfg_.kappa_gain; 
+        double raw_steer = steer_rad * cfg_.kappa_gain; 
         
-        prev_steer_ = final_steer * 180.0 / M_PI;
-        // MORAI steering is usually Radian and Sign-inverted
-        publishCmd(cfg_.target_vel * 3.6, -final_steer); 
-        rec["steer_cmd"] = -final_steer; rec["current_kappa"] = current_kappa_;
+        // Apply rate limit on degrees
+        double steer_deg_limited = steerRateLimit(raw_steer * 180.0 / M_PI, dt);
+        double final_steer_rad = steer_deg_limited * M_PI / 180.0;
+        
+        prev_steer_ = steer_deg_limited;
+        // MORAI steering: Unified to Positive = Left
+        publishCmd(cfg_.target_vel * 3.6, final_steer_rad); 
+        rec["steer_cmd"] = final_steer_rad; rec["current_kappa"] = current_kappa_;
+    } else {
+        rec["solve_failed"] = true;
     }
-    log_recs_.push_back(rec);
+    
+    auto t_end = ros::WallTime::now();
+    rec["solve_ms"] = (t_end - t_start).toSec() * 1000.0;
+
+    // ── Logging Filter ───────────────────────────────────────────
+    bool is_problematic = (std::abs(near.signed_cte) > 0.25) || 
+                          (std::abs(near.heading_err) > 10.0 * M_PI / 180.0) ||
+                          rec.isMember("solve_failed") ||
+                          (rec["solve_ms"].asDouble() > 20.0);
+    
+    if (is_problematic) {
+        log_recs_.push_back(rec);
+    }
+
     if (++log_tick_ % 200 == 0) flushLog();
 }
 

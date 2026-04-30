@@ -15,14 +15,14 @@ struct LTVMPCConfig {
     int N = 30;
     double Ts = 0.05;
     double L = 2.7;
-    double kappa_gain = 4.0;
+    double kappa_gain = 1.5; // 3.5 -> 1.5 (Snapping 방지를 위해 대폭 하향)
 
     // --- MORAI 최적 파라미터 (사용자 지정값 기반) ---
-    double w_dr    = 100.0;
-    double w_theta = 60.0;
-    double w_kappa = 150.0;
-    double w_u     = 1500.0;
-    double w_u_v_gain = 500.0;
+    double w_dr    = 40.0;    // 80 -> 40 (라인에 붙으려는 고집을 줄임)
+    double w_theta = 250.0;   // 40 -> 250 (헤딩 댐핑 대폭 강화 - 웨이브 방지 핵심)
+    double w_kappa = 100.0;   
+    double w_u     = 6000.0;  // 10000 -> 6000 (지연 시간 단축하여 오버슈트 방지)
+    double w_u_v_gain = 1000.0; // 1500 -> 1000
 
     // --- 제약 조건 (BISA 구조적 제약 방식) ---
     double max_steer_deg = 35.0;
