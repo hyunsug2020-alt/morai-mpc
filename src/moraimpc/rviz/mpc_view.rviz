@@ -1,0 +1,107 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+        - /Global Path1
+        - /Predicted Path1
+      Splitter Ratio: 0.5
+    Tree Height: 549
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 160
+      Enabled: true
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Alpha: 1
+      Autoscale Value Range: true
+      Class: rviz/Path
+      Color: 0; 0; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.1
+      Name: Global Path
+      Topic: /global_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Autoscale Value Range: true
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.2
+      Name: Predicted Path
+      Topic: /predicted_path
+      Unreliable: false
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Marker Scale: 1
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Update Interval: 0
+      Value: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/2D Nav Goal
+      Topic: /move_base_simple/goal
+    - Class: rviz/2D Pose Estimate
+      Topic: /initialpose
+    - Class: rviz/PublishPoint
+      Single Click: true
+      Topic: /clicked_point
+  Transformation:
+    Current:
+      Class: rviz/TF
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 100
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 1.57
+      Target Frame: base_link
+      Yaw: 0
+    Transitions:
+      Wait For Sync Time: false
+Window Geometry:
+  Height: 800
+  Width: 1200
+  X: 100
+  Y: 100

@@ -7,7 +7,6 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   sensor_msgs
-  nav_msgs
   morai_msgs
   tf
 )
@@ -23,7 +22,7 @@ include_directories(/usr/include/jsoncpp)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES moraimpc
-  CATKIN_DEPENDS roscpp rospy std_msgs sensor_msgs nav_msgs morai_msgs tf
+  CATKIN_DEPENDS roscpp rospy std_msgs sensor_msgs morai_msgs tf
 )
 
 include_directories(

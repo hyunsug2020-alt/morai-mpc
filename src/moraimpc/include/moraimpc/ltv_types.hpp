@@ -15,8 +15,8 @@ struct LTVMPCConfig {
     double L = 2.7;
 
     // Weights
-    double w_dr    =  20.0;  // CTE (강화: 5→20, RECOV 후 큰 CTE 수정력 확보)
-    double w_theta =  50.0;  // 헤딩 (방향 정렬 우선)
+    double w_dr    =   5.0;  // CTE (낮춤: 급격 수렴 대신 헤딩으로 부드럽게 복귀)
+    double w_theta =  50.0;  // 헤딩 (강화: 방향 정렬 우선)
     double w_kappa =  10.0;  // (κ-κ_r)² 패널티 (ltv_cost.cpp 수정 적용)
     double w_u     = 2000.0; // kappa_dot 억제 (연속 포화 완전 차단)
 

@@ -1,7 +1,7 @@
 # generated from catkin/cmake/template/pkg.context.pc.in
 CATKIN_PACKAGE_PREFIX = ""
 PROJECT_PKG_CONFIG_INCLUDE_DIRS = "${prefix}/include".split(';') if "${prefix}/include" != "" else []
-PROJECT_CATKIN_DEPENDS = "roscpp;rospy;std_msgs;sensor_msgs;nav_msgs;morai_msgs;tf".replace(';', ' ')
+PROJECT_CATKIN_DEPENDS = "roscpp;rospy;std_msgs;sensor_msgs;morai_msgs;tf".replace(';', ' ')
 PKG_CONFIG_LIBRARIES_WITH_PREFIX = "-lmoraimpc".split(';') if "-lmoraimpc" != "" else []
 PROJECT_NAME = "moraimpc"
 PROJECT_SPACE_DIR = "/home/david/moraimpc_ros1/install"
