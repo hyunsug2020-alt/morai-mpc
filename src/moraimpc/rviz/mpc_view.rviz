@@ -4,22 +4,22 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /Global Options1
-        - /Status1
-        - /Global Path1
-        - /Predicted Path1
+        - /계획 경로1
+        - /실제 궤적1
+        - /RECOV 구간1
+        - /차량1
       Splitter Ratio: 0.5
-    Tree Height: 549
+    Tree Height: 700
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.5
-      Cell Size: 1
+    - Alpha: 0.3
+      Cell Size: 10
       Class: rviz/Grid
-      Color: 160; 160; 160
+      Color: 80; 80; 80
       Enabled: true
       Line Style:
-        Line Width: 0.03
+        Line Width: 0.05
         Value: Lines
       Name: Grid
       Normal Cell Count: 0
@@ -28,41 +28,52 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 10
-      Reference Frame: <Fixed Frame>
+      Plane Cell Count: 20
+      Reference Frame: map
       Value: true
-    - Alpha: 1
-      Autoscale Value Range: true
-      Class: rviz/Path
-      Color: 0; 0; 255
+
+    - Class: rviz/MarkerArray
       Enabled: true
-      Line Style: Lines
-      Line Width: 0.1
-      Name: Global Path
-      Topic: /global_path
-      Unreliable: false
+      Marker Topic: /mpc_viz/planned_path
+      Name: 계획 경로
+      Queue Size: 5
       Value: true
-    - Alpha: 1
-      Autoscale Value Range: true
-      Class: rviz/Path
-      Color: 255; 0; 0
+
+    - Class: rviz/MarkerArray
       Enabled: true
-      Line Style: Lines
-      Line Width: 0.2
-      Name: Predicted Path
-      Topic: /predicted_path
-      Unreliable: false
+      Marker Topic: /mpc_viz/trajectory
+      Name: 실제 궤적
+      Queue Size: 5
       Value: true
-    - Class: rviz/TF
+
+    - Class: rviz/MarkerArray
       Enabled: true
-      Frame Timeout: 15
-      Marker Scale: 1
-      Name: TF
-      Show Arrows: true
-      Show Axes: true
-      Show Names: true
-      Update Interval: 0
+      Marker Topic: /mpc_viz/recov_pts
+      Name: RECOV 구간
+      Queue Size: 5
       Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/ego_arrow
+      Name: 차량
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/cte_text
+      Name: CTE 텍스트
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/stats_text
+      Name: 경로일치율 통계
+      Queue Size: 5
+      Value: true
+
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
@@ -75,33 +86,23 @@ Visualization Manager:
     - Class: rviz/Select
     - Class: rviz/FocusCamera
     - Class: rviz/Measure
-    - Class: rviz/2D Nav Goal
-      Topic: /move_base_simple/goal
-    - Class: rviz/2D Pose Estimate
-      Topic: /initialpose
-    - Class: rviz/PublishPoint
-      Single Click: true
-      Topic: /clicked_point
   Transformation:
     Current:
       Class: rviz/TF
   Views:
     Current:
-      Class: rviz/Orbit
-      Distance: 100
-      Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
-      Name: Current View
+      Class: rviz/TopDownOrtho
+      Angle: 0
+      Name: Top-Down 뷰
       Near Clip Distance: 0.01
-      Pitch: 1.57
-      Target Frame: base_link
-      Yaw: 0
+      Scale: 2.0
+      Target Frame: map
+      X: 112.9
+      Y: 1417.2
     Transitions:
       Wait For Sync Time: false
 Window Geometry:
-  Height: 800
+  Height: 900
   Width: 1200
   X: 100
-  Y: 100
+  Y: 50

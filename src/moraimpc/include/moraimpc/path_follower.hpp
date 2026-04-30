@@ -60,12 +60,12 @@ private:
     // ═══════════════════════════════════════════════════════════════
     static constexpr int    kSearchWindow  = 300;
     static constexpr int    kMaxIndexStep  = 30;
-    static constexpr double kRecovDist      = 1.2;            // [m]  RECOV 진입
-    static constexpr double kRecovDistExit = 0.8;            // [m]  RECOV 탈출: dist 단독
-    static constexpr double kRecovHdgThresh= 40.0*M_PI/180.0;// [rad] RECOV 진입: 헤딩 기준
-    static constexpr double kRecovHdgExit  = 12.0*M_PI/180.0;// [rad] RECOV 탈출: 미사용 (dist 단독)
+    static constexpr double kRecovDist      = 1.5;            // [m]  RECOV 진입 (1.2→1.5: MPC가 더 처리)
+    static constexpr double kRecovDistExit = 0.50;           // [m]  RECOV 탈출 (경로에 더 붙고 탈출)
+    static constexpr double kRecovHdgThresh= 35.0*M_PI/180.0;// [rad] RECOV 진입: 헤딩 기준
+    static constexpr double kRecovHdgExit  = 12.0*M_PI/180.0;// [rad] RECOV 탈출 기준
     static constexpr double kDotThreshold  = 0.1;            // 전방 필터 임계값
-    static constexpr double kRecovMaxVel   = 10.0;           // [km/h] RECOV 최대 속도
+    static constexpr double kRecovMaxVel   =  3.0;           // [km/h] RECOV 최대 속도 (6→3: 슬라롬/오버슈팅 방지)
 
     // ═══════════════════════════════════════════════════════════════
     // MPC
@@ -112,8 +112,8 @@ private:
     double near_hdg_thresh_      = 0.08;
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
-    double k_stanley_            = 0.2;   // 0.5 -> 0.2 (Stanley 영향력 감소)
-    double max_steer_rate_       = 18.0;  // 20 -> 18 deg/s (더욱 부드러운 조향)
+    double k_stanley_            = 0.5;
+    double max_steer_rate_       = 30.0;
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;

@@ -1,11 +1,26 @@
 <launch>
-    <!-- 0. MORAI 자율주행 모드 초기화 (ctrl_mode=3, gear=4) -->
+    <!-- TF_REPEATED_DATA 경고 억제 (MORAI 중복 TF 발행) -->
+    <env name="ROSCONSOLE_CONFIG_FILE"
+         value="$(find moraimpc)/config/rosconsole.config" />
+
+    <!-- 0. MORAI 자율주행 모드 초기화 -->
     <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
 
-    <!-- 1. LTV-MPC 경로 추종기 (C++) -->
+    <!-- 1. LTV-MPC 경로 추종기 -->
     <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
         <param name="path_file"  value="$(find moraimpc)/data/waypoints.json" />
-        <param name="target_vel" value="20.0" />             <!-- km/h -->
+        <param name="target_vel" value="20.0" />
         <param name="log_file"   value="$(find moraimpc)/logs/mpc_log.json" />
     </node>
+
+    <!-- 2. MPC RViz 마커 퍼블리셔 -->
+    <node pkg="moraimpc" type="mpc_viz_node.py" name="mpc_viz_node" output="screen">
+        <param name="path_file"  value="$(find moraimpc)/data/waypoints.json" />
+        <param name="log_file"   value="$(find moraimpc)/logs/mpc_log.json" />
+        <param name="reload_sec" value="3.0" />
+    </node>
+
+    <!-- 3. GUI 뷰어 (글로벌 패스 + 실제 궤적, 2초 후 자동 시작) -->
+    <node pkg="moraimpc" type="mpc_viewer.py" name="mpc_viewer" output="screen"
+          args="$(find moraimpc)/logs/mpc_log.json $(find moraimpc)/data/waypoints.json" />
 </launch>

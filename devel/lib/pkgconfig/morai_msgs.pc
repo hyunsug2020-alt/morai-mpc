@@ -1,8 +1,0 @@
-prefix=/home/david/moraimpc_ros1/devel
-
-Name: morai_msgs
-Description: Description of morai_msgs
-Version: 0.0.1
-Cflags: -I/home/david/moraimpc_ros1/devel/include
-Libs: -L${prefix}/lib 
-Requires: message_runtime std_msgs geometry_msgs
