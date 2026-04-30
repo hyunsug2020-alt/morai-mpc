@@ -440,6 +440,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     if (prev_was_recov_) {
         current_kappa_ = kappa_ref;
         prev_was_recov_ = false;
+        prev_steer_ = std::atan(kappa_ref * cfg_.L / cfg_.kappa_gain) * (180.0 / M_PI);
     } else if (cmd_init_) {
         current_kappa_ = cfg_.kappa_gain * std::tan(prev_steer_ * M_PI / 180.0) / cfg_.L;
     }
