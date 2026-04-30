@@ -10,22 +10,28 @@ static constexpr int kNx = 5;
 static constexpr int kNu = 1; // input: kappa_dot
 
 struct LTVMPCConfig {
-    int N = 30;            // Horizon (15→30: 1.5초 예측, 커브 미리 대응)
+    int N = 30;            // Horizon (1.5초 예측)
     double Ts = 0.05;
     double L = 2.7;
+    double kappa_gain = 6.0; // 실제 차량 곡률이 Kinematic 모델보다 6배 큰 점 반영
 
     // Weights
-    double w_dr    =   5.0;  // CTE (낮춤: 급격 수렴 대신 헤딩으로 부드럽게 복귀)
-    double w_theta =  50.0;  // 헤딩 (강화: 방향 정렬 우선)
-    double w_kappa =  10.0;  // (κ-κ_r)² 패널티 (ltv_cost.cpp 수정 적용)
-    double w_u     = 2000.0; // kappa_dot 억제 (연속 포화 완전 차단)
+    double w_dr    =   5.0;  // CTE 가중치 (0.1m 오차 시 0.05 패널티)
+    double w_theta =  40.0;  // 헤딩 가중치
+    double w_kappa =  15.0;  // 곡률 추종 가중치
+    double w_u     = 80000.0; // kappa_dot 억제 (진동 방지의 핵심)
+
+    // Adaptive weights (속도에 따른 가중치 증가분)
+    double w_u_v_gain = 10000.0; // v=10m/s 시 w_u에 100000 추가
 
     // Constraints
+    // max_steer_rate(18 deg/s) = 0.314 rad/s
+    // kappa_dot_max = 0.314 / L / kappa_gain = 0.314 / 2.7 / 6.0 = 0.019
     double max_steer_deg = 35.0;
     double kappa_max =  std::tan(35.0 * M_PI / 180.0) / L;
     double kappa_min = -std::tan(35.0 * M_PI / 180.0) / L;
-    double u_max =  0.10;
-    double u_min = -0.10;
+    double u_max =  0.018; // 0.02 -> 0.018 (더욱 정교한 제한)
+    double u_min = -0.018; 
 
     double target_vel = 5.55; // 20 km/h (m/s)
 };

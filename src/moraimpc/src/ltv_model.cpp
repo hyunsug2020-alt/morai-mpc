@@ -17,7 +17,7 @@ void LTVModel::discretize(double v, Eigen::MatrixXd& A, Eigen::MatrixXd& B, Eige
     Ac(3, 4) = v;      // θ̇r = v*kappa_r
     
     Eigen::VectorXd Bc = Eigen::VectorXd::Zero(kNx);
-    Bc(2) = 1.0;       // κ̇ = u
+    Bc(2) = cfg_.kappa_gain;  // κ̇ = kappa_gain * u (u는 명령된 kappa_dot)
     
     Eigen::VectorXd Ec = Eigen::VectorXd::Zero(kNx);
     Ec(4) = 1.0;       // κ̇r = z

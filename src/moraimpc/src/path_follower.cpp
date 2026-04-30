@@ -370,26 +370,48 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     x0 << dr, theta_aligned, current_kappa_, theta_ref, kappa_ref;
 
     // ── 3. 배치 행렬 + 참조 곡률 입력 ────────────────────────────
-    // 실제 속도 기반 LTV 모델 → 저속 시 모델 불일치 방지
-    double v_ref = std::max(cur_v_, 0.5);
-    std::vector<double> v_profile(cfg_.N, v_ref);
+    double v_curr = std::max(cur_v_, 0.5);
+    std::vector<double> v_profile(cfg_.N);
+    
+    // 미래 곡률 기반 속도 프로파일 생성 (Velocity Planning)
+    {
+        double v_tgt = cfg_.target_vel;
+        const double kCurveAlpha = 2.5; // 곡률에 따른 감속 계수
+        int step_idx = nearest_idx_;
+        for (int i = 0; i < cfg_.N; ++i) {
+            double v_k = v_tgt;
+            // 0.5초(약 10스텝) 앞의 곡률까지 고려하여 미리 감속
+            int lookahead_steps = 10;
+            double max_k = 0.0;
+            for (int j = 0; j < lookahead_steps; ++j) {
+                int ki = std::min(step_idx + j, n - 1);
+                max_k = std::max(max_k, std::abs(wp_k_[ki]));
+            }
+            v_k = v_tgt / (1.0 + kCurveAlpha * max_k);
+            v_profile[i] = std::max(1.5, v_k); // 최소 속도 보장
+            
+            // 예측 스텝당 이동 인덱스 계산
+            int idx_step = std::max(1, static_cast<int>(std::round(v_profile[i] * cfg_.Ts / wp_spacing_)));
+            step_idx = std::min(step_idx + idx_step, n - 1);
+        }
+    }
+
     Eigen::MatrixXd A_bar, B_bar, E_bar;
     model_->buildBatchMatrices(v_profile, A_bar, B_bar, E_bar);
 
-    int idx_per_step = std::max(1,
-        static_cast<int>(std::round(v_ref * cfg_.Ts / wp_spacing_)));
-
     Eigen::VectorXd z_bar = Eigen::VectorXd::Zero(cfg_.N);
+    int curr_step_idx = nearest_idx_;
     for (int i = 0; i < cfg_.N; ++i) {
-        int ki  = std::min(nearest_idx_ + (i + 1) * idx_per_step, n - 1);
-        int ki0 = std::min(nearest_idx_ +  i      * idx_per_step, n - 1);
-        z_bar(i) = (wp_k_[ki] - wp_k_[ki0]) / cfg_.Ts;
+        int idx_step = std::max(1, static_cast<int>(std::round(v_profile[i] * cfg_.Ts / wp_spacing_)));
+        int ki  = std::min(curr_step_idx + idx_step, n - 1);
+        z_bar(i) = (wp_k_[ki] - wp_k_[curr_step_idx]) / cfg_.Ts;
+        curr_step_idx = ki;
     }
 
     // ── 4. QP 구성 & 풀기 ─────────────────────────────────────────
     Eigen::SparseMatrix<double> P;
     Eigen::VectorXd q_vec;
-    cost_->buildQPObjective(x0, z_bar, A_bar, B_bar, E_bar, P, q_vec);
+    cost_->buildQPObjective(x0, z_bar, A_bar, B_bar, E_bar, v_profile, P, q_vec);
 
     Eigen::SparseMatrix<double> A_cons(cfg_.N, cfg_.N);
     A_cons.setIdentity();
@@ -414,67 +436,45 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     }
     kappa_dot_sol = solution[0];
 
-    // ── 5. kappa 초기화 ──────────────────────────────────────────────
-    // RECOV 직후 첫 NORMAL: RECOV의 큰 steer(35°)가 current_kappa_를 오염
-    // → kappa_ref(경로 참조값)로 깨끗하게 시작
-    // 연속 NORMAL: 이전 스텝 steer_cmd에서 역산(closed-loop)
+    // ── 5. kappa 초기화 및 상태 업데이트 ────────────────────────────
     if (prev_was_recov_) {
         current_kappa_ = kappa_ref;
         prev_was_recov_ = false;
     } else if (cmd_init_) {
-        current_kappa_ = std::tan(prev_steer_ * M_PI / 180.0) / cfg_.L;
+        current_kappa_ = cfg_.kappa_gain * std::tan(prev_steer_ * M_PI / 180.0) / cfg_.L;
     }
     double kappa_before = current_kappa_;
-    current_kappa_ += kappa_dot_sol * cfg_.Ts;
-    current_kappa_  = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
+    
+    current_kappa_ += cfg_.kappa_gain * kappa_dot_sol * cfg_.Ts;
+    current_kappa_  = std::clamp(current_kappa_, cfg_.kappa_gain * cfg_.kappa_min, 
+                                                 cfg_.kappa_gain * cfg_.kappa_max);
 
-    // ── 5b. kappa 발산 억제 ────────────────────────────────────────
-    if (std::abs(near.signed_cte) > 0.05 &&
-        near.signed_cte * current_kappa_ < 0.0) {
-        current_kappa_ *= 0.92;
-    }
-
-    // ── 5c. 헤딩 과교정 억제 (신규) ───────────────────────────────
-    // 경로 방향으로 이미 충분히 꺾인 상태(hdg_err와 CTE 부호 반대)에서
-    // 헤딩이 임계값을 초과하면 kappa를 0으로 강제 감쇠.
-    // 실제 차량 곡률이 모델보다 6배 크기 때문에 헤딩이 예상보다 빠르게
-    // 쌓여 40°+ 오버슈트가 발생하는 것을 방지.
+    // ── 5b. 헤딩 오버슈트 방지 ────────────────────────────────────────
     {
-        const double kHdgCapRad = 0.35;  // ~20° — 이 이상이면 감쇠 시작
+        const double kHdgCapRad = 0.35;  // ~20°
         double hdg_abs = std::abs(near.heading_err);
         bool heading_toward_path = (near.signed_cte * near.heading_err < 0.0);
         if (hdg_abs > kHdgCapRad && heading_toward_path) {
-            double excess_ratio = (hdg_abs - kHdgCapRad) / kHdgCapRad;
-            double damping = std::max(0.0, 1.0 - 2.5 * excess_ratio);
-            current_kappa_ *= damping;
+            current_kappa_ *= 0.80;
         }
     }
 
-    steer_deg = std::atan(current_kappa_ * cfg_.L) * (180.0 / M_PI);
+    double cmd_kappa = current_kappa_ / cfg_.kappa_gain;
+    steer_deg = std::atan(cmd_kappa * cfg_.L) * (180.0 / M_PI);
     double steer_after_kappa = steer_deg;
 
-    // ── 6. 후처리 A: 커브 속도 감소 ──────────────────────────────
-    if (std::abs(near.heading_err) > curve_spd_hdg_thresh_) {
-        double excess = std::abs(near.heading_err) - curve_spd_hdg_thresh_;
-        double ratio  = std::max(curve_spd_min_ratio_,
-                                 1.0 - curve_spd_gain_ * excess);
-        v_cmd *= ratio;
-    }
+    // ── 6. 후처리 A: 속도 결정 (프로파일의 첫 번째 값 사용) ──────
+    v_cmd = v_profile[0] * 3.6; // m/s -> km/h
 
     // ── 6. 후처리 B: 오버슈트 방지 ───────────────────────────────
-    // 경로 근접(0.10m < |CTE| < 0.50m) 시에만 적용
-    // 대형 이탈(|CTE| >= 0.50m)에서는 발동하지 않아 kappa 누적 허용
     double steer_rad = steer_deg * M_PI / 180.0;
     if (std::abs(near.signed_cte) > overshoot_dist_ &&
-        std::abs(near.signed_cte) < 0.5 &&
+        std::abs(near.signed_cte) < 0.6 &&
         (steer_rad * near.signed_cte) > 0.0) {
         steer_deg *= overshoot_damp_;
-        // current_kappa_ 건드리지 않음: 감쇠 후 steer→kappa 역산하면 다음 스텝 MPC 오버슈트 유발
     }
 
-    // ── 6. 후처리 C: 진동 감지 → 감쇠 ───────────────────────────
-    // 부호 반전 조건: 이전·현재 중 한쪽만 deadband 바깥이어도 발동
-    // (이전: both-outside 조건은 부호 반전 직후 current가 deadband 안에 있어 무효화됨)
+    // ── 6. 후처리 C: 진동 감지 → 강력한 조향 댐핑 ────────────────
     bool osc_damped = false;
     if (has_prev_errors_) {
         bool cte_flip =
@@ -483,13 +483,18 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         bool hdg_flip =
             (std::max(std::abs(near.heading_err), std::abs(prev_hdg_)) > osc_hdg_db_) &&
             (near.heading_err * prev_hdg_ < 0.0);
-        if (cte_flip || hdg_flip) { osc_damped = true; }  // steer 감쇠 제거: closed-loop kappa 오염 방지
+        if (cte_flip || hdg_flip) { 
+            osc_damped = true; 
+            steer_deg *= osc_damp_; // 진동 발생 시 조향 출력을 직접 댐핑
+            current_kappa_ *= osc_damp_; // 상태값도 동기화
+        }
     }
 
-    // ── 6. 후처리 D: 경로 근접 시 추가 감쇠 ─────────────────────
+    // ── 6. 후처리 D: 경로 근접 시 추가 안정화 ───────────────────
     if (std::abs(near.signed_cte)  < near_cte_thresh_ &&
         std::abs(near.heading_err) < near_hdg_thresh_) {
-        v_cmd *= near_v_scale_;  // steer 감쇠 제거, 속도 감소만 유지
+        v_cmd *= near_v_scale_;
+        steer_deg *= near_steer_damp_;
     }
 
     prev_cte_        = near.signed_cte;
@@ -521,7 +526,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     rec["v_cmd"]               = v_cmd;
     rec["osc_damped"]          = osc_damped;
     rec["solve_ms"]            = solve_ms;
-    rec["idx_per_step"]        = idx_per_step;
+    rec["idx_per_step"]        = std::max(1, static_cast<int>(std::round(v_profile[0] * cfg_.Ts / wp_spacing_)));
     log_recs_.push_back(rec);
 
     publishCmd(v_cmd, steer_deg);
