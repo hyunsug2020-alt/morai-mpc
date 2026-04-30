@@ -22,7 +22,11 @@ void LTVCost::buildQPObjective(const Eigen::VectorXd& x0,
         Qi(1, 3) = -cfg_.w_theta;
         Qi(3, 1) = -cfg_.w_theta;
         Qi(3, 3) = cfg_.w_theta;
+        // (κ - κ_r)² 패널티: κ²만 쓰면 κ=0 선호 → 커브에서 직선 주행 → 급격한 오버슈트
         Qi(2, 2) = cfg_.w_kappa;
+        Qi(2, 4) = -cfg_.w_kappa;
+        Qi(4, 2) = -cfg_.w_kappa;
+        Qi(4, 4) = cfg_.w_kappa;
         Q_bar.block(i * kNx, i * kNx, kNx, kNx) = Qi;
     }
 

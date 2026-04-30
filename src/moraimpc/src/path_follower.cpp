@@ -124,6 +124,16 @@ void PathFollower::loadPath(const std::string& file) {
     wp_k_[0]     = wp_k_[1];
     wp_k_[n - 1] = wp_k_[n - 2];
 
+    // 참조 곡률 3점 이동평균 평활화 (원본 kappa_smooth_window=3)
+    // feedforward z_bar의 스파이크 제거 → MPC kappa_dot 급변 방지
+    {
+        std::vector<double> smooth = wp_k_;
+        for (int i = 1; i < n - 1; ++i) {
+            smooth[i] = (wp_k_[i-1] + wp_k_[i] + wp_k_[i+1]) / 3.0;
+        }
+        wp_k_ = smooth;
+    }
+
     // 웨이포인트 평균 간격
     if (n >= 2) {
         double total = 0.0;
@@ -279,30 +289,45 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     double v_cmd     = cfg_.target_vel * 3.6;
 
     // ══════════════════════════════════════════════════════════════
-    // 경로 이탈 복구 모드
-    //   조건: 거리 이탈(dist > kRecovDist) OR 헤딩 크게 어긋남(|hErr| > 60°)
-    //   타겟: nearest_idx_ 대신 lookahead 포인트 사용
-    //         → idx 역방향 점프로 인한 반대 방향 조향 방지
+    // 경로 이탈 복구 모드 (히스테리시스 적용)
+    //   진입: dist > kRecovDist(1.2m) OR |hdg| > kRecovHdgThresh(40°)
+    //   탈출: dist < kRecovDistExit(0.8m) AND |CTE| < 0.35m (CTE 조건 추가)
+    //   히스테리시스로 MPC↔RECOV 고주파 전환(2.3회/s) 억제
     // ══════════════════════════════════════════════════════════════
-    bool need_recov = (near.dist > kRecovDist) ||
-                      (std::abs(near.heading_err) > kRecovHdgThresh);
+    bool enter_recov = (near.dist > kRecovDist) ||
+                       (std::abs(near.heading_err) > kRecovHdgThresh);
+    // dist + CTE + hdg 동시 만족: CTE와 헤딩이 모두 수렴한 뒤에만 탈출
+    // hdg 조건 없으면 hdg=36°인 채로 NORMAL 진입 → kd 포화 연속 → 오버슈트
+    bool exit_recov  = (near.dist < kRecovDistExit) &&
+                       (std::abs(near.signed_cte) < 0.35) &&
+                       (std::abs(near.heading_err) < 0.44); // ~25°
+
+    // exit 우선: dist < kRecovDistExit이면 hdg가 커도 탈출 (enter else-if exit 버그 수정)
+    if (exit_recov)        in_recov_ = false;
+    else if (enter_recov)  in_recov_ = true;
+    // 그 사이 구간은 이전 상태 유지 (히스테리시스)
+
+    bool need_recov = in_recov_;
 
     if (need_recov) {
-        // 전방 10m 지점을 타겟으로 (역방향 타겟 문제 해결)
-        int lookahead = std::max(1, static_cast<int>(std::round(10.0 / wp_spacing_)));
+        // CTE 크기에 따라 lookahead 적응: 크게 이탈할수록 짧게 → 더 강하게 꺾음
+        // 기존 max(4.0, 10-dist×2) → dist=0.8m에서 8.4m로 너무 멀어 CTE 0.8m 남은 채 탈출
+        // 변경: max(1.5, 3.5-dist) → dist=0.8m에서 2.7m, CTE를 더 줄이고 탈출
+        double la_dist = std::max(1.5, 3.5 - near.dist);
+        int lookahead = std::max(1, static_cast<int>(std::round(la_dist / wp_spacing_)));
         int target_idx = std::min(nearest_idx_ + lookahead, n - 1);
 
         double dx_to  = wp_x_[target_idx] - cur_x_;
         double dy_to  = wp_y_[target_idx] - cur_y_;
         double alpha  = wrapAngle(std::atan2(dy_to, dx_to) - cur_yaw_);
-        steer_deg     = std::clamp(alpha * (180.0 / M_PI), -max_steer_deg_, max_steer_deg_);
+        steer_deg = std::clamp(alpha * (180.0 / M_PI), -max_steer_deg_, max_steer_deg_);
         double facing = std::max(0.0, std::cos(alpha));
         v_cmd = std::min(kRecovMaxVel,
                          std::max(5.0, cfg_.target_vel * 3.6 * kRecovDist
                                            / std::max(near.dist, kRecovDist)
                                        + cfg_.target_vel * 3.6 * 0.3 * facing));
         prev_steer_ = steer_deg;
-        cmd_init_   = true;
+        prev_was_recov_ = true;
         v_cmd = velocitySigmoid(v_cmd, dt);
 
         rec["mode"]        = need_recov && (std::abs(near.heading_err) > kRecovHdgThresh)
@@ -347,11 +372,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     stanley_corr = std::clamp(stanley_corr, -0.52, 0.52);   // ±30° 상한
     double delta_theta = delta_theta_raw + stanley_corr;
 
-    constexpr double kDeltaThetaMax = 0.524;   // ~30° (Stanley 포함해서 넓힘)
+    constexpr double kDeltaThetaMax = 0.524;   // ~30°
     bool kappa_reset = false;
     if (std::abs(delta_theta) > kDeltaThetaMax) {
         delta_theta = std::clamp(delta_theta, -kDeltaThetaMax, kDeltaThetaMax);
         kappa_reset = true;
+        // kappa를 kappa_ref(≈0)로 리셋하지 않음: 실제 steer와 불일치 → kd 포화 유발
+        // (kappa 초기화는 아래 step5에서 steer 역산으로 처리)
     }
     double theta_aligned = theta_ref + delta_theta;
 
@@ -380,10 +407,33 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     Eigen::VectorXd q_vec;
     cost_->buildQPObjective(x0, z_bar, A_bar, B_bar, E_bar, P, q_vec);
 
-    Eigen::SparseMatrix<double> A_cons(cfg_.N, cfg_.N);
-    A_cons.setIdentity();
-    Eigen::VectorXd l_cons = Eigen::VectorXd::Constant(cfg_.N, cfg_.u_min);
-    Eigen::VectorXd u_cons = Eigen::VectorXd::Constant(cfg_.N, cfg_.u_max);
+    // kappa hard constraint (Gutjahr 2017 Sec.III): 예측된 κ(k)가 항상 범위 내 보장
+    // kappa_free(k) = (A_bar*x0 + E_bar*z_bar)의 kappa 행
+    // B_kappa(k,:) * u <= kappa_max - kappa_free(k)
+    // B_kappa(k,:) * u >= kappa_min - kappa_free(k)
+    const int N = cfg_.N;
+    Eigen::VectorXd x_free = A_bar * x0 + E_bar * z_bar;
+
+    // B_kappa: B_bar의 kappa 행 추출 (row = k*kNx+2)
+    Eigen::MatrixXd B_kappa_dense(N, N);
+    Eigen::VectorXd kappa_free_vec(N);
+    for (int k = 0; k < N; ++k) {
+        B_kappa_dense.row(k) = B_bar.row(k * kNx + 2);
+        kappa_free_vec(k)    = x_free(k * kNx + 2);
+    }
+
+    // A_cons = [I(N×N); B_kappa(N×N)] → 2N×N
+    Eigen::MatrixXd A_dense(2 * N, N);
+    A_dense.topRows(N)    = Eigen::MatrixXd::Identity(N, N);
+    A_dense.bottomRows(N) = B_kappa_dense;
+    Eigen::SparseMatrix<double> A_cons = A_dense.sparseView(1e-12);
+    A_cons.makeCompressed();
+
+    Eigen::VectorXd l_cons(2 * N), u_cons(2 * N);
+    l_cons << Eigen::VectorXd::Constant(N, cfg_.u_min),
+              Eigen::VectorXd::Constant(N, cfg_.kappa_min) - kappa_free_vec;
+    u_cons << Eigen::VectorXd::Constant(N, cfg_.u_max),
+              Eigen::VectorXd::Constant(N, cfg_.kappa_max) - kappa_free_vec;
 
     Eigen::VectorXd solution;
     bool ok = solver_->solve(P, q_vec, A_cons, l_cons, u_cons, solution);
@@ -403,19 +453,56 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     }
     kappa_dot_sol = solution[0];
 
-    // ── 5. kappa 적분 + 조향 변환 ─────────────────────────────────
+    // ── 5. kappa 초기화 ──────────────────────────────────────────────
+    // RECOV 직후 첫 NORMAL: RECOV steer에서 실제 차량 kappa 역산
+    //   kappa_ref로 초기화하면 실제 차량(steer=-16°) vs 모델(kappa≈0) 불일치 0.10 발생
+    //   → MPC 예측 완전 오류 → 첫 스텝부터 CTE 악화
+    // 연속 NORMAL: 이전 스텝 steer_cmd에서 역산(closed-loop)
+    if (prev_was_recov_) {
+        if (cmd_init_) {
+            current_kappa_ = std::tan(prev_steer_ * M_PI / 180.0) / cfg_.L;
+            current_kappa_ = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
+        } else {
+            current_kappa_ = kappa_ref;
+        }
+        prev_was_recov_ = false;
+    } else if (cmd_init_) {
+        current_kappa_ = std::tan(prev_steer_ * M_PI / 180.0) / cfg_.L;
+    }
     double kappa_before = current_kappa_;
     current_kappa_ += kappa_dot_sol * cfg_.Ts;
-    current_kappa_  = (1.0 - 0.03) * current_kappa_ + 0.03 * kappa_ref;
     current_kappa_  = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
 
-    // ── 5b. kappa 발산 억제 ────────────────────────────────────────
-    // CTE 부호 반전 후 kappa가 발산 방향(CTE와 반대 부호)으로 남아있으면
-    // kappa를 0 방향으로 끌어당겨 오버슈트 억제.
-    // steer*CTE < 0 = 경로 반대 방향으로 꺾임 = 발산 상태.
+    // ── 5b. kappa blending ────────────────────────────────────────────
+    // 원본: "Always-on exponential blend to reduce corner-exit heading lag"
+    // alpha=0.35는 kd 포화를 유발함 (kappa를 0으로 당기면 MPC가 더 큰 kd 요구)
+    // alpha를 0.15로 낮춰 blending 효과 유지하되 kd 포화 억제
+    {
+        const double blend_alpha = 0.15;
+        current_kappa_ = (1.0 - blend_alpha) * current_kappa_
+                       + blend_alpha * kappa_ref;
+        current_kappa_ = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
+    }
+
+    // ── 5c. kappa 발산 억제 ────────────────────────────────────────
     if (std::abs(near.signed_cte) > 0.05 &&
         near.signed_cte * current_kappa_ < 0.0) {
-        current_kappa_ *= 0.92;  // Stanley 교정 후 보조 억제만 (0.82→0.92)
+        current_kappa_ *= 0.92;
+    }
+
+    // ── 5c. 헤딩 과교정 억제 ──────────────────────────────────────
+    // 경로 방향으로 이미 충분히 꺾인 상태(hdg_err와 CTE 부호 반대)에서
+    // 헤딩이 임계값을 초과하면 kappa를 감쇠.
+    // MPC 응답 지연으로 헤딩 오버슈트가 발생할 때 완충.
+    {
+        const double kHdgCapRad = 0.35;  // ~20° — 이 이상이면 감쇠 시작
+        double hdg_abs = std::abs(near.heading_err);
+        bool heading_toward_path = (near.signed_cte * near.heading_err < 0.0);
+        if (hdg_abs > kHdgCapRad && heading_toward_path) {
+            double excess_ratio = (hdg_abs - kHdgCapRad) / kHdgCapRad;
+            double damping = std::max(0.0, 1.0 - 2.5 * excess_ratio);
+            current_kappa_ *= damping;
+        }
     }
 
     steer_deg = std::atan(current_kappa_ * cfg_.L) * (180.0 / M_PI);
@@ -437,7 +524,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         std::abs(near.signed_cte) < 0.5 &&
         (steer_rad * near.signed_cte) > 0.0) {
         steer_deg *= overshoot_damp_;
-        current_kappa_ = std::tan(steer_deg * M_PI / 180.0) / cfg_.L;
+        // current_kappa_ 건드리지 않음: 감쇠 후 steer→kappa 역산하면 다음 스텝 MPC 오버슈트 유발
     }
 
     // ── 6. 후처리 C: 진동 감지 → 감쇠 ───────────────────────────
@@ -451,14 +538,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         bool hdg_flip =
             (std::max(std::abs(near.heading_err), std::abs(prev_hdg_)) > osc_hdg_db_) &&
             (near.heading_err * prev_hdg_ < 0.0);
-        if (cte_flip || hdg_flip) { steer_deg *= osc_damp_; osc_damped = true; }
+        if (cte_flip || hdg_flip) { osc_damped = true; }  // steer 감쇠 제거: closed-loop kappa 오염 방지
     }
 
     // ── 6. 후처리 D: 경로 근접 시 추가 감쇠 ─────────────────────
     if (std::abs(near.signed_cte)  < near_cte_thresh_ &&
         std::abs(near.heading_err) < near_hdg_thresh_) {
-        steer_deg *= near_steer_damp_;
-        v_cmd     *= near_v_scale_;
+        v_cmd *= near_v_scale_;  // steer 감쇠 제거, 속도 감소만 유지
     }
 
     prev_cte_        = near.signed_cte;

@@ -60,8 +60,10 @@ private:
     // ═══════════════════════════════════════════════════════════════
     static constexpr int    kSearchWindow  = 300;
     static constexpr int    kMaxIndexStep  = 30;
-    static constexpr double kRecovDist     = 1.5;            // [m]  거리 이탈 판단 (4.0→1.5: MPC는 1.5m 이내에서만 사용)
-    static constexpr double kRecovHdgThresh= 60.0*M_PI/180.0;// [rad] 헤딩 이탈 판단
+    static constexpr double kRecovDist      = 1.2;            // [m]  RECOV 진입
+    static constexpr double kRecovDistExit = 0.8;            // [m]  RECOV 탈출: dist 단독
+    static constexpr double kRecovHdgThresh= 40.0*M_PI/180.0;// [rad] RECOV 진입: 헤딩 기준
+    static constexpr double kRecovHdgExit  = 12.0*M_PI/180.0;// [rad] RECOV 탈출: 미사용 (dist 단독)
     static constexpr double kDotThreshold  = 0.1;            // 전방 필터 임계값
     static constexpr double kRecovMaxVel   = 10.0;           // [km/h] RECOV 최대 속도
 
@@ -110,8 +112,8 @@ private:
     double near_hdg_thresh_      = 0.06;
     double near_steer_damp_      = 0.90;
     double near_v_scale_         = 0.98;
-    double k_stanley_            = 0.0;   // Stanley 제거 (k=5: MPC 역방향 폭주 유발)
-    double max_steer_rate_       = 50.0;
+    double k_stanley_            = 0.0;   // Stanley 비활성 (kappa_reset 과다 유발)
+    double max_steer_rate_       = 20.0;  // 50→20°/s: 급격한 조향 전환 억제, 고주파 진동 감소
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;
@@ -120,6 +122,8 @@ private:
     bool      has_prev_errors_ = false;
     double    prev_cte_        = 0.0;
     double    prev_hdg_        = 0.0;
+    bool      in_recov_        = false;  // 히스테리시스 RECOV 상태 플래그
+    bool      prev_was_recov_  = true;   // 직전 스텝 RECOV 여부 (NORMAL 첫 스텝 kappa 초기화용)
     bool      cmd_init_        = false;
     double    prev_steer_      = 0.0;
     bool      v_sig_init_      = false;
