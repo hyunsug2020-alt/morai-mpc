@@ -1,0 +1,108 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /계획 경로1
+        - /실제 궤적1
+        - /RECOV 구간1
+        - /차량1
+      Splitter Ratio: 0.5
+    Tree Height: 700
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.3
+      Cell Size: 10
+      Class: rviz/Grid
+      Color: 80; 80; 80
+      Enabled: true
+      Line Style:
+        Line Width: 0.05
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: map
+      Value: true
+
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /mpc_viz/planned_path
+      Name: 계획 경로
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /mpc_viz/trajectory
+      Name: 실제 궤적
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /mpc_viz/recov_pts
+      Name: RECOV 구간
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/ego_arrow
+      Name: 차량
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/cte_text
+      Name: CTE 텍스트
+      Queue Size: 5
+      Value: true
+
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /mpc_viz/stats_text
+      Name: 경로일치율 통계
+      Queue Size: 5
+      Value: true
+
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+  Transformation:
+    Current:
+      Class: rviz/TF
+  Views:
+    Current:
+      Class: rviz/TopDownOrtho
+      Angle: 0
+      Name: Top-Down 뷰
+      Near Clip Distance: 0.01
+      Scale: 2.0
+      Target Frame: map
+      X: 112.9
+      Y: 1417.2
+    Transitions:
+      Wait For Sync Time: false
+Window Geometry:
+  Height: 900
+  Width: 1200
+  X: 100
+  Y: 50

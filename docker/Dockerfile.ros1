@@ -1,0 +1,40 @@
+# ============================================================
+# ROS1 Noetic - MORAI rosbridge 서버
+# MORAI 시뮬레이터가 이 컨테이너의 9090 포트로 연결됨
+# ============================================================
+FROM ros:noetic-ros-base-focal
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color
+
+RUN apt-get update && apt-get install -y \
+    python3-pip git \
+    ros-noetic-rosbridge-suite \
+    ros-noetic-tf \
+    ros-noetic-nav-msgs \
+    ros-noetic-sensor-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+# morai_msgs (ROS1 공식)
+RUN mkdir -p /catkin_ws/src && \
+    cd /catkin_ws/src && \
+    git clone https://github.com/morai-developergroup/morai_msgs.git || \
+    echo "[WARN] morai_msgs 클론 실패"
+
+# 빌드
+RUN /bin/bash -c "\
+    source /opt/ros/noetic/setup.bash && \
+    cd /catkin_ws && catkin_make \
+    " || echo "[WARN] 빌드 실패"
+
+# 환경 설정 + 터미널 색상
+RUN echo 'export TERM=xterm-256color' >> /root/.bashrc && \
+    echo 'export PS1="\[\033[01;36m\][ROS1]\[\033[00m\] \[\033[01;33m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
+    echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc && \
+    echo 'source /catkin_ws/devel/setup.bash 2>/dev/null || true' >> /root/.bashrc
+
+# roscore + rosbridge 실행
+CMD ["/bin/bash", "-c", \
+    "source /opt/ros/noetic/setup.bash && \
+     source /catkin_ws/devel/setup.bash && \
+     roslaunch rosbridge_server rosbridge_websocket.launch port:=9090"]

@@ -1,0 +1,8 @@
+build/
+devel/
+osqp/
+*.pyc
+__pycache__/
+*.so
+*.o
+*.a

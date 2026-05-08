@@ -1,0 +1,64 @@
+# ============================================================
+# ros1_bridge - ROS1 Noetic + ROS2 Foxy
+# Ubuntu 20.04 (Focal) 에서 둘 다 지원
+# ============================================================
+FROM ubuntu:20.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=xterm-256color
+
+# 기본 도구
+RUN apt-get update && apt-get install -y \
+    curl gnupg2 lsb-release git build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── ROS1 Noetic 설치 ──────────────────────────────────────
+RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add - && \
+    echo "deb http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/sources.list.d/ros1.list && \
+    apt-get update && apt-get install -y \
+    ros-noetic-ros-base \
+    python3-catkin-tools \
+    python3-rosdep \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── ROS2 Foxy 설치 ───────────────────────────────────────
+RUN curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add - && \
+    echo "deb http://packages.ros.org/ros2/ubuntu focal main" > /etc/apt/sources.list.d/ros2.list && \
+    apt-get update && apt-get install -y \
+    ros-foxy-ros-base \
+    ros-foxy-ros1-bridge \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── morai_msgs (ROS1) ──────────────────────────────────────
+RUN mkdir -p /ros1_ws/src && \
+    cd /ros1_ws/src && \
+    git clone https://github.com/morai-developergroup/morai_msgs.git || \
+    echo "[WARN] morai_msgs ROS1 클론 실패"
+
+RUN /bin/bash -c "\
+    source /opt/ros/noetic/setup.bash && \
+    cd /ros1_ws && catkin_make \
+    " || echo "[WARN] morai_msgs ROS1 빌드 실패"
+
+# ── morai_msgs (ROS2 Foxy) ─────────────────────────────────
+# ROS1과 필드명이 같아야 bridge가 동작함
+COPY ros2_morai_msgs/ /ros2_ws/src/morai_msgs/
+
+RUN /bin/bash -c "\
+    source /opt/ros/foxy/setup.bash && \
+    cd /ros2_ws && colcon build --packages-select morai_msgs \
+    " || echo "[WARN] morai_msgs ROS2 빌드 실패"
+
+# 터미널 색상
+RUN echo 'export TERM=xterm-256color' >> /root/.bashrc && \
+    echo 'export PS1="\[\033[01;35m\][BRIDGE]\[\033[00m\] \[\033[01;33m\]\w\[\033[00m\]\$ "' >> /root/.bashrc
+
+# ros1_bridge 실행
+CMD ["/bin/bash", "-c", \
+    "source /opt/ros/noetic/setup.bash && \
+     source /ros1_ws/devel/setup.bash && \
+     source /opt/ros/foxy/setup.bash && \
+     source /ros2_ws/install/setup.bash && \
+     export ROS_MASTER_URI=http://localhost:11311 && \
+     export ROS_DOMAIN_ID=100 && \
+     ros2 run ros1_bridge dynamic_bridge --bridge-all-topics"]
