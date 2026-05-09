@@ -18,11 +18,11 @@ struct LTVMPCConfig {
     double kappa_gain = 1.2; // 1.5 -> 1.2 (저주파 진동 억제)
 
     // --- MORAI 최적 파라미터 (사용자 지정값 기반) ---
-    double w_dr    = 40.0;    // 80 -> 40 (라인에 붙으려는 고집을 줄임)
+    double w_dr    = 80.0;    // 40 -> 80 (후진 누적 cte 발산 방지: 측방 대시각 고집 강화)
     double w_theta = 250.0;   // 40 -> 250 (헤딩 댐핑 대폭 강화 - 웨이브 방지 핵심)
     double w_kappa = 100.0;   
-    double w_u     = 6500.0;  // 8000 -> 6500 (커브 반응 복구)
-    double w_u_v_gain = 1000.0; // 1500 -> 1000
+    double w_u     = 7500.0;  // 6500→7500 (커브 후 오버슈팅 댐핑)
+    double w_u_v_gain = 1200.0; // 1000→1200
 
     // --- 제약 조건 (BISA 구조적 제약 방식) ---
     double max_steer_deg = 35.0;
@@ -43,7 +43,7 @@ struct LTVMPCConfig {
 
     // --- 적응형 가중치 ---
     double w_theta_low_speed   = 350.0;  // 저속 w_theta
-    double w_theta_high_speed  = 150.0;  // 고속 w_theta (60km/h 대응)
+    double w_theta_high_speed  = 200.0;  // 150→200 (고속 헤딩 잡아 오버슈팅 억제)
     double w_theta_v_low       = 3.0;    // 저속 기준 [m/s]
     double w_theta_v_high      = 15.0;   // 고속 기준 [m/s] (~54km/h)
     double w_dr_curve_boost    = 2.0;    // 커브 진입 시 w_dr 배수

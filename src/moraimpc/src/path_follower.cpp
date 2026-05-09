@@ -24,6 +24,9 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     nh.param<double>     ("target_vel",  target_vel,  20.0);
 
     cfg_.target_vel = target_vel / 3.6;   // km/h → m/s
+    nh.param<double>("reverse_max_vel", reverse_max_vel_kmh_, 2.0);
+    nh.param<double>("low_speed_thresh_kmh", low_speed_thresh_kmh_, 4.0);
+    nh.param<double>("pre_gear_change_dist_m", pre_gear_change_dist_m_, 5.0);
     nh.param<std::string>("log_file", log_file_, "/tmp/mpc_log.json");
     log_t0_ = ros::Time::now();
     log_recs_.reserve(20000);
@@ -32,6 +35,17 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     model_  = std::make_unique<LTVModel>(cfg_);
     cost_   = std::make_unique<LTVCost>(cfg_);
     solver_ = std::make_unique<LTVSolver>(cfg_);
+
+    // NMPC (legacy 단순 버전)
+    nmpc_cfg_.Ts = cfg_.Ts;
+    nmpc_cfg_.L  = cfg_.L;
+    nmpc_       = std::make_unique<NMPCController>(nmpc_cfg_);
+
+    // RTI-NMPC (저속·후진 전용)
+    rti_cfg_.Ts        = cfg_.Ts;
+    rti_cfg_.wheelbase = cfg_.L;
+    rti_cfg_.target_velocity = reverse_max_vel_kmh_ / 3.6;  // 매 tick 부호 갱신
+    rti_nmpc_  = std::make_unique<RTINMPCController>(rti_cfg_);
 
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
     ctrl_pub_   = nh.advertise<morai_msgs::CtrlCmd>("/ctrl_cmd_0",       1);
@@ -102,23 +116,48 @@ void PathFollower::loadPath(const std::string& file) {
             wp_gear_[i] = (g == "R" || g == "r") ? -1 : 1;
         }
     }
-    if (n >= 2) {
-        wp_h_[0] = std::atan2(wp_y_[1] - wp_y_[0], wp_x_[1] - wp_x_[0]);
-        for (int i = 1; i < n - 1; ++i)
+    // ── 기어 세그먼트 테이블 컴파일 (heading/곡률 계산보다 먼저) ────
+    // 같은 gear 연속 구간을 [start_idx, end_idx_inclusive]로 묶음
+    gear_segments_.clear();
+    if (n > 0) {
+        int s = 0;
+        for (int i = 1; i < n; ++i) {
+            if (wp_gear_[i] != wp_gear_[s]) { gear_segments_.emplace_back(s, i - 1); s = i; }
+        }
+        gear_segments_.emplace_back(s, n - 1);
+        cur_gear_ = wp_gear_[0];
+        cur_segment_ = 0;
+    }
+    // ── 헤딩 / 곡률 계산: segment 경계에서 절대 차분하지 않음 ────
+    // (D 끝점이 R 첫 점과 차분되면 path_yaw가 180° 뒤집혀 차량이 발산함)
+    for (auto& seg : gear_segments_) {
+        int s = seg.first, e = seg.second;
+        if (e <= s) {  // 단일 점 세그먼트
+            wp_h_[s] = 0.0;
+            continue;
+        }
+        wp_h_[s] = std::atan2(wp_y_[s+1] - wp_y_[s], wp_x_[s+1] - wp_x_[s]);
+        for (int i = s + 1; i < e; ++i)
             wp_h_[i] = std::atan2(wp_y_[i+1] - wp_y_[i-1], wp_x_[i+1] - wp_x_[i-1]);
-        wp_h_[n-1] = std::atan2(wp_y_[n-1] - wp_y_[n-2], wp_x_[n-1] - wp_x_[n-2]);
+        wp_h_[e] = std::atan2(wp_y_[e] - wp_y_[e-1], wp_x_[e] - wp_x_[e-1]);
     }
-    for (int i = 1; i < n - 1; ++i) {
-        double dh = wrapAngle(wp_h_[i+1] - wp_h_[i-1]);
-        double ds = std::hypot(wp_x_[i+1] - wp_x_[i-1], wp_y_[i+1] - wp_y_[i-1]);
-        wp_k_[i] = (ds > 1e-6) ? (dh / ds) : 0.0;
+    for (auto& seg : gear_segments_) {
+        int s = seg.first, e = seg.second;
+        for (int i = s; i <= e; ++i) {
+            int lo = std::max(s, i - 1), hi = std::min(e, i + 1);
+            if (lo == hi) { wp_k_[i] = 0.0; continue; }
+            double dh = wrapAngle(wp_h_[hi] - wp_h_[lo]);
+            double ds = std::hypot(wp_x_[hi] - wp_x_[lo], wp_y_[hi] - wp_y_[lo]);
+            wp_k_[i] = (ds > 1e-6) ? (dh / ds) : 0.0;
+        }
     }
-    wp_k_[0] = wp_k_[1]; wp_k_[n-1] = wp_k_[n-2];
     if (n >= 2) {
         double total = 0.0;
         for (int i = 1; i < n; ++i) total += std::hypot(wp_x_[i] - wp_x_[i-1], wp_y_[i] - wp_y_[i-1]);
         wp_spacing_ = total / (n - 1);
     }
+    ROS_INFO("[PathFollower] %d wp / %zu gear segments (start gear=%s)",
+             n, gear_segments_.size(), (cur_gear_ < 0) ? "R" : "D");
 }
 
 void PathFollower::egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg) {
@@ -126,6 +165,7 @@ void PathFollower::egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg
     cur_y_ = msg->position.y;
     cur_yaw_ = wrapAngle(msg->heading * M_PI / 180.0);
     cur_v_ = std::hypot(msg->velocity.x, msg->velocity.y);
+    cur_v_signed_ = msg->velocity.x;   // 후진 시 음수 (body-frame x)
     ego_rcvd_ = true;
 }
 
@@ -134,10 +174,24 @@ PathFollower::NearResult PathFollower::findNearest() {
     // 후진 구간이면 heading 벡터를 180° 반전하여 dot product 계산
     double gear_sign = (cur_gear_ < 0) ? -1.0 : 1.0;
     const double hx = gear_sign * std::cos(cur_yaw_), hy = gear_sign * std::sin(cur_yaw_);
+
+    // ── 기어 세그먼트 범위 결정: 현재 세그먼트만 검색. 전환 중이면 다음 세그먼트도 포함 ──
+    int allow_lo = 0, allow_hi = n - 1;
+    if (!gear_segments_.empty()) {
+        int seg = std::clamp(cur_segment_, 0, (int)gear_segments_.size() - 1);
+        allow_lo = gear_segments_[seg].first;
+        allow_hi = gear_segments_[seg].second;
+        if (gear_switching_ && seg + 1 < (int)gear_segments_.size()) {
+            allow_lo = std::min(allow_lo, gear_segments_[seg + 1].first);
+            allow_hi = std::max(allow_hi, gear_segments_[seg + 1].second);
+        }
+    }
+
     double min_d = std::numeric_limits<double>::max();
-    int closest = nearest_idx_;
+    int closest = std::clamp(nearest_idx_, allow_lo, allow_hi);
     if (search_init_) {
-        int w_s = std::max(0, nearest_idx_ - 10), w_e = std::min(n - 1, nearest_idx_ + kSearchWindow);
+        int w_s = std::max(allow_lo, nearest_idx_ - 10);
+        int w_e = std::min(allow_hi, nearest_idx_ + kSearchWindow);
         for (int i = w_s; i <= w_e; ++i) {
             double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
             if (dx * hx + dy * hy < kDotThreshold) continue;
@@ -146,8 +200,8 @@ PathFollower::NearResult PathFollower::findNearest() {
         }
     }
     if (!search_init_ || min_d > kRecovDist) {
-        double best = std::numeric_limits<double>::max(); int best_idx = nearest_idx_; bool found_fwd = false;
-        for (int i = 0; i < n; ++i) {
+        double best = std::numeric_limits<double>::max(); int best_idx = closest; bool found_fwd = false;
+        for (int i = allow_lo; i <= allow_hi; ++i) {
             double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_, dist = std::hypot(dx, dy);
             if (dx * hx + dy * hy > 0.0) { if (!found_fwd || dist < best) { best = dist; best_idx = i; found_fwd = true; } }
             else if (!found_fwd && dist < best) { best = dist; best_idx = i; }
@@ -156,7 +210,8 @@ PathFollower::NearResult PathFollower::findNearest() {
     }
     int delta = closest - nearest_idx_;
     if (delta < 0) closest = nearest_idx_;
-    else if (delta > kMaxIndexStep && min_d <= kRecovDist) closest = nearest_idx_ + kMaxIndexStep;
+    // 항상 idx 점프 cap (이전엔 dist <= kRecovDist일 때만 → RECOV 들어가면 cap 풀려 발산함)
+    else if (delta > kMaxIndexStep) closest = nearest_idx_ + kMaxIndexStep;
     nearest_idx_ = std::min(closest, n - 1);
     int ni = nearest_idx_, ni1 = std::min(ni + 1, n - 1);
     double path_yaw = std::atan2(wp_y_[ni1] - wp_y_[ni], wp_x_[ni1] - wp_x_[ni]);
@@ -192,46 +247,135 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     prev_cmd_time_ = now;
     auto t_start = ros::WallTime::now();
 
-    // ── 기어 전환 관리 ─────────────────────────────────────────
-    int wp_gear = wp_gear_[std::min(nearest_idx_, (int)wp_gear_.size() - 1)];
-    if (wp_gear != cur_gear_ && !gear_switching_) {
-        // 기어 전환 시작: 정지 명령 + 기어 발행
-        publishCmd(0.0, 0.0);
+    // 실시간 진단 — 1초마다 핵심 상태 출력 (사용자가 ssh/터미널에서 직접 확인)
+    ROS_INFO_THROTTLE(1.0, "[diag] cur_gear=%s v_signed=%+.2f m/s v_mag=%.2f km/h idx=%d gear_sw=%d ego(%6.1f,%6.1f) yaw=%+.0f deg",
+                      (cur_gear_ < 0) ? "R" : "D",
+                      cur_v_signed_, cur_v_ * 3.6,
+                      nearest_idx_, gear_switching_ ? 1 : 0,
+                      cur_x_, cur_y_, cur_yaw_ * 180.0 / M_PI);
+
+    // ── 초기 기어 + 자율주행 모드 동기화 ──────────────────────
+    // 첫 틱: 정지 명령 + service call 보내고 dwell 진입.
+    // service call은 차량 정지 후 호출해야 MORAI가 수락 (단, 첫 틱은 v=0 시작이라 즉시 OK).
+    if (!gear_initialized_ && !gear_switching_ && !wp_gear_.empty()) {
+        gear_initialized_ = true;
         gear_switching_ = true;
+        // 시작 시점은 무조건 정지 가정 → 즉시 service call (v<0.1 대기 생략)
+        gear_switch_sent_ = true;
+        gear_switch_target_ = wp_gear_[0];
+        cur_gear_ = gear_switch_target_;
         gear_switch_time_ = now;
-        cur_gear_ = wp_gear;
         morai_msgs::MoraiEventCmdSrv srv;
-        srv.request.request.option = 2;    // gear 변경 적용
+        srv.request.request.option = 3;
         srv.request.request.ctrl_mode = 3;
-        srv.request.request.gear = (cur_gear_ < 0) ? 2 : 4;  // R=2, D=4
-        if (gear_srv_.call(srv)) {
-            ROS_INFO("[PathFollower] 기어 전환 성공: %s (gear=%d)", (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear);
-        } else {
-            ROS_WARN("[PathFollower] 기어 전환 서비스 호출 실패");
+        srv.request.request.gear = (cur_gear_ < 0) ? 2 : 4;
+        int ok_n = 0;
+        for (int retry = 0; retry < 5; ++retry) {
+            if (gear_srv_.call(srv)) ok_n++;
         }
+        ROS_INFO("[PathFollower] 시작 기어 강제 설정: %s (gear=%d) [service ok=%d/5]",
+                 (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear, ok_n);
+        publishCmd(0.0, 0.0);
         return;
     }
+
+    // 기어 역전 감지 — 명령 D인데 차량이 0.5 m/s 이상 후진 중이면 MORAI gear 잘못
+    // (또는 명령 R인데 0.5 이상 전진) → service 재호출
+    if (!gear_switching_ && ego_rcvd_) {
+        bool inversion = (cur_gear_ > 0 && cur_v_signed_ < -0.5) ||
+                         (cur_gear_ < 0 && cur_v_signed_ > +0.5);
+        if (inversion) {
+            ROS_WARN_THROTTLE(2.0, "[PathFollower] 기어 역전 감지: cmd_gear=%s v_signed=%.2f → service 재호출",
+                              (cur_gear_ < 0) ? "R" : "D", cur_v_signed_);
+            gear_switching_ = true;
+            gear_switch_sent_ = false;
+            gear_switch_target_ = cur_gear_;
+            publishCmd(0.0, 0.0);
+            return;
+        }
+    }
+
+    // ── 기어 전환 관리 ─────────────────────────────────────────
+    // 현재 세그먼트 끝점에 도달했고 다음 세그먼트가 다른 기어이면 전환 시작
+    int next_gear = cur_gear_;
+    bool at_segment_end = false;
+    if (!gear_segments_.empty() && cur_segment_ + 1 < (int)gear_segments_.size()) {
+        int seg_hi = gear_segments_[cur_segment_].second;
+        if (nearest_idx_ >= seg_hi) {
+            next_gear = wp_gear_[gear_segments_[cur_segment_ + 1].first];
+            at_segment_end = true;
+        }
+    }
+    if (at_segment_end && next_gear != cur_gear_ && !gear_switching_) {
+        gear_switching_ = true;
+        gear_switch_sent_ = false;
+        gear_switch_target_ = next_gear;
+        cur_segment_++;  // findNearest의 allow 범위를 다음 세그먼트로 확장
+        publishCmd(0.0, 0.0);
+        return;
+    }
+
+    // 기어 전환 진행: (1) 차량 정지 대기 → (2) service call → (3) 0.5초 dwell → 재개
     if (gear_switching_) {
-        double elapsed = (now - gear_switch_time_).toSec();
-        if (elapsed < kGearSwitchWait) {
-            publishCmd(0.0, 0.0);  // 대기 중 정지 유지
+        publishCmd(0.0, 0.0);  // 항상 정지 명령 유지
+        if (!gear_switch_sent_) {
+            // 차량이 거의 정지했을 때(0.1 m/s 미만) service call. 안전 timeout 2초.
+            double waited = (now - prev_cmd_time_).toSec();
+            (void)waited;
+            if (std::abs(cur_v_) < 0.1) {
+                gear_switch_sent_ = true;
+                cur_gear_ = gear_switch_target_;
+                gear_switch_time_ = now;
+                morai_msgs::MoraiEventCmdSrv srv;
+                srv.request.request.option = 3;       // ctrl_mode + gear 둘 다
+                srv.request.request.ctrl_mode = 3;
+                srv.request.request.gear = (cur_gear_ < 0) ? 2 : 4;
+                // service 3회 호출 (MORAI 가끔 첫 호출 미반영 → 안전성)
+                int success_n = 0;
+                for (int retry = 0; retry < 3; ++retry) {
+                    if (gear_srv_.call(srv)) success_n++;
+                }
+                ROS_INFO("[PathFollower] 정지 확인 → 기어 전환: %s (gear=%d) seg=%d  [service ok=%d/3]",
+                         (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear,
+                         cur_segment_, success_n);
+            }
+            return;
+        }
+        // service 호출 후 0.5초 dwell
+        if ((now - gear_switch_time_).toSec() < kGearSwitchWait) {
             return;
         }
         gear_switching_ = false;
+        in_recov_ = false;          // 새 세그먼트 시작 시 RECOV 잔여 상태 리셋
+        prev_was_recov_ = true;     // 첫 NORMAL 틱 kappa 초기화 트리거
+        current_kappa_ = 0.0;       // 누적 steer 리셋 (이전 모드의 kappa 누적 제거)
+        if (nmpc_) nmpc_->reset();          // legacy NMPC warm-start 폐기
+        if (rti_nmpc_) rti_nmpc_->reset();  // RTI-NMPC 상태 + warm-start 폐기
+        // 속도/조향 smoother 리셋 — D→R 전환 시 잔여값(13km/h 등)이 R 첫 명령에 누설되는 것 방지
+        v_sig_init_ = false;
+        v_sig_      = 0.0;
+        prev_steer_ = 0.0;
+        cmd_init_   = false;
         ROS_INFO("[PathFollower] 기어 전환 완료, 주행 재개");
     }
 
     NearResult near = findNearest();
     const int n = static_cast<int>(wp_x_.size());
 
-    // ── Compute curvature lookahead ────────────────────────────
+    // ── Compute curvature lookahead (현재 세그먼트 내부로 제한) ──
+    // 세그먼트 경계 넘어 다음 기어 곡률까지 보면 D 추종 중 R 곡선에 끌려가 감속 폭주
+    int seg_hi_for_la = (int)wp_k_.size() - 1;
+    if (!gear_segments_.empty() && cur_segment_ < (int)gear_segments_.size()) {
+        seg_hi_for_la = gear_segments_[cur_segment_].second;
+    }
     double max_kappa_ahead = 0.0;
     {
         double la_m = cfg_.curve_lookahead_m;
         int la_steps = std::max(1, (int)std::round(la_m / wp_spacing_));
         for (int i = 0; i <= la_steps; ++i) {
-            int ki = std::min(nearest_idx_ + i, (int)wp_k_.size() - 1);
+            int ki = std::min(nearest_idx_ + i, seg_hi_for_la);
             max_kappa_ahead = std::max(max_kappa_ahead, std::abs(wp_k_[ki]));
+            if (ki == seg_hi_for_la) break;
         }
     }
 
@@ -246,6 +390,10 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     rec["vel_error"] = (cfg_.target_vel - cur_v_) * 3.6;
     rec["path_curvature"] = wp_k_[nearest_idx_];
     rec["max_kappa_ahead"] = max_kappa_ahead;
+    rec["near_dist"]    = near.dist;
+    rec["nearest_idx"]  = near.idx;
+    rec["cur_gear"]     = cur_gear_;
+    rec["gear"]         = (cur_gear_ < 0) ? "R" : "D";
 
     if (nearest_idx_ >= n - 2) {
         if (std::hypot(wp_x_.back() - cur_x_, wp_y_.back() - cur_y_) < 2.0) {
@@ -253,11 +401,79 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         }
     }
 
-    bool enter_recov = (near.dist > kRecovDist) || (std::abs(near.heading_err) > kRecovHdgThresh);
+    // 후진 시 hdg 임계값 완화 (60°), 전진은 그대로 (35°)
+    double hdg_thresh = (cur_gear_ < 0) ? kRecovHdgThreshR : kRecovHdgThresh;
+    bool enter_recov = (near.dist > kRecovDist) || (std::abs(near.heading_err) > hdg_thresh);
     bool exit_recov = (near.dist < kRecovDistExit) && (std::abs(near.heading_err) < kRecovHdgExit);
     if (exit_recov) in_recov_ = false; else if (enter_recov) in_recov_ = true;
 
-    if (in_recov_) {
+    // ── path 끝 도달 시 정지 (헬리콥터 발산 방지) ────────────────
+    // 마지막 세그먼트 + nearest_idx_가 끝 근처 + 끝점에 충분히 가까움
+    if (!gear_segments_.empty() && cur_segment_ == (int)gear_segments_.size() - 1) {
+        int seg_end = gear_segments_[cur_segment_].second;
+        double dx = cur_x_ - wp_x_[seg_end];
+        double dy = cur_y_ - wp_y_[seg_end];
+        double dist_end = std::sqrt(dx*dx + dy*dy);
+        // 종료 조건: idx가 끝(혹은 그 근처) + 끝점에서 1.0m 이내, 또는 idx==end + 0.3초 이상 idx 진행 없음
+        if (nearest_idx_ >= seg_end - 1 && dist_end < 1.0) {
+            publishCmd(0.0, 0.0);
+            rec["mode"] = "FINISHED";
+            rec["controller"] = "STOP";
+            rec["dist_end"] = dist_end;
+            log_recs_.push_back(rec);
+            std_msgs::String status; status.data = "FINISHED";
+            status_pub_.publish(status);
+            ROS_INFO_THROTTLE(2.0, "[PathFollower] path 끝 도달 (idx=%d/%d, dist=%.2fm) — 정지",
+                              nearest_idx_, seg_end, dist_end);
+            return;
+        }
+    }
+
+    // R 또는 저속 D는 NMPC 우선 — RECOV 우회 (NMPC가 큰 오차도 처리 가능)
+    // 저속 hysteresis: thresh ± hyst/2 (default 4 ± 0.5 → 3.5/4.5 km/h)
+    double v_kmh_now = std::abs(cur_v_) * 3.6;
+    double thresh_hi = low_speed_thresh_kmh_ + low_speed_hyst_kmh_ * 0.5;
+    double thresh_lo = low_speed_thresh_kmh_ - low_speed_hyst_kmh_ * 0.5;
+    if (v_kmh_now > thresh_hi)      in_low_speed_ = false;
+    else if (v_kmh_now < thresh_lo) in_low_speed_ = true;
+
+    // 기어 전환 사전 감속: 다음 세그먼트가 다른 기어이고 거리가 임계값 이내면 NMPC_LO 강제
+    // 속도 비례 거리: max(pre_gear_change_dist_m_, 0.5 * v_kmh) — 60km/h시 30m, 20km/h시 10m, 4km/h시 2m
+    double v_kmh_for_dist = std::abs(cur_v_) * 3.6;
+    double effective_pre_dist = std::max(pre_gear_change_dist_m_, 0.5 * v_kmh_for_dist);
+    bool approaching_gear_change = false;
+    if (!gear_segments_.empty() && cur_segment_ + 1 < (int)gear_segments_.size()) {
+        int next_gear = wp_gear_[gear_segments_[cur_segment_ + 1].first];
+        if (next_gear != cur_gear_) {
+            int seg_end = gear_segments_[cur_segment_].second;
+            double dist_remaining = 0.0;
+            for (int k = nearest_idx_; k < seg_end; ++k) {
+                double dx = wp_x_[k + 1] - wp_x_[k];
+                double dy = wp_y_[k + 1] - wp_y_[k];
+                dist_remaining += std::sqrt(dx * dx + dy * dy);
+                if (dist_remaining > effective_pre_dist) break;
+            }
+            if (dist_remaining <= effective_pre_dist) {
+                approaching_gear_change = true;
+            }
+        }
+    }
+
+    bool use_nmpc_now = (cur_gear_ < 0) || in_low_speed_ || approaching_gear_change;
+
+    // LTV→NMPC 전환 감지: 직전 LTV의 steering을 RTI에 인계 (warm-start)
+    // 이렇게 안 하면 전환 첫 tick에 RTI kappa=0에서 시작해 갑작스런 명령 점프 발생
+    if (use_nmpc_now && !prev_use_nmpc_ && rti_nmpc_) {
+        // LTV가 만든 마지막 steer (deg) → kappa 변환
+        double last_steer_rad = prev_steer_ * M_PI / 180.0;
+        double kappa_init = std::tan(last_steer_rad) / cfg_.L;
+        rti_nmpc_->setInitialKappa(kappa_init);
+        ROS_INFO_THROTTLE(1.0, "[PathFollower] LTV→NMPC 인계: prev_steer=%.2fdeg → kappa=%.4f",
+                          prev_steer_, kappa_init);
+    }
+    prev_use_nmpc_ = use_nmpc_now;
+
+    if (in_recov_ && !use_nmpc_now) {
         double la_dist = std::max(4.0, 10.0 - near.dist * 2.0);
         // 후진 시 look-ahead를 경로 진행 방향으로 (인덱스 증가 방향)
         int target_idx = std::min(nearest_idx_ + (int)std::round(la_dist / wp_spacing_), n - 1);
@@ -269,7 +485,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         
         // RECOV mode output also in RADIANS
         double steer_rad = std::clamp(alpha, -max_steer_deg_ * M_PI / 180.0, max_steer_deg_ * M_PI / 180.0);
-        double recov_vel = (cur_gear_ < 0) ? std::min(kRecovMaxVel, kReverseMaxVel) : kRecovMaxVel;
+        double recov_vel = (cur_gear_ < 0) ? std::min(kRecovMaxVel, reverse_max_vel_kmh_) : kRecovMaxVel;
         double v_cmd = velocitySigmoid(recov_vel, dt);
 
         // Apply rate limit and unify sign (- for MORAI)
@@ -303,8 +519,111 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         publishCmd(v_cmd, final_steer_rad); return;
     }
 
-    rec["mode"] = (cur_gear_ < 0) ? "NORMAL_R" : "NORMAL";
-    rec["gear"] = (cur_gear_ < 0) ? "R" : "D";
+    // ═══════════════════════════════════════════════════════════════
+    // RTI-NMPC 분기 — 후진(R) 또는 저속(< low_speed_thresh_kmh_) 시 활성
+    // (RECOV보다 우선 적용; 5-state 운동학 자전거, 암시적 오일러)
+    // ═══════════════════════════════════════════════════════════════
+    if (use_nmpc_now) {
+        rec["mode"]       = (cur_gear_ < 0) ? "NMPC_R" : "NMPC_LO";
+        rec["gear"]       = (cur_gear_ < 0) ? "R"      : "D";
+        rec["controller"] = "RTI_NMPC";
+
+        // 목표 속도: R 음수 / 사전감속 시 저속 / 그 외 D는 풀 타깃속도
+        double v_mag_kmh;
+        if (cur_gear_ < 0) {
+            v_mag_kmh = reverse_max_vel_kmh_;
+        } else if (approaching_gear_change) {
+            // D→R 직전: 저속으로 캡하여 부드럽게 감속
+            v_mag_kmh = low_speed_thresh_kmh_;
+        } else {
+            // 시작 직후 / 일시적 저속 — 풀 타깃속도 (NMPC가 가속 도와줌)
+            v_mag_kmh = cfg_.target_vel * 3.6;
+        }
+        double v_target_mps = (cur_gear_ < 0 ? -1.0 : 1.0) * (v_mag_kmh / 3.6);
+
+        // 매 tick cfg에 부호 반영 (R/D 전환 시 즉시 적용)
+        rti_cfg_.target_velocity = v_target_mps;
+        rti_nmpc_->setConfig(rti_cfg_);
+
+        // ── 참조 경로 시퀀스 (PoseStamped) — 현재 segment 내부로 한정 ──
+        int seg_lo = 0, seg_hi = (int)wp_x_.size() - 1;
+        if (!gear_segments_.empty() && cur_segment_ < (int)gear_segments_.size()) {
+            seg_lo = gear_segments_[cur_segment_].first;
+            seg_hi = gear_segments_[cur_segment_].second;
+        }
+        // R 시 vehicle yaw는 path_yaw + π여야 정합 → ref yaw에도 +π 적용
+        // ref_path는 segment 전체 — 글로벌 인덱스 안정 (RTI 내부 last_closest_idx_ 정합)
+        double yaw_off = (cur_gear_ < 0) ? M_PI : 0.0;
+        std::vector<geometry_msgs::PoseStamped> ref_path;
+        ref_path.reserve(seg_hi - seg_lo + 1);
+        for (int idx = seg_lo; idx <= seg_hi; ++idx) {
+            geometry_msgs::PoseStamped ps;
+            ps.pose.position.x = wp_x_[idx];
+            ps.pose.position.y = wp_y_[idx];
+            double yaw = wp_h_[idx] + yaw_off;
+            ps.pose.orientation.z = std::sin(yaw * 0.5);
+            ps.pose.orientation.w = std::cos(yaw * 0.5);
+            ref_path.push_back(ps);
+        }
+
+        // ── ego pose 구성 ──
+        geometry_msgs::Pose ego_pose;
+        ego_pose.position.x = cur_x_;
+        ego_pose.position.y = cur_y_;
+        ego_pose.orientation.z = std::sin(cur_yaw_ * 0.5);
+        ego_pose.orientation.w = std::cos(cur_yaw_ * 0.5);
+
+        // RTI에 전달할 v는 signed (R이면 음수)
+        double v_signed_in = (cur_gear_ < 0 ? -1.0 : 1.0) * std::abs(cur_v_);
+        RTINMPCCommand cmd = rti_nmpc_->computeControl(ego_pose, ref_path, v_signed_in);
+
+        if (cmd.solved) {
+            double raw_steer_deg = cmd.steer_deg;
+            double steer_deg_lim = steerRateLimit(raw_steer_deg, dt);
+            double final_steer_rad = steer_deg_lim * M_PI / 180.0;
+            prev_steer_ = steer_deg_lim;
+
+            // 속도는 RTI 적분 v_cmd 무시 — target 직접 사용 (저속 stop 방지)
+            double v_pub = velocitySigmoid(v_mag_kmh / 3.6, dt) * 3.6;
+            publishCmd(v_pub, final_steer_rad);
+
+            rec["steer_cmd"]      = final_steer_rad;
+            rec["target_vel"]     = v_target_mps * 3.6;
+            rec["rti_v_cmd"]      = cmd.v_cmd;
+            rec["rti_kappa_cmd"]  = cmd.kappa_cmd;
+            rec["rti_solver_us"]  = cmd.solver_time_us;
+            rec["rti_model_us"]   = cmd.model_time_us;
+        } else {
+            rec["solve_failed"] = true;
+            // solve 실패 시 target 속도로 직진 fallback (멈춤 방지)
+            double v_pub = velocitySigmoid(v_mag_kmh / 3.6, dt) * 3.6;
+            publishCmd(v_pub, 0.0);
+        }
+
+        // 성능 + status 토픽
+        {
+            std_msgs::Float32MultiArray perf;
+            perf.data.resize(7);
+            perf.data[0] = static_cast<float>(near.dist);
+            perf.data[1] = static_cast<float>(cmd.solver_time_us / 1000.0);  // ms
+            perf.data[2] = static_cast<float>(near.signed_cte);
+            perf.data[3] = static_cast<float>(near.heading_err * 180.0 / M_PI);
+            perf.data[4] = static_cast<float>(cur_v_ * 3.6);
+            perf.data[5] = static_cast<float>(max_kappa_ahead);
+            perf.data[6] = static_cast<float>(v_target_mps * 3.6);
+            perf_pub_.publish(perf);
+
+            std_msgs::String status;
+            status.data = (cur_gear_ < 0) ? "NMPC_R" : "NMPC_LO";
+            status_pub_.publish(status);
+        }
+        log_recs_.push_back(rec);
+        return;
+    }
+
+    rec["mode"] = "NORMAL";
+    rec["gear"] = "D";
+    rec["controller"] = "LTV";
     // ── NORMAL MPC (Mobility Structure) ──────────────────────────
     double theta_ref = wp_h_[nearest_idx_], kappa_ref = wp_k_[nearest_idx_];
     double dx = cur_x_ - wp_x_[nearest_idx_], dy = cur_y_ - wp_y_[nearest_idx_];
@@ -321,13 +640,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     int idx_per_step_v = std::max(1, (int)std::round(v_ref_calc * cfg_.Ts / wp_spacing_));
     std::vector<double> v_profile(cfg_.N);
     for (int i = 0; i < cfg_.N; ++i) {
-        // 예측 구간 내 최대 곡률 (lookahead 윈도우)
+        // 예측 구간 내 최대 곡률 (lookahead 윈도우, segment 내부로 제한)
         int la_steps = std::max(1, (int)std::round(cfg_.curve_lookahead_m / wp_spacing_));
         int base_idx = nearest_idx_ + (i + 1) * idx_per_step_v;
         double max_k = 0.0;
         for (int j = 0; j <= la_steps; ++j) {
-            int ki = std::min(base_idx + j, (int)wp_k_.size() - 1);
+            int ki = std::min(base_idx + j, seg_hi_for_la);
             max_k = std::max(max_k, std::abs(wp_k_[ki]));
+            if (ki == seg_hi_for_la) break;
         }
         // 곡률 비례 연속 감속: v = v_max / (1 + alpha * kappa)
         // kappa=0 → v_max, kappa=0.1 → ~v_max/3, kappa=0.2 → ~v_max/5
@@ -336,7 +656,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         v_target = std::max(cfg_.curve_min_vel, v_target);
         // 후진 시: 속도 제한 + 음수로 LTV 모델에 전달 (A행렬 자동 반전)
         if (cur_gear_ < 0) {
-            v_target = std::min(v_target, kReverseMaxVel / 3.6);
+            v_target = std::min(v_target, reverse_max_vel_kmh_ / 3.6);
             v_target = -v_target;
         }
         v_profile[i] = v_target;

@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-경로 생성 노드 (ROS1 Noetic)
-==============================
-- /Ego_topic (MORAI ground truth) 에서 위치 기록
-- 일정 거리 간격으로 웨이포인트 저장
-- Ctrl+C 시 JSON 파일로 저장
+[DEPRECATED] 경로 생성 노드 — gear 필드 없음, 전진 전용. 사용 금지.
 
-실행:
-  python3 path_maker.py [저장파일경로]
-  python3 path_maker.py /home/david/recorded_path.json
+대체: nodes/record_waypoints.py (D/R 자동 추정 + gear 필드 기록)
+
+이 파일은 호환성을 위해 남겨 두었으나 신규 작업에는 사용하지 말 것.
 """
 import sys, json, math, signal
 import rospy

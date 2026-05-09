@@ -32,14 +32,22 @@ include_directories(
   ${OSQP_INCLUDE_DIR}
 )
 
-# MPC Core Library
+# MPC Core Library (LTV + NMPC + RTI-NMPC)
 add_library(moraimpc_core
   src/ltv_model.cpp
   src/ltv_cost.cpp
   src/ltv_solver.cpp
+  src/nmpc_controller.cpp
+  src/rti_nmpc_controller.cpp
 )
 target_link_libraries(moraimpc_core ${catkin_LIBRARIES} ${OSQP_LIBRARY} ${JSONCPP_LIBRARY})
 
 # Path Follower Node (C++)
 add_executable(path_follower_node src/path_follower.cpp)
 target_link_libraries(path_follower_node moraimpc_core ${catkin_LIBRARIES})
+
+# MPC Dashboard Node (C++ / OpenCV)
+find_package(OpenCV REQUIRED)
+add_executable(mpc_dashboard_node src/mpc_dashboard_node.cpp)
+target_include_directories(mpc_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(mpc_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})

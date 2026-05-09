@@ -33,7 +33,8 @@ class WaypointRecorder:
         self.waypoints = []
         self.prev_x = None
         self.prev_y = None
-        self.cur_gear = "D"  # 현재 기어 상태
+        self.cur_gear = "D"   # 현재 기어 상태
+        self.prev_gear = None  # 직전에 기록한 기어 (전환 점 마킹용)
 
         # 키보드 모드로 전환 (ctrl_mode=1)
         rospy.loginfo("키보드 모드(ctrl_mode=1) 전환 시도...")
@@ -59,13 +60,14 @@ class WaypointRecorder:
         y = msg.position.y
         heading = msg.heading  # degree
 
-        # 속도로 기어 추정: velocity.x < -0.3 이면 후진
+        # 속도로 기어 추정: 임계 ±0.5 m/s (슬로우 전환 모호함 방지)
+        # 데드밴드 내(±0.5)는 이전 기어 유지 → 정지 시 기어 깜빡임 없음
         vx = msg.velocity.x
-        if vx < -0.3:
+        if vx < -0.5:
             self.cur_gear = "R"
-        elif vx > 0.3:
+        elif vx > 0.5:
             self.cur_gear = "D"
-        # 정지 중이면 이전 기어 유지
+        # 그 외는 이전 기어 유지
 
         # 간격 체크
         if self.prev_x is not None:
@@ -82,6 +84,12 @@ class WaypointRecorder:
             "heading": round(heading * math.pi / 180.0, 8),
             "gear": self.cur_gear
         }
+        # D↔R 경계 점에 transition 메타 추가 (loadPath는 무시, 디버깅용)
+        if self.prev_gear is not None and self.cur_gear != self.prev_gear:
+            wp["transition"] = True
+            rospy.loginfo("기어 전환점: %s → %s @ (%.1f, %.1f)",
+                          self.prev_gear, self.cur_gear, x, y)
+        self.prev_gear = self.cur_gear
         self.waypoints.append(wp)
 
         n = len(self.waypoints)

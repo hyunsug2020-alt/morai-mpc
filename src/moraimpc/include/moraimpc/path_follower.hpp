@@ -15,6 +15,8 @@
 #include "moraimpc/ltv_model.hpp"
 #include "moraimpc/ltv_cost.hpp"
 #include "moraimpc/ltv_solver.hpp"
+#include "moraimpc/nmpc_controller.hpp"
+#include "moraimpc/rti_nmpc_controller.hpp"
 
 namespace moraimpc {
 
@@ -61,15 +63,18 @@ private:
     // 상수
     // ═══════════════════════════════════════════════════════════════
     static constexpr int    kSearchWindow  = 300;
-    static constexpr int    kMaxIndexStep  = 30;
+    static constexpr int    kMaxIndexStep  =  5;            // 30→5: idx 점프 강하게 제한 (RECOV 발산 방지)
     static constexpr double kRecovDist      = 1.5;            // [m]  RECOV 진입 (1.2→1.5: MPC가 더 처리)
     static constexpr double kRecovDistExit = 0.50;           // [m]  RECOV 탈출 (경로에 더 붙고 탈출)
-    static constexpr double kRecovHdgThresh= 35.0*M_PI/180.0;// [rad] RECOV 진입: 헤딩 기준
+    static constexpr double kRecovHdgThresh= 35.0*M_PI/180.0;// [rad] RECOV 진입: 전진 헤딩 기준
+    static constexpr double kRecovHdgThreshR=60.0*M_PI/180.0;// [rad] RECOV 진입: 후진 헤딩 기준 (완화)
     static constexpr double kRecovHdgExit  = 12.0*M_PI/180.0;// [rad] RECOV 탈출 기준
     static constexpr double kDotThreshold  = 0.1;            // 전방 필터 임계값
     static constexpr double kRecovMaxVel   =  3.0;           // [km/h] RECOV 최대 속도 (6→3: 슬라롬/오버슈팅 방지)
-    static constexpr double kReverseMaxVel = 15.0;           // [km/h] 후진 최대 속도
-    static constexpr double kGearSwitchWait= 0.5;            // [s]  기어 전환 대기 시간
+    static constexpr double kGearSwitchWait= 1.5;            // [s]  기어 전환 대기 (MORAI 실제 gear 변경 시간 보장)
+
+    // 런치 파라미터: 후진 최대 속도 (정확도 우선, 기본 2 km/h)
+    double reverse_max_vel_kmh_ = 5.0;
 
     // ═══════════════════════════════════════════════════════════════
     // MPC
@@ -80,11 +85,32 @@ private:
     std::unique_ptr<LTVSolver> solver_;
     double current_kappa_ = 0.0;
 
+    // NMPC (저속·후진 전용 운동학 자전거)
+    NMPCConfig                       nmpc_cfg_;
+    std::unique_ptr<NMPCController>  nmpc_;     // (legacy, 보존)
+    double low_speed_thresh_kmh_ = 4.0;         // 이 속도 이하 D 모드도 NMPC
+
+    // RTI-NMPC (운동학 자전거, 5-state, 암시적 오일러)
+    RTINMPCConfig                       rti_cfg_;
+    std::unique_ptr<RTINMPCController>  rti_nmpc_;
+
+    // 저속 모드 hysteresis (4 km/h ping-pong 방지)
+    bool   in_low_speed_ = true;             // 직전 tick 저속 모드 여부 (시작은 저속 가정)
+    double low_speed_hyst_kmh_ = 1.0;        // ±0.5 km/h hysteresis
+
+    // 직전 tick NMPC 사용 여부 (LTV→NMPC 전환 감지 → kappa 인계)
+    bool   prev_use_nmpc_ = false;
+
+    // 기어 전환 사전 감속 — D→R / R→D 경계 N m 앞부터 NMPC_LO 모드로 진입
+    double pre_gear_change_dist_m_ = 5.0;
+
     // ═══════════════════════════════════════════════════════════════
     // 경로
     // ═══════════════════════════════════════════════════════════════
     std::vector<double> wp_x_, wp_y_, wp_h_, wp_k_;
     std::vector<int>    wp_gear_;   // +1=전진(D), -1=후진(R)
+    std::vector<std::pair<int,int>> gear_segments_;  // [start, end] inclusive — 같은 기어 연속 구간
+    int  cur_segment_ = 0;          // gear_segments_ 내 현재 위치
     double wp_spacing_ = 0.5;
 
     // ═══════════════════════════════════════════════════════════════
@@ -93,7 +119,8 @@ private:
     double cur_x_    = 0.0;
     double cur_y_    = 0.0;
     double cur_yaw_  = 0.0;
-    double cur_v_    = 0.0;
+    double cur_v_    = 0.0;       // 절대값 (hypot)
+    double cur_v_signed_ = 0.0;   // signed (velocity.x, 후진=음수)
     bool   ego_rcvd_ = false;
 
     // ═══════════════════════════════════════════════════════════════
@@ -103,7 +130,10 @@ private:
     bool search_init_ = false;
     int  cur_gear_    = 1;          // +1=D, -1=R (현재 기어 상태)
     bool gear_switching_ = false;   // 기어 전환 중 플래그
-    ros::Time gear_switch_time_;    // 기어 전환 시작 시각
+    bool gear_initialized_ = false; // 첫 틱에 MORAI에 기어 명령 보냈는지
+    bool gear_switch_sent_ = false; // 정지 후 service call 보냈는지
+    int  gear_switch_target_ = 1;   // 전환 대상 기어 (+1=D, -1=R)
+    ros::Time gear_switch_time_;    // service call 후 dwell 시작 시각
 
     // ═══════════════════════════════════════════════════════════════
     // 후처리 파라미터 (ltv_mpc_node.cpp 기준값)
@@ -121,7 +151,7 @@ private:
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
     double k_stanley_            = 0.5;
-    double max_steer_rate_       = 15.0; // 30.0 -> 15.0
+    double max_steer_rate_       = 18.0; // 60km/h 빠른 반응 (rate-limit으로 cte buildup 막음)
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;
