@@ -148,7 +148,7 @@ private:
         win_f30_.push_back(f30); sum_w30_ += f30;
         win_f50_.push_back(f50); sum_w50_ += f50;
         win_fhd_.push_back(fhd); sum_whd_ += fhd;
-        const size_t kWin = 200;   // 10초 (20Hz)
+        const size_t kWin = 60;    // 3초 (20Hz) — 마지막 정렬 즉각 반영
         if (win_f10_.size() > kWin) { sum_w10_ -= win_f10_.front(); win_f10_.pop_front(); }
         if (win_f20_.size() > kWin) { sum_w20_ -= win_f20_.front(); win_f20_.pop_front(); }
         if (win_f30_.size() > kWin) { sum_w30_ -= win_f30_.front(); win_f30_.pop_front(); }

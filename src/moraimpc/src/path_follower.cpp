@@ -538,9 +538,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         }
     }
 
-    // D 모드에서는 NMPC_LO 안 씀 — LTV가 D 끝까지 안정적으로 추종
-    // (RTI는 R 모드에서만 사용. D 사전감속은 LTV가 target_vel 감속으로 처리)
-    bool use_nmpc_now = (cur_gear_ < 0);
+    // 컨트롤러 분기:
+    //   1) R 모드: 무조건 RTI-NMPC
+    //   2) D + parking_mode + sharp curve (max_κ > 0.10): RTI-NMPC
+    //      → D2 같은 저속 sharp curve 영역에서 LTV 인커브 컷 회피
+    //   3) 그 외 D 모드: LTV
+    bool d_parking_sharp = (cur_gear_ > 0) && parking_mode_ && (max_kappa_ahead > 0.10);
+    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp;
 
     // LTV→NMPC 전환 감지: 직전 LTV의 steering을 RTI에 인계 (warm-start)
     // 이렇게 안 하면 전환 첫 tick에 RTI kappa=0에서 시작해 갑작스런 명령 점프 발생
@@ -628,6 +632,12 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 }
                 if (de < 0.5) v_mag_kmh = 1.0;
             }
+        } else if (d_parking_sharp) {
+            // D + parking_mode + sharp curve: NMPC 정밀 추종 (D2 시나리오)
+            // 곡률 인지 속도 — yaw rate 충분 확보 (ω = v·κ ≥ 15°/s 목표)
+            double v_target_kmh = std::min(5.0, parking_max_kmh_ + 3.0);  // 기본 5 km/h
+            v_mag_kmh = v_target_kmh / (1.0 + 5.0 * max_kappa_ahead);     // κ 비례 추가 감속
+            v_mag_kmh = std::max(1.5, v_mag_kmh);                          // 최소 1.5 km/h
         } else {
             v_mag_kmh = cfg_.target_vel * 3.6;
         }
@@ -769,7 +779,18 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         double alpha = 20.0;
         double v_max_for_seg = cfg_.target_vel;  // 기본 60 km/h
         if (parking_mode_) {
-            v_max_for_seg = parking_max_kmh_ / 3.6;  // 주차 모드 = 5 km/h 캡
+            // 주차 모드 — 곡률 인지 cap (D2 출렁임 fix)
+            //   직선부 (κ<0.05) : 2 km/h (정밀 유지)
+            //   곡선부 (κ≥0.10) : 5 km/h (yaw rate 충분히 확보 — ω=v·κ가 너무 작아 cte 누적되는 문제)
+            //   ramp 0.05→0.10 선형 보간
+            double parking_cap_kmh;
+            if (max_k < 0.05) parking_cap_kmh = parking_max_kmh_;
+            else if (max_k >= 0.10) parking_cap_kmh = 5.0;
+            else {
+                double kk = (max_k - 0.05) / (0.10 - 0.05);
+                parking_cap_kmh = parking_max_kmh_ + (5.0 - parking_max_kmh_) * kk;
+            }
+            v_max_for_seg = parking_cap_kmh / 3.6;
         }
         double v_target = v_max_for_seg / (1.0 + alpha * max_k);
         v_target = std::max(cfg_.curve_min_vel, v_target);
