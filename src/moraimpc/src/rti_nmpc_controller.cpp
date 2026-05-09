@@ -236,8 +236,8 @@ bool RTINMPCController::buildReferenceSequence(
             const double dy1 = path[idx].pose.position.y - path[idx-1].pose.position.y;
             const double dtheta = wrapAngle(std::atan2(dy2, dx2) - std::atan2(dy1, dx1));
             const double ds = std::sqrt(dx2*dx2 + dy2*dy2) + 1e-9;
+            // R 모드 (target_velocity<0): κ_steering = -κ_path (수학 시뮬 검증됨)
             double k_path = dtheta / ds;
-            // R: κ_steering = -κ_path (수학적 증명)
             if (cfg_.target_velocity < 0) k_path = -k_path;
             xr(4) = std::clamp(k_path, cfg_.kappa_min, cfg_.kappa_max);
         }
@@ -314,7 +314,16 @@ bool RTINMPCController::buildAndSolveQP(
     for (int k = 0; k <= N; ++k)
         X_ref.segment(k*Nx, Nx) = x_ref[k];
 
-    const Eigen::VectorXd e_free = Phi * x0 + sigma - X_ref;
+    Eigen::VectorXd e_free = Phi * x0 + sigma - X_ref;
+    // ψ 성분 wrap [-π,π] — 안 하면 vehicle yaw 근처 ±π에서 raw diff 358°로 잘못된 gradient
+    const int Nx_local = kRTINx;
+    for (int k = 0; k <= N; ++k) {
+        int psi_i = k * Nx_local + 2;   // ψ 인덱스
+        double w = e_free(psi_i);
+        while (w >  M_PI) w -= 2.0 * M_PI;
+        while (w < -M_PI) w += 2.0 * M_PI;
+        e_free(psi_i) = w;
+    }
     const Eigen::MatrixXd GtQ   = Gamma.transpose() * Q_bar;
 
     Eigen::MatrixXd H_dense = GtQ * Gamma + R_bar;

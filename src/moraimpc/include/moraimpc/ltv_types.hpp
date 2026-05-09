@@ -21,8 +21,11 @@ struct LTVMPCConfig {
     double w_dr    = 80.0;    // 40 -> 80 (후진 누적 cte 발산 방지: 측방 대시각 고집 강화)
     double w_theta = 250.0;   // 40 -> 250 (헤딩 댐핑 대폭 강화 - 웨이브 방지 핵심)
     double w_kappa = 100.0;   
-    double w_u     = 7500.0;  // 6500→7500 (커브 후 오버슈팅 댐핑)
-    double w_u_v_gain = 1200.0; // 1000→1200
+    double w_u     = 7500.0;  // 기본 input cost
+    double w_u_v_gain = 1200.0;
+    // Wang 2019 fuzzy adaptive: cte 클 때 w_u 동적 증가
+    double w_u_cte_boost_thresh = 0.5;  // 이 이상 cte이면 boost 시작
+    double w_u_cte_boost_max    = 4.0;  // 최대 4배 증가
 
     // --- 제약 조건 (BISA 구조적 제약 방식) ---
     double max_steer_deg = 35.0;
@@ -39,7 +42,7 @@ struct LTVMPCConfig {
     double curve_kappa_thresh  = 0.01;   // 곡률 임계값 [rad/m] (연속 감속 시작점)
     double curve_speed_factor  = 0.5;    // 미사용 (연속 감속으로 대체)
     double curve_lookahead_m   = 25.0;   // 곡률 프리뷰 거리 [m] (고속 대응)
-    double curve_min_vel       = 10.0 / 3.6; // 최소 속도 10 km/h → m/s
+    double curve_min_vel       =  5.0 / 3.6; // 곡선 최소 5 km/h (10→5: D 끝 곡선 yaw 정렬)
 
     // --- 적응형 가중치 ---
     double w_theta_low_speed   = 350.0;  // 저속 w_theta

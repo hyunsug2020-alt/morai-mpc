@@ -8,8 +8,8 @@ namespace moraimpc {
 // RTI-NMPC 설정 구조체
 // 논문: 2410.12170v1.pdf (Implicit Discretization RTI-NMPC)
 struct RTINMPCConfig {
-    // 예측 파라미터
-    int    N  = 25;     // 15→25 (R U-turn 곡선 preview 강화 1.25s)
+    // 예측 파라미터 (Liu-Bai 2025 권장 horizon p=100)
+    int    N  = 60;     // 15→60 (3초 preview — R curve 끝까지 사전 인지)
     double Ts = 0.05;   // 이산화 시간 간격 [s]
 
     // IONIQ 5 차량 파라미터
@@ -30,18 +30,18 @@ struct RTINMPCConfig {
     double kappa_min = -0.280;   // 최소 곡률 [1/m]
     double kappa_max =  0.280;   // 최대 곡률 [1/m]
 
-    // 비용 함수 가중치 (R U-turn 추종 — κ 강제 추종 + hdg 적당)
-    double w_px     = 10.0;
-    double w_py     = 10.0;
-    double w_psi    = 18.0;   // 순간 hdg 보정 약화
-    double w_kappa  = 40.0;   // path κ 강제 추종 (부호 일관 보장)
+    // 비용 함수 가중치 (R 정밀 추종 + 조향 뒤틀림 억제)
+    double w_px     = 20.0;   // 10→20 (cte 정밀)
+    double w_py     = 20.0;   // 10→20
+    double w_psi    = 10.0;   // 8→10 (Liu-Bai 권장 q_x:q_θ ≈ 1:1)
     double w_v      =  2.0;
+    double w_kappa  =  2.0;   // 1→2 (κ 추종)
     double w_av     =  0.5;
-    double w_akappa =  3.0;
+    double w_akappa =  4.0;   // 1→4 (Wang 2019 fuzzy: 조향변화 강한 댐핑 — twisting 방지)
 
-    // RTI/SQP 파라미터
-    int sqp_max_iter   = 1;    // RTI는 1회 SQP 반복
-    int newton_max_iter = 3;   // 암시적 오일러 Newton 반복
+    // RTI/SQP 파라미터 (R1 곡선 정밀 강화)
+    int sqp_max_iter    = 3;   // 1→3 (곡선 비선형 정확도 ↑)
+    int newton_max_iter = 8;   // 3→8 (저속 stiff 영역 수렴)
 
     // OSQP 파라미터
     int    osqp_max_iter   = 1000;

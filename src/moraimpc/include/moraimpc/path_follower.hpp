@@ -104,6 +104,30 @@ private:
     // 기어 전환 사전 감속 — D→R / R→D 경계 N m 앞부터 NMPC_LO 모드로 진입
     double pre_gear_change_dist_m_ = 5.0;
 
+    // R 진입 yaw 동기화 (gear 전환 직후 ψ_ref blend)
+    bool   r_align_active_ = false;
+    double r_entry_yaw_ = 0.0;       // 진입 시점 vehicle yaw
+    double r_align_x0_ = 0.0;        // 진입 시점 위치
+    double r_align_y0_ = 0.0;
+    static constexpr double kAlignDist = 2.0;   // [m] blend 거리 (0→2m)
+
+    // R 모드 컨트롤러 선택 — RTI(default) vs Stanley/PD fallback
+    bool   r_use_stanley_ = false;          // false=RTI, true=Stanley FF+PD
+    double r_stanley_k_hdg_ = 0.5;          // hdg P gain
+    double r_stanley_k_cte_ = 0.4;          // cte gain
+
+    // 주차 모드 — 첫 R 진입 후 모든 D 세그먼트 저속 유지
+    bool   parking_mode_ = false;
+    double parking_max_kmh_ = 2.0;          // 3→2 km/h (D2 끝 sharp curve 추종)
+
+    // R idx stuck 감지 (가짜 진행 방지 — cte 작을 때만 advance)
+    int       r_idx_stuck_prev_ = -1;
+    ros::Time r_idx_stuck_t_;
+    bool      r_idx_stuck_init_ = false;
+    static constexpr double kStuckTimeoutSec = 10.0;   // 5→10s (덜 자주)
+    static constexpr int    kStuckAdvanceStep = 2;     // +5→+2 (작게 점프)
+    static constexpr double kStuckMaxCte = 2.0;        // cte<2m 일 때만 advance
+
     // ═══════════════════════════════════════════════════════════════
     // 경로
     // ═══════════════════════════════════════════════════════════════

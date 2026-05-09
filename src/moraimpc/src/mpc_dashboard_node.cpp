@@ -330,44 +330,99 @@ private:
             }
         }
 
-        // D 시안 점
+        // D 경로 — 시안 (close-up에서 더 잘 보이게)
+        const cv::Scalar kPathD(220, 170, 40);   // brighter cyan
+        const cv::Scalar kPathR(50, 170, 240);   // brighter amber
+        // 차량 중심 모드에서는 점 키움
+        int path_dot_r = follow_vehicle_ ? 2 : 1;
         for (size_t i = 0; i < wp_d_x_.size(); ++i) {
             cv::Point p = W2I(wp_d_x_[i], wp_d_y_[i]);
-            if (inMap(p)) cv::circle(img, p, 1, kCyan, cv::FILLED);
+            if (inMap(p)) cv::circle(img, p, path_dot_r, kPathD, cv::FILLED);
         }
-        // R 앰버 점
         for (size_t i = 0; i < wp_r_x_.size(); ++i) {
             cv::Point p = W2I(wp_r_x_[i], wp_r_y_[i]);
-            if (inMap(p)) cv::circle(img, p, 1, kAmber, cv::FILLED);
+            if (inMap(p)) cv::circle(img, p, path_dot_r, kPathR, cv::FILLED);
+        }
+        // close-up에서 path를 line으로 연결 (각 segment 내부)
+        if (follow_vehicle_) {
+            // D 점들 segment 단위로 연결 (인접 점 거리 1m 이하면 line)
+            for (size_t i = 1; i < wp_d_x_.size(); ++i) {
+                cv::Point p1 = W2I(wp_d_x_[i-1], wp_d_y_[i-1]);
+                cv::Point p2 = W2I(wp_d_x_[i],   wp_d_y_[i]);
+                double seg = std::hypot(wp_d_x_[i]-wp_d_x_[i-1], wp_d_y_[i]-wp_d_y_[i-1]);
+                if (seg < 1.0 && (inMap(p1) || inMap(p2)))
+                    cv::line(img, p1, p2, kPathD, 1, cv::LINE_AA);
+            }
+            for (size_t i = 1; i < wp_r_x_.size(); ++i) {
+                cv::Point p1 = W2I(wp_r_x_[i-1], wp_r_y_[i-1]);
+                cv::Point p2 = W2I(wp_r_x_[i],   wp_r_y_[i]);
+                double seg = std::hypot(wp_r_x_[i]-wp_r_x_[i-1], wp_r_y_[i]-wp_r_y_[i-1]);
+                if (seg < 1.0 && (inMap(p1) || inMap(p2)))
+                    cv::line(img, p1, p2, kPathR, 1, cv::LINE_AA);
+            }
         }
 
-        // 트레일 (HUD 그린, 페이드)
-        for (size_t i = 1; i < trail_.size(); ++i) {
+        // ── 트레일 (그라디언트 + 글로우 효과) ────────────────
+        // 오래된 점 → 어둡고 얇음, 최근 점 → 밝고 두꺼움 (깃발 효과)
+        const cv::Scalar kTrailHot(80, 255, 255);   // 노랑 hot (BGR=80,255,255)
+        const cv::Scalar kTrailMid(120, 240, 100);  // 라임
+        const cv::Scalar kTrailCold(160, 100, 50);  // 어두운 청록
+        size_t tn = trail_.size();
+        for (size_t i = 1; i < tn; ++i) {
             cv::Point p1 = W2I(trail_[i-1].first, trail_[i-1].second);
             cv::Point p2 = W2I(trail_[i].first, trail_[i].second);
-            if (inMap(p1) || inMap(p2)) cv::line(img, p1, p2, kGreen, 1, cv::LINE_AA);
+            if (!inMap(p1) && !inMap(p2)) continue;
+            double age = (double)(tn - i) / std::max((size_t)1, tn);
+            cv::Scalar col;
+            int thick;
+            if (age < 0.15)      { col = kTrailHot; thick = 4; }
+            else if (age < 0.5)  { col = kTrailMid; thick = 3; }
+            else                 { col = kTrailCold; thick = 2; }
+            // glow: 두꺼운 외곽 (어둡게) + 얇은 중심 (밝게)
+            cv::line(img, p1, p2, cv::Scalar(col[0]/3, col[1]/3, col[2]/3), thick + 2, cv::LINE_AA);
+            cv::line(img, p1, p2, col, thick, cv::LINE_AA);
         }
 
         if (ego_rcvd_) {
             cv::Point pego = W2I(ego_x_, ego_y_);
-            // 동심원 (5m, 10m, 15m radius — HUD 거리 측정 ring)
+            // 거리 동심원 (5/10/15m)
             for (double r_m : {5.0, 10.0, 15.0}) {
                 int r_px = (int)std::round(r_m * scale);
                 if (r_px > 5 && r_px < kMapW)
                     cv::circle(img, pego, r_px, kGrid, 1, cv::LINE_AA);
             }
-            // 차량 헤딩 벡터 (긴 시안)
-            double Lvec = 4.0;
-            cv::Point phead = W2I(ego_x_ + Lvec * std::cos(ego_yaw_),
-                                  ego_y_ + Lvec * std::sin(ego_yaw_));
-            cv::arrowedLine(img, pego, phead, kCyan, 2, cv::LINE_AA, 0, 0.30);
-            // ego crosshair (4-tick)
-            int ch = 8;
-            cv::line(img, cv::Point(pego.x - ch, pego.y), cv::Point(pego.x - 3, pego.y), kCyan, 1);
-            cv::line(img, cv::Point(pego.x + 3, pego.y), cv::Point(pego.x + ch, pego.y), kCyan, 1);
-            cv::line(img, cv::Point(pego.x, pego.y - ch), cv::Point(pego.x, pego.y - 3), kCyan, 1);
-            cv::line(img, cv::Point(pego.x, pego.y + 3), cv::Point(pego.x, pego.y + ch), kCyan, 1);
-            cv::circle(img, pego, 3, kCyan, cv::FILLED);
+
+            // ── 차량 마커 (커진 화살표 + 글로우 + 외곽 박스) ─────
+            double car_L = 4.0;   // m (차량 길이 표현)
+            double car_W = 2.0;   // m (차량 폭)
+            double cy_yaw = ego_yaw_;
+            double cs = std::cos(cy_yaw), sn = std::sin(cy_yaw);
+            // 4 corner of car body (rear-left, rear-right, front-right, front-left)
+            std::vector<cv::Point> car_pts = {
+                W2I(ego_x_ - car_L*0.4*cs - car_W*0.5*sn, ego_y_ - car_L*0.4*sn + car_W*0.5*cs),
+                W2I(ego_x_ - car_L*0.4*cs + car_W*0.5*sn, ego_y_ - car_L*0.4*sn - car_W*0.5*cs),
+                W2I(ego_x_ + car_L*0.6*cs + car_W*0.5*sn, ego_y_ + car_L*0.6*sn - car_W*0.5*cs),
+                W2I(ego_x_ + car_L*0.6*cs - car_W*0.5*sn, ego_y_ + car_L*0.6*sn + car_W*0.5*cs)
+            };
+            // 차량 본체: 빨간색 채움 + 흰 외곽 (강조)
+            const cv::Scalar kCarFill(80, 80, 240);    // 빨강 (BGR)
+            const cv::Scalar kCarEdge(255, 255, 255);  // 흰 외곽
+            const cv::Scalar kCarFront(0, 255, 255);   // 앞쪽 강조 (노랑)
+            cv::fillConvexPoly(img, car_pts.data(), 4, kCarFill, cv::LINE_AA);
+            std::vector<std::vector<cv::Point>> contours = {car_pts};
+            cv::polylines(img, contours, true, kCarEdge, 2, cv::LINE_AA);
+            // 앞쪽 line 강조 (노랑)
+            cv::line(img, car_pts[2], car_pts[3], kCarFront, 3, cv::LINE_AA);
+
+            // 헤딩 벡터 (긴 노랑 화살표 - 글로우)
+            double Lvec = 6.0;
+            cv::Point phead = W2I(ego_x_ + Lvec * cs, ego_y_ + Lvec * sn);
+            cv::arrowedLine(img, pego, phead, cv::Scalar(40, 40, 40), 5, cv::LINE_AA, 0, 0.30);  // shadow
+            cv::arrowedLine(img, pego, phead, kCarFront, 3, cv::LINE_AA, 0, 0.32);
+
+            // 중심점 (이중원: 외곽 흰, 내부 빨강)
+            cv::circle(img, pego, 6, kCarEdge, cv::FILLED, cv::LINE_AA);
+            cv::circle(img, pego, 4, kCarFill, cv::FILLED, cv::LINE_AA);
         }
 
         // 컴파스 N (좌상단)

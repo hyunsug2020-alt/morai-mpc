@@ -8,7 +8,7 @@
     <arg name="path_file"            default="$(find moraimpc)/data/mixed.json" />
     <arg name="target_vel"           default="60.0" />  <!-- km/h, LTV가 곡률 기반 자동 감속 (min 10 km/h) -->
     <arg name="reverse_max_vel"      default="2.0" />
-    <arg name="pre_gear_change_dist" default="5.0" />
+    <arg name="pre_gear_change_dist" default="10.0" />  <!-- 5→10: 더 일찍 사전감속 (60km/h시 42m) -->
     <arg name="log_file"             default="$(find moraimpc)/logs/mpc_log.json" />
 
     <!-- 0. (제거됨) morai_mode_init — path_follower가 직접 ctrl_mode + gear service로 설정. 충돌 방지. -->
@@ -24,10 +24,11 @@
         <param name="log_file"              value="$(arg log_file)" />
     </node>
 
-    <!-- 2. C++ 실시간 대시보드 (OpenCV) — path_file 공유로 글로벌 패스 표시 -->
+    <!-- 2. C++ 실시간 대시보드 (OpenCV) — 차량 중심 close-up 뷰 -->
     <node pkg="moraimpc" type="mpc_dashboard_node" name="mpc_dashboard_cpp" output="screen">
-        <param name="path_file" value="$(arg path_file)" />
-        <param name="window_m"  value="18.0" />
+        <param name="path_file"          value="$(arg path_file)" />
+        <param name="window_m"           value="12.0" />        <!-- 차량 중심 ±12m close-up -->
+        <param name="follow_vehicle"     value="true" />        <!-- 차량 따라가는 zoom -->
         <param name="hdg_pct_thresh_deg" value="10.0" />
     </node>
 </launch>
