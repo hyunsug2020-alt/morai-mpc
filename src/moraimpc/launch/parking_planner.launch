@@ -1,0 +1,41 @@
+<launch>
+    <!-- Parking Planner — 콘 → 주차박스 → Hybrid A* 경로
+         의존: cone_detector_node 실행 중 (또는 cone_detector launch 동시 실행)
+    -->
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+    <arg name="rviz"             default="true" />
+    <arg name="run_cone_detector" default="true" />
+
+    <!-- 콘 검출기 동시 실행 — accumulate=true로 콘 위치 누적 (정적 박스 안정성 확보)
+         hit count 3 이상만 confirmed → false positive 자동 제거 -->
+    <group if="$(arg run_cone_detector)">
+        <include file="$(find moraimpc)/launch/cone_detector.launch">
+            <arg name="rviz" value="false" />
+            <arg name="accumulate" value="true" />
+        </include>
+    </group>
+
+    <node pkg="moraimpc" type="parking_planner_node" name="parking_planner" output="screen">
+        <param name="map_frame"      value="map" />
+        <param name="min_cones"      value="3" />
+        <!-- 4→3 (PCA 박스 추정 최소 — 입구 검출은 ㄷ자 전제로 4+ 권장) -->
+        <param name="inflation_r"    value="1.25" />     <!-- 차폭/2 + 마진 -->
+        <param name="grid_res"       value="0.25" />
+        <param name="grid_size"      value="60.0" />
+        <param name="box_pad"        value="0.30" />
+        <param name="plan_period"    value="1.0" />
+
+        <!-- Hybrid A* -->
+        <param name="plan_step"        value="0.7" />
+        <param name="plan_xy_res"      value="0.5" />
+        <param name="plan_max_iter"    value="20000" />
+        <param name="plan_safety"      value="0.30" />
+        <param name="plan_reverse_pen" value="1.5" />
+        <param name="plan_switch_pen"  value="2.0" />
+    </node>
+
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz_parking"
+          args="-d $(find moraimpc)/rviz/parking_planner.rviz" required="false" output="screen"
+          launch-prefix="$(find moraimpc)/scripts/run_filtered.sh" />
+</launch>
