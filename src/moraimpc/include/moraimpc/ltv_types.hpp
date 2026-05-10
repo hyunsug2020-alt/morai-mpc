@@ -18,11 +18,11 @@ struct LTVMPCConfig {
     double kappa_gain = 1.2; // 1.5 -> 1.2 (저주파 진동 억제)
 
     // --- MORAI 최적 파라미터 (사용자 지정값 기반) ---
-    double w_dr    = 80.0;    // 40 -> 80 (후진 누적 cte 발산 방지: 측방 대시각 고집 강화)
+    double w_dr    = 150.0;   // 80→150 (cte 누적 방지 — 위치 우선순위 ↑, hdg overshoot 완화)
     double w_theta = 250.0;   // 40 -> 250 (헤딩 댐핑 대폭 강화 - 웨이브 방지 핵심)
     double w_kappa = 100.0;   
     double w_u     = 7500.0;  // 기본 input cost
-    double w_u_v_gain = 1200.0;
+    double w_u_v_gain = 600.0;  // 1200→600 (고속 sluggishness 절반 — cte 누적 방지)
     // Wang 2019 fuzzy adaptive: cte 클 때 w_u 동적 증가
     double w_u_cte_boost_thresh = 0.5;  // 이 이상 cte이면 boost 시작
     double w_u_cte_boost_max    = 4.0;  // 최대 4배 증가
@@ -45,8 +45,8 @@ struct LTVMPCConfig {
     double curve_min_vel       =  5.0 / 3.6; // 곡선 최소 5 km/h (10→5: D 끝 곡선 yaw 정렬)
 
     // --- 적응형 가중치 ---
-    double w_theta_low_speed   = 350.0;  // 저속 w_theta
-    double w_theta_high_speed  = 200.0;  // 150→200 (고속 헤딩 잡아 오버슈팅 억제)
+    double w_theta_low_speed   = 250.0;  // 350→250 (저속 sharp curve hdg overshoot ±11° 완화)
+    double w_theta_high_speed  = 150.0;  // 200→150 (고속은 이미 거의 완벽, 추가 진동 방지)
     double w_theta_v_low       = 3.0;    // 저속 기준 [m/s]
     double w_theta_v_high      = 15.0;   // 고속 기준 [m/s] (~54km/h)
     double w_dr_curve_boost    = 2.0;    // 커브 진입 시 w_dr 배수

@@ -219,16 +219,33 @@ bool RTINMPCController::buildReferenceSequence(
     const int closest = findClosestWaypoint(x0, path, last_closest_idx_);
     x_ref.resize(cfg_.N + 1);
 
+    // 속도 기반 fractional idx_step + 선형 보간 (저속 ref far-ahead 버그 fix)
+    // - 이전: idx = closest + k → wp 1개씩 (저속 시 ref 11x 멀리 봄)
+    // - 현재: idx_step_f = v·Ts / wp_spacing, 보간으로 정확한 v·Ts·k 거리 ref 생성
+    const double v_abs = std::max(0.3, std::abs(cfg_.target_velocity));
+    const double dx_first = path[std::min(1, n-1)].pose.position.x - path[0].pose.position.x;
+    const double dy_first = path[std::min(1, n-1)].pose.position.y - path[0].pose.position.y;
+    const double wp_spacing = std::max(0.01, std::hypot(dx_first, dy_first));
+    const double idx_step_f = v_abs * cfg_.Ts / wp_spacing;
+
     for (int k = 0; k <= cfg_.N; ++k) {
-        const int idx = std::min(closest + k, n - 1);
+        const double idx_real = closest + k * idx_step_f;
+        const int idx  = std::min((int)idx_real, n - 1);
+        const int idx2 = std::min(idx + 1, n - 1);
+        const double t = std::clamp(idx_real - idx, 0.0, 1.0);
+
         Eigen::VectorXd xr(kRTINx);
-        xr(0) = path[idx].pose.position.x;
-        xr(1) = path[idx].pose.position.y;
-        xr(2) = poseYawStamped(path[idx]);
+        // 위치 선형 보간
+        xr(0) = path[idx].pose.position.x + t * (path[idx2].pose.position.x - path[idx].pose.position.x);
+        xr(1) = path[idx].pose.position.y + t * (path[idx2].pose.position.y - path[idx].pose.position.y);
+        // yaw 보간 (wrap 처리)
+        const double y0 = poseYawStamped(path[idx]);
+        const double y1 = poseYawStamped(path[idx2]);
+        xr(2) = y0 + t * wrapAngle(y1 - y0);
         xr(3) = cfg_.target_velocity;
         xr(4) = 0.0;
 
-        // 중간 점에서 곡률 추정
+        // 곡률 추정 (보간된 idx 양쪽)
         if (idx > 0 && idx < n - 1) {
             const double dx2 = path[idx+1].pose.position.x - path[idx].pose.position.x;
             const double dy2 = path[idx+1].pose.position.y - path[idx].pose.position.y;
@@ -236,9 +253,8 @@ bool RTINMPCController::buildReferenceSequence(
             const double dy1 = path[idx].pose.position.y - path[idx-1].pose.position.y;
             const double dtheta = wrapAngle(std::atan2(dy2, dx2) - std::atan2(dy1, dx1));
             const double ds = std::sqrt(dx2*dx2 + dy2*dy2) + 1e-9;
-            // R 모드 (target_velocity<0): κ_steering = -κ_path (수학 시뮬 검증됨)
             double k_path = dtheta / ds;
-            if (cfg_.target_velocity < 0) k_path = -k_path;
+            if (cfg_.target_velocity < 0) k_path = -k_path;  // R: κ_steering=-κ_path
             xr(4) = std::clamp(k_path, cfg_.kappa_min, cfg_.kappa_max);
         }
         x_ref[k] = xr;

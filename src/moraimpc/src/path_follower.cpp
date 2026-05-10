@@ -613,10 +613,21 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         rec["gear"]       = (cur_gear_ < 0) ? "R"      : "D";
         rec["controller"] = "RTI_NMPC";
 
+        // 곡률 기반 자동 속도 계산 (ω = v·κ ≥ 15°/s 보장)
+        // k_eff floor 0.02로 직선부 보호, clamp [floor, cap]
+        auto calc_v_from_kappa = [](double max_k, double v_floor, double v_cap) {
+            const double omega_tgt = 15.0 * M_PI / 180.0;  // 15°/s = 0.262 rad/s
+            double k_eff = std::max(0.02, max_k);
+            double v_kmh = (omega_tgt / k_eff) * 3.6;
+            return std::clamp(v_kmh, v_floor, v_cap);
+        };
+
         // 목표 속도 결정
         double v_mag_kmh;
         if (cur_gear_ < 0) {
-            v_mag_kmh = reverse_max_vel_kmh_;
+            // R 모드: 곡률 자동 속도 (1.5~reverse_max cap)
+            double r_cap = std::max(reverse_max_vel_kmh_, 5.0);
+            v_mag_kmh = calc_v_from_kappa(max_kappa_ahead, 1.5, r_cap);
         } else if (approaching_gear_change) {
             // D→R 직전: 거리 비례 정밀 감속
             // dist > 5m: 4 km/h
@@ -633,11 +644,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 if (de < 0.5) v_mag_kmh = 1.0;
             }
         } else if (d_parking_sharp) {
-            // D + parking_mode + sharp curve: NMPC 정밀 추종 (D2 시나리오)
-            // 곡률 인지 속도 — yaw rate 충분 확보 (ω = v·κ ≥ 15°/s 목표)
-            double v_target_kmh = std::min(5.0, parking_max_kmh_ + 3.0);  // 기본 5 km/h
-            v_mag_kmh = v_target_kmh / (1.0 + 5.0 * max_kappa_ahead);     // κ 비례 추가 감속
-            v_mag_kmh = std::max(1.5, v_mag_kmh);                          // 최소 1.5 km/h
+            // D2 sharp curve: 곡률 자동 속도 (3.5~5.0 km/h, ω≥15°/s 목표)
+            v_mag_kmh = calc_v_from_kappa(max_kappa_ahead, 3.5, 5.0);
         } else {
             v_mag_kmh = cfg_.target_vel * 3.6;
         }
@@ -650,6 +658,17 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         if (approaching_gear_change && cur_gear_ > 0) {
             eff_cfg.w_psi = 80.0;     // hdg 강제 (D 끝 정렬)
             eff_cfg.w_kappa = 0.5;    // κ 거의 무시
+        } else if (d_parking_sharp) {
+            // D2 sharp curve: cte 추종 강화 — 헤딩만 잘 따르고 path 이탈 1m+ 방지
+            eff_cfg.w_px  = 30.0;     // 10 → 30 (위치 추종 3배)
+            eff_cfg.w_py  = 30.0;
+            eff_cfg.w_psi =  6.0;     // 8 → 6 (헤딩 가중치 약간 낮춤 — 위치 우선)
+        } else if (cur_gear_ < 0) {
+            // R 모드: cte 추종 강화 (cte 2m+ 이탈 방지) + κ feedforward 강화
+            eff_cfg.w_px    = 35.0;   // 20 → 35 (R cte 핵심)
+            eff_cfg.w_py    = 35.0;
+            eff_cfg.w_psi   = 12.0;   // 10 → 12 (yaw 부호 정합 지원)
+            eff_cfg.w_kappa =  3.0;   // 2 → 3 (κ feedforward 강화)
         }
         rti_nmpc_->setConfig(eff_cfg);
 
