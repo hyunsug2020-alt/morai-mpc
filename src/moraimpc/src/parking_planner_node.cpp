@@ -21,11 +21,13 @@
 
 #include "moraimpc/hybrid_astar.hpp"
 
+#include <jsoncpp/json/json.h>
 #include <Eigen/Core>
 #include <Eigen/Eigenvalues>
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
 
 using namespace moraimpc;
 
@@ -36,10 +38,12 @@ public:
         pnh.param("min_cones",       min_cones_,       4);
         pnh.param("inflation_r",     inflation_r_,     1.25);
         pnh.param("grid_res",        grid_res_,        0.25);
-        pnh.param("grid_size",       grid_size_,       60.0);   // 60×60m
-        pnh.param("box_pad",         box_pad_,         0.30);   // bbox margin
-        pnh.param("plan_period",     plan_period_,     1.0);    // [s] 재계획 주기
+        pnh.param("grid_size",       grid_size_,       60.0);
+        pnh.param("box_pad",         box_pad_,         0.30);
+        pnh.param("plan_period",     plan_period_,     1.0);
         pnh.param<std::string>("map_frame", map_frame_, "map");
+        pnh.param<std::string>("output_path_file", output_path_file_, "");  // 비어있으면 저장 X
+        pnh.param("densify_step",    densify_step_,    0.20);  // path 보간 간격 [m]
 
         // Hybrid A* config
         HAStarConfig cfg;
@@ -52,8 +56,11 @@ public:
         planner_.reset(new HybridAStar(cfg));
 
         // Sub/Pub
-        sub_cones_ = nh.subscribe("/cone_detector/cones", 1, &ParkingPlanner::conesCb, this);
-        sub_ego_   = nh.subscribe("/Ego_topic",            5, &ParkingPlanner::egoCb,   this);
+        sub_cones_ = nh.subscribe("/cone_detector/cones",      1, &ParkingPlanner::conesCb, this);
+        sub_ego_   = nh.subscribe("/Ego_topic",                 5, &ParkingPlanner::egoCb,   this);
+        // RViz "2D Goal Pose" 클릭 → /move_base_simple/goal publish
+        sub_manual_goal_ = nh.subscribe("/move_base_simple/goal", 1,
+                                        &ParkingPlanner::manualGoalCb, this);
         pub_goal_  = pnh.advertise<geometry_msgs::PoseStamped>("goal", 1, true);
         pub_path_  = pnh.advertise<nav_msgs::Path>("path", 1, true);
         pub_grid_  = pnh.advertise<nav_msgs::OccupancyGrid>("obstacle_grid", 1, true);
@@ -89,6 +96,47 @@ private:
         ego_y_ = msg->position.y;
         ego_yaw_ = msg->heading * M_PI / 180.0;
         ego_ready_ = true;
+    }
+
+    void manualGoalCb(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+        // RViz "2D Goal Pose" 클릭 → 즉시 Hybrid A* 실행 (콘 무시)
+        if (!ego_ready_) {
+            ROS_WARN("[ParkingPlanner] manual goal 수신했으나 ego pose 미수신");
+            return;
+        }
+        double yaw = std::atan2(2.0 * (msg->pose.orientation.w * msg->pose.orientation.z),
+                                 1.0 - 2.0 * msg->pose.orientation.z * msg->pose.orientation.z);
+        HState goal{msg->pose.position.x, msg->pose.position.y, yaw};
+        HState start{ego_x_, ego_y_, ego_yaw_};
+
+        // Goal publish (시각화)
+        publishGoal(goal);
+
+        // 그리드: 콘 있으면 inflation, 없으면 빈 grid
+        ObstacleGrid grid;
+        buildGrid(cones_, grid);
+        publishGrid(grid);
+
+        ROS_INFO("[ParkingPlanner] Manual goal 수신: (%.1f, %.1f, %.1f°). 검색 시작...",
+                 goal.x, goal.y, goal.yaw * 180.0 / M_PI);
+        ros::WallTime t0 = ros::WallTime::now();
+        std::vector<PathPoint> path;
+        bool ok = planner_->plan(start, goal, grid, path);
+        double ms = (ros::WallTime::now() - t0).toSec() * 1000.0;
+
+        if (!ok) {
+            ROS_WARN("[ParkingPlanner] Manual: HybridA* 실패 iter=%d (%.0fms)",
+                     planner_->last_iter(), ms);
+            return;
+        }
+        int gswitches = 0;
+        for (size_t i = 1; i < path.size(); ++i) {
+            if (path[i].gear != path[i-1].gear) gswitches++;
+        }
+        ROS_INFO("[ParkingPlanner] Manual: HybridA* OK %zu pts, %d D/R switches, iter=%d (%.0fms)",
+                 path.size(), gswitches, planner_->last_iter(), ms);
+        publishPath(path);
+        exportMixedJson(path, output_path_file_);
     }
 
     Box estimateBox(const std::vector<Cone>& cs) {
@@ -249,6 +297,63 @@ private:
         pub_box_.publish(m);
     }
 
+    // Hybrid A* 경로 → mixed.json 형식 (path_follower 호환)
+    // - 0.20m 간격으로 densify (linear interp)
+    // - gear: +1 → "D", -1 → "R"
+    // - heading: yaw [rad]
+    void exportMixedJson(const std::vector<PathPoint>& path, const std::string& fpath) {
+        if (path.size() < 2 || fpath.empty()) return;
+
+        Json::Value root;
+        Json::Value wps(Json::arrayValue);
+
+        auto wrapPi = [](double a){ while (a>M_PI) a -= 2*M_PI; while (a<-M_PI) a += 2*M_PI; return a; };
+
+        for (size_t i = 0; i + 1 < path.size(); ++i) {
+            const PathPoint& a = path[i];
+            const PathPoint& b = path[i+1];
+            double dx = b.x - a.x, dy = b.y - a.y;
+            double seg = std::hypot(dx, dy);
+            if (seg < 1e-6) continue;
+            int n = std::max(1, (int)std::round(seg / densify_step_));
+            // gear는 b.gear (이 segment 진행 gear)
+            const char* gear_str = (b.gear < 0) ? "R" : "D";
+            for (int k = 0; k < n; ++k) {
+                double t = static_cast<double>(k) / n;
+                double x = a.x + t * dx;
+                double y = a.y + t * dy;
+                // yaw: a→b 슬러프 (wrap)
+                double dyaw = wrapPi(b.yaw - a.yaw);
+                double yaw = a.yaw + t * dyaw;
+                Json::Value w;
+                w["x"] = x; w["y"] = y;
+                w["heading"] = yaw;
+                w["gear"] = gear_str;
+                wps.append(w);
+            }
+        }
+        // 마지막 점 추가
+        const PathPoint& last = path.back();
+        Json::Value w_last;
+        w_last["x"] = last.x; w_last["y"] = last.y;
+        w_last["heading"] = last.yaw;
+        w_last["gear"] = (last.gear < 0) ? "R" : "D";
+        wps.append(w_last);
+
+        root["waypoints"] = wps;
+
+        std::ofstream ofs(fpath);
+        if (!ofs) {
+            ROS_WARN("[ParkingPlanner] mixed.json 저장 실패: %s", fpath.c_str());
+            return;
+        }
+        Json::StreamWriterBuilder b;
+        b["indentation"] = "  ";
+        std::unique_ptr<Json::StreamWriter> writer(b.newStreamWriter());
+        writer->write(root, &ofs);
+        ROS_INFO("[ParkingPlanner] 경로 저장: %s (%d waypoints)", fpath.c_str(), (int)wps.size());
+    }
+
     void publishPath(const std::vector<PathPoint>& path) {
         nav_msgs::Path msg;
         msg.header.frame_id = map_frame_;
@@ -334,6 +439,7 @@ private:
                  path.size(), gswitches, planner_->last_iter(), ms);
 
         publishPath(path);
+        exportMixedJson(path, output_path_file_);
     }
 
     // 파라미터
@@ -342,7 +448,9 @@ private:
     double grid_res_, grid_size_;
     double box_pad_;
     double plan_period_;
+    double densify_step_;
     std::string map_frame_;
+    std::string output_path_file_;
 
     // 상태
     std::vector<Cone> cones_;
@@ -353,7 +461,7 @@ private:
     std::unique_ptr<HybridAStar> planner_;
     Box box_smoothed_;
 
-    ros::Subscriber sub_cones_, sub_ego_;
+    ros::Subscriber sub_cones_, sub_ego_, sub_manual_goal_;
     ros::Publisher  pub_goal_, pub_path_, pub_grid_, pub_box_;
     ros::Timer      timer_;
 };
