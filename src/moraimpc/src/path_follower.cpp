@@ -47,9 +47,16 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     rti_cfg_.target_velocity = reverse_max_vel_kmh_ / 3.6;  // 매 tick 부호 갱신
     rti_nmpc_  = std::make_unique<RTINMPCController>(rti_cfg_);
 
+    nh.param<bool>("avoidance_enabled", avoidance_enabled_, false);
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
+    if (avoidance_enabled_) {
+        // MPC corridor 회피만 사용. legacy /avoidance_offset는 더 이상 구독 안 함.
+        obj_sub_   = nh.subscribe("/Object_topic", 1, &PathFollower::objectCallback,  this);
+        ROS_INFO("[PathFollower] 회피 모드 ON (MPC Frenet corridor) — /Object_topic 구독");
+    }
     ctrl_pub_   = nh.advertise<morai_msgs::CtrlCmd>("/ctrl_cmd_0",       1);
     gear_srv_   = nh.serviceClient<morai_msgs::MoraiEventCmdSrv>("/Service_MoraiEventCmd");
+    event_pub_  = nh.advertise<morai_msgs::EventInfo>("/InsnControl", 1);  // topic fallback
     perf_pub_   = nh.advertise<std_msgs::Float32MultiArray>("/mpc_performance", 1);
     status_pub_ = nh.advertise<std_msgs::String>   ("/mpc_status",       1);
 
@@ -160,6 +167,144 @@ void PathFollower::loadPath(const std::string& file) {
              n, gear_segments_.size(), (cur_gear_ < 0) ? "R" : "D");
 }
 
+void PathFollower::avoidanceCallback(const std_msgs::Float64::ConstPtr& msg) {
+    // 안전 cap: lane 폭 절반(±1.8m) 이내로만 허용
+    double v = msg->data;
+    avoidance_offset_ = std::max(-1.8, std::min(1.8, v));
+}
+
+void PathFollower::objectCallback(const morai_msgs::ObjectStatusList::ConstPtr& msg) {
+    std::vector<Obstacle> obs;
+    obs.reserve(msg->npc_list.size() + msg->pedestrian_list.size() + msg->obstacle_list.size());
+    auto push = [&](const auto& list) {
+        for (const auto& o : list) {
+            Obstacle ob;
+            ob.x  = o.position.x;
+            ob.y  = o.position.y;
+            ob.vx = o.velocity.x;
+            ob.vy = o.velocity.y;
+            ob.sx = std::max((double)o.size.x, 1.0);
+            ob.sy = std::max((double)o.size.y, 1.0);
+            obs.push_back(ob);
+        }
+    };
+    push(msg->npc_list);
+    push(msg->pedestrian_list);
+    push(msg->obstacle_list);
+    obstacles_ = std::move(obs);
+}
+
+void PathFollower::buildObstacleCorridor(const std::vector<double>& v_profile,
+                                          std::vector<double>& d_min,
+                                          std::vector<double>& d_max,
+                                          double& v_scale) {
+    // OSQP INF 대용 큰 값
+    const double INF = 1.0e6;
+    int N = cfg_.N;
+    d_min.assign(N, -INF);
+    d_max.assign(N,  INF);
+    v_scale = 1.0;
+
+    if (obstacles_.empty() || wp_x_.empty()) return;
+
+    // path nearest_idx_ 기준 ego 진행 — wp_spacing 기준으로 path s 진행도
+    // NPC를 path 위에 투영하기 위한 헬퍼: 가장 가까운 wp idx 찾기 (전방 ±100idx 안)
+    auto projectToPath = [&](double ox, double oy)
+        -> std::tuple<int, double, double> {
+        // returns (best_idx, s_along_path_from_nearest, d_lateral_left_positive)
+        int n = (int)wp_x_.size();
+        int lo = std::max(0, nearest_idx_ - 5);
+        int hi = std::min(n - 1, nearest_idx_ + (int)(cfg_.obs_s_window / wp_spacing_) + 20);
+        int best = lo;
+        double best_d2 = 1e18;
+        for (int i = lo; i <= hi; ++i) {
+            double dx = ox - wp_x_[i], dy = oy - wp_y_[i];
+            double d2 = dx*dx + dy*dy;
+            if (d2 < best_d2) { best_d2 = d2; best = i; }
+        }
+        // s_offset (path 진행거리, 부호 포함)
+        double s_off = (best - nearest_idx_) * wp_spacing_;
+        // d (좌측 +)
+        int bi1 = std::min(best + 1, n - 1);
+        double th = std::atan2(wp_y_[bi1] - wp_y_[best], wp_x_[bi1] - wp_x_[best]);
+        double cs = std::cos(th), sn = std::sin(th);
+        double rx = ox - wp_x_[best], ry = oy - wp_y_[best];
+        double d  = -sn * rx + cs * ry;
+        return {best, s_off, d};
+    };
+
+    double min_obs_s = 1.0e6;
+    int active_count = 0;
+
+    for (const auto& ob : obstacles_) {
+        // NPC 현재 위치를 path-frenet에 투영
+        auto [obs_idx, s_obs_now, d_obs_now] = projectToPath(ob.x, ob.y);
+
+        // 1) 뒤쪽 NPC 무시 (path 진행거리 음수)
+        if (s_obs_now < -2.0) continue;
+        // 2) 너무 먼 NPC 무시
+        if (s_obs_now > cfg_.obs_s_window) continue;
+        // 3) path-d 너무 큰 NPC 무시 (lane 폭 + 안전 margin 밖)
+        double lat_half = std::max(ob.sy, 1.0) * 0.5 + cfg_.obs_lat_safety;
+        if (std::abs(d_obs_now) > 4.0 + lat_half) continue;   // path lateral band ±4m
+
+        active_count++;
+        if (s_obs_now < min_obs_s) min_obs_s = s_obs_now;
+
+        // NPC 미래 d_obs(k) — 등속 가정 (NPC v를 path s,d로 분해)
+        // 단순화: path 진행 방향(현재 NPC 위치의 path heading) 기준 분해
+        int bi1 = std::min(obs_idx + 1, (int)wp_x_.size() - 1);
+        double th = std::atan2(wp_y_[bi1] - wp_y_[obs_idx], wp_x_[bi1] - wp_x_[obs_idx]);
+        double cs = std::cos(th), sn = std::sin(th);
+        double v_s = ob.vx * cs + ob.vy * sn;          // path 방향 속도
+        double v_d = -ob.vx * sn + ob.vy * cs;         // lateral 속도
+
+        // ego 도달 거리: 현재 속도 사용 (target_vel 가정은 멀리부터 무리하게 회피하게 함)
+        double v_ego_pred = std::max(cur_v_, 2.0);
+        double s_ego_k = 0.0;
+        for (int k = 0; k < N; ++k) {
+            double t_k = (k + 1) * cfg_.Ts;
+            s_ego_k += v_ego_pred * cfg_.Ts;
+            double s_obs_k = s_obs_now + v_s * t_k;
+            double d_obs_k = d_obs_now + v_d * t_k;
+
+            // 활성 조건: ego와 NPC의 s 차이가 obs_long_safety 안 (충돌 위험 step만)
+            double long_half = std::max(ob.sx, 1.0) * 0.5 + cfg_.obs_long_safety;
+            const double release_dist = 8.0;   // [m] 통과 후 점진 풀림 (15→8: 복귀 빠르게)
+            // ego가 NPC를 통과한 후의 거리 (양수면 통과)
+            double s_passed = s_ego_k - s_obs_k - long_half;
+            if (s_passed > release_dist) continue;             // 10m 이상 통과 → 완전 비활성
+            if (s_obs_k > s_ego_k + cfg_.obs_s_window) break;  // 너무 멀음
+
+            // 통과 후 점진 풀림: lat_half를 점진적으로 0으로 감소
+            double release_ratio = (s_passed > 0) ? std::min(1.0, s_passed / release_dist) : 0.0;
+            double lat_eff = lat_half * (1.0 - release_ratio);
+
+            // d corridor 좁히기 + lane 폭 cap (lane 밖 회피 방지)
+            const double max_lane_offset = 1.3;   // [m] 한쪽 lane 회피 한계 (lane 폭 3m 기준)
+            if (d_obs_k >= 0) {
+                double new_max = d_obs_k - lat_eff;
+                new_max = std::max(new_max, -max_lane_offset);   // lane 밖으로 못 가도록 cap
+                if (new_max < d_max[k]) d_max[k] = new_max;
+            } else {
+                double new_min = d_obs_k + lat_eff;
+                new_min = std::min(new_min,  max_lane_offset);
+                if (new_min > d_min[k]) d_min[k] = new_min;
+            }
+        }
+    }
+    last_d_min_ = d_min[0];
+    last_d_max_ = d_max[0];
+    last_obs_dist_s_ = (active_count > 0) ? min_obs_s : -1.0;
+
+    // 속도 감소: NPC가 path 앞에 있으면 거리 기반 감속 (회피 시간 확보)
+    if (last_obs_dist_s_ > 0 && last_obs_dist_s_ < cfg_.obs_s_window) {
+        double ratio = last_obs_dist_s_ / cfg_.obs_s_window;
+        ratio = std::clamp(ratio, cfg_.obs_v_scale_min, 1.0);
+        v_scale = ratio * ratio;
+    }
+}
+
 void PathFollower::egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg) {
     cur_x_ = msg->position.x;
     cur_y_ = msg->position.y;
@@ -217,6 +362,8 @@ PathFollower::NearResult PathFollower::findNearest() {
     double path_yaw = std::atan2(wp_y_[ni1] - wp_y_[ni], wp_x_[ni1] - wp_x_[ni]);
     double rx = cur_x_ - wp_x_[ni], ry = cur_y_ - wp_y_[ni];
     double signed_cte = -std::sin(path_yaw) * rx + std::cos(path_yaw) * ry;
+    // legacy /avoidance_offset 평행이동 — 신규 corridor와 중복되어 비활성화 (2026-05-18)
+    // if (avoidance_enabled_) { signed_cte -= avoidance_offset_; }
     // 후진 시: 차량은 경로 진행 방향의 반대를 향하므로 π 보정
     double heading_err = (cur_gear_ < 0)
         ? wrapAngle(cur_yaw_ - path_yaw + M_PI)
@@ -273,7 +420,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         for (int retry = 0; retry < 5; ++retry) {
             if (gear_srv_.call(srv)) ok_n++;
         }
-        ROS_INFO("[PathFollower] 시작 기어 강제 설정: %s (gear=%d) [service ok=%d/5]",
+        // /InsnControl topic fallback (service 미advertise 환경 대응)
+        morai_msgs::EventInfo ev;
+        ev.option = 3; ev.ctrl_mode = 3; ev.gear = srv.request.request.gear;
+        for (int retry = 0; retry < 10; ++retry) {
+            event_pub_.publish(ev);
+            ros::Duration(0.05).sleep();
+        }
+        ROS_INFO("[PathFollower] 시작 기어 강제 설정: %s (gear=%d) [service ok=%d/5 + topic 10회]",
                  (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear, ok_n);
         publishCmd(0.0, 0.0);
         return;
@@ -360,15 +514,23 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 cur_gear_ = gear_switch_target_;
                 gear_switch_time_ = now;
                 morai_msgs::MoraiEventCmdSrv srv;
-                srv.request.request.option = 3;       // ctrl_mode + gear 둘 다
+                srv.request.request.option = 3;
                 srv.request.request.ctrl_mode = 3;
                 srv.request.request.gear = (cur_gear_ < 0) ? 2 : 4;
-                // service 3회 호출 (MORAI 가끔 첫 호출 미반영 → 안전성)
                 int success_n = 0;
                 for (int retry = 0; retry < 3; ++retry) {
                     if (gear_srv_.call(srv)) success_n++;
                 }
-                ROS_INFO("[PathFollower] 정지 확인 → 기어 전환: %s (gear=%d) seg=%d  [service ok=%d/3]",
+                // /InsnControl topic fallback — 30회 × 100ms = 3초 강하게 publish
+                morai_msgs::EventInfo ev;
+                ev.option = 2;  // gear만 (자율주행 모드 유지)
+                ev.gear = srv.request.request.gear;
+                for (int retry = 0; retry < 30; ++retry) {
+                    event_pub_.publish(ev);
+                    publishCmd(0.0, 0.0);  // 차량 정지 유지
+                    ros::Duration(0.1).sleep();
+                }
+                ROS_INFO("[PathFollower] 정지 확인 → 기어 전환: %s (gear=%d) seg=%d  [service ok=%d/3 + topic 30회]",
                          (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear,
                          cur_segment_, success_n);
             }
@@ -482,9 +644,23 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
     // 후진 시 hdg 임계값 완화 (60°), 전진은 그대로 (35°)
     double hdg_thresh = (cur_gear_ < 0) ? kRecovHdgThreshR : kRecovHdgThresh;
-    bool enter_recov = (near.dist > kRecovDist) || (std::abs(near.heading_err) > hdg_thresh);
+    // 회피 활성 시 cooldown flag 켜기 → ego가 정렬될 때까지 RECOV 차단
+    bool obs_now_active = avoidance_enabled_ && (last_obs_dist_s_ > 0);
+    if (obs_now_active) obs_block_until_align_ = true;
+    // ego 정렬 검사: cte<0.5m + |yaw_err|<0.15rad(약 8.6°) 만족 시 cooldown 해제 (복귀 빠르게)
+    bool ego_aligned = (std::abs(near.signed_cte) < 0.5) &&
+                       (std::abs(near.heading_err) < 0.15);
+    if (obs_block_until_align_ && !obs_now_active && ego_aligned) {
+        obs_block_until_align_ = false;
+    }
+    bool recov_blocked = avoidance_enabled_ && obs_block_until_align_;
+    bool enter_recov = !recov_blocked && (
+        (near.dist > kRecovDist) || (std::abs(near.heading_err) > hdg_thresh));
     bool exit_recov = (near.dist < kRecovDistExit) && (std::abs(near.heading_err) < kRecovHdgExit);
     if (exit_recov) in_recov_ = false; else if (enter_recov) in_recov_ = true;
+    if (recov_blocked && in_recov_) in_recov_ = false;   // 회피 cooldown 중 잔여 RECOV 강제 해제
+    rec["obs_block_align"] = obs_block_until_align_ ? 1 : 0;
+    rec["ego_aligned"] = ego_aligned ? 1 : 0;
 
     // ── path 끝 도달 시 정지 (헬리콥터 발산 방지) ────────────────
     // 마지막 세그먼트 + nearest_idx_가 끝 근처 + 끝점에 충분히 가까움
@@ -502,8 +678,16 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             log_recs_.push_back(rec);
             std_msgs::String status; status.data = "FINISHED";
             status_pub_.publish(status);
-            ROS_INFO_THROTTLE(2.0, "[PathFollower] path 끝 도달 (idx=%d/%d, dist=%.2fm) — 정지",
-                              nearest_idx_, seg_end, dist_end);
+            // 3초 후 자동 종료 (로그 flush 자동)
+            static ros::Time finished_at = ros::Time(0);
+            if (finished_at.toSec() == 0.0) {
+                finished_at = now;
+                ROS_INFO("[PathFollower] path 끝 도달 (idx=%d/%d, dist=%.2fm) — 3초 후 자동 종료",
+                         nearest_idx_, seg_end, dist_end);
+            } else if ((now - finished_at).toSec() > 3.0) {
+                ROS_INFO("[PathFollower] 자동 종료 — 로그 flush");
+                ros::shutdown();
+            }
             return;
         }
     }
@@ -544,7 +728,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     //      → D2 같은 저속 sharp curve 영역에서 LTV 인커브 컷 회피
     //   3) 그 외 D 모드: LTV
     bool d_parking_sharp = (cur_gear_ > 0) && parking_mode_ && (max_kappa_ahead > 0.10);
-    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp;
+    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp || in_low_speed_;  // 원복: LTV 기본, NMPC는 R/parking/저속
 
     // LTV→NMPC 전환 감지: 직전 LTV의 steering을 RTI에 인계 (warm-start)
     // 이렇게 안 하면 전환 첫 tick에 RTI kappa=0에서 시작해 갑작스런 명령 점프 발생
@@ -665,10 +849,10 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             eff_cfg.w_psi =  6.0;     // 8 → 6 (헤딩 가중치 약간 낮춤 — 위치 우선)
         } else if (cur_gear_ < 0) {
             // R 모드: cte 추종 강화 (cte 2m+ 이탈 방지) + κ feedforward 강화
-            eff_cfg.w_px    = 35.0;   // 20 → 35 (R cte 핵심)
+            eff_cfg.w_px    = 35.0;
             eff_cfg.w_py    = 35.0;
-            eff_cfg.w_psi   = 12.0;   // 10 → 12 (yaw 부호 정합 지원)
-            eff_cfg.w_kappa =  3.0;   // 2 → 3 (κ feedforward 강화)
+            eff_cfg.w_psi   = 12.0;
+            eff_cfg.w_kappa =  3.0;
         }
         rti_nmpc_->setConfig(eff_cfg);
 
@@ -876,44 +1060,128 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     double k_dot_limit = (max_steer_rate_ * M_PI / 180.0) / (cfg_.L * cos_s * cos_s + 1e-6);
     double u_lim = k_dot_limit; // Now u is pure kappa_dot
 
-    // 2. Build Constraint Matrix A_cons: [Input Constraints; State Constraints]
-    Eigen::MatrixXd A_cons_dense = Eigen::MatrixXd::Zero(2 * cfg_.N, cfg_.N);
-    A_cons_dense.block(0, 0, cfg_.N, cfg_.N).setIdentity();
-    for (int k = 0; k < cfg_.N; ++k) {
-        A_cons_dense.block(cfg_.N + k, 0, 1, cfg_.N) = B_bar.block(k * kNx + 2, 0, 1, cfg_.N);
+    // ── Frenet d corridor 계산 (Phase 1+2) ────────────────────────
+    // 회피 모드 ON + 전진 시에만 활성화 (후진/주차에서는 disable)
+    std::vector<double> d_min_k, d_max_k;
+    double v_scale_obs = 1.0;
+    const bool obs_active = avoidance_enabled_ && (cur_gear_ > 0);
+    if (obs_active) {
+        buildObstacleCorridor(v_profile, d_min_k, d_max_k, v_scale_obs);
     }
+
+    // 2. Build Constraint Matrix
+    // Decision = [u (N); s_slack (N)]   — 회피 비활성 시에는 slack 항 0 weight로 무시
+    const int N = cfg_.N;
+    const int n_dec = 2 * N;
+    const int n_row = 5 * N;     // u, κ, dr_max+slack, dr_min+slack, slack≥0
+    const double INF = 1.0e10;
+    Eigen::MatrixXd A_cons_dense = Eigen::MatrixXd::Zero(n_row, n_dec);
+    // row 0..N-1: u bound  →  [I | 0]
+    A_cons_dense.block(0,     0, N, N).setIdentity();
+    // row N..2N-1: κ bound →  [B_κ | 0]
+    for (int k = 0; k < N; ++k) {
+        A_cons_dense.block(N + k, 0, 1, N) = B_bar.block(k * kNx + 2, 0, 1, N);
+    }
+    // row 2N..3N-1: dr_max + slack →  [B_dr | -I]  (Ax ≤ dr_max - dr_free)
+    // row 3N..4N-1: dr_min + slack →  [B_dr | +I]  (Ax ≥ dr_min - dr_free)
+    for (int k = 0; k < N; ++k) {
+        A_cons_dense.block(2*N + k, 0,  1, N) = B_bar.block(k * kNx + 0, 0, 1, N);
+        A_cons_dense.block(2*N + k, N + k, 1, 1) << -1.0;
+        A_cons_dense.block(3*N + k, 0,  1, N) = B_bar.block(k * kNx + 0, 0, 1, N);
+        A_cons_dense.block(3*N + k, N + k, 1, 1) << +1.0;
+    }
+    // row 4N..5N-1: slack ≥ 0  → [0 | I]
+    A_cons_dense.block(4*N, N, N, N).setIdentity();
     Eigen::SparseMatrix<double> A_cons = A_cons_dense.sparseView();
 
-    Eigen::VectorXd l_cons(2 * cfg_.N), u_cons(2 * cfg_.N);
-    l_cons.head(cfg_.N) = Eigen::VectorXd::Constant(cfg_.N, -u_lim);
-    u_cons.head(cfg_.N) = Eigen::VectorXd::Constant(cfg_.N, u_lim);
-    for (int k = 0; k < cfg_.N; ++k) {
+    Eigen::VectorXd l_cons(n_row), u_cons(n_row);
+    // u bound
+    l_cons.segment(0, N) = Eigen::VectorXd::Constant(N, -u_lim);
+    u_cons.segment(0, N) = Eigen::VectorXd::Constant(N,  u_lim);
+    // κ bound
+    for (int k = 0; k < N; ++k) {
         double k_free = x_free(k * kNx + 2);
-        l_cons(cfg_.N + k) = cfg_.kappa_min - k_free; 
-        u_cons(cfg_.N + k) = cfg_.kappa_max - k_free;
+        l_cons(N + k) = cfg_.kappa_min - k_free;
+        u_cons(N + k) = cfg_.kappa_max - k_free;
     }
+    // dr bound + slack
+    for (int k = 0; k < N; ++k) {
+        double dr_free = x_free(k * kNx + 0);
+        double d_max_v = obs_active ? d_max_k[k] :  INF;
+        double d_min_v = obs_active ? d_min_k[k] : -INF;
+        // dr_max + slack: -∞ ≤ B_dr*u - s ≤ d_max - dr_free
+        l_cons(2*N + k) = -INF;
+        u_cons(2*N + k) = d_max_v - dr_free;
+        // dr_min + slack: d_min - dr_free ≤ B_dr*u + s ≤ +∞
+        l_cons(3*N + k) = d_min_v - dr_free;
+        u_cons(3*N + k) = INF;
+    }
+    // slack ≥ 0
+    l_cons.segment(4*N, N) = Eigen::VectorXd::Zero(N);
+    u_cons.segment(4*N, N) = Eigen::VectorXd::Constant(N, INF);
+
+    // ── P, q 확장 (slack quadratic + linear penalty) ──────────────
+    // 기존 P (N×N), q (N) → 2N×2N, 2N로 확장. slack block: diag(w_slack_quad)
+    Eigen::SparseMatrix<double> P_ext(n_dec, n_dec);
+    P_ext.reserve(P.nonZeros() + N);
+    std::vector<Eigen::Triplet<double>> trips;
+    trips.reserve(P.nonZeros() + N);
+    for (int kcol = 0; kcol < P.outerSize(); ++kcol) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(P, kcol); it; ++it) {
+            trips.emplace_back(it.row(), it.col(), it.value());
+        }
+    }
+    // slack quadratic — 회피 활성 시에만 실제 weight (비활성 시 0 → infeasible 무관)
+    double w_sq = obs_active ? cfg_.w_slack_quad : 0.0;
+    double w_sl = obs_active ? cfg_.w_slack_lin  : 0.0;
+    for (int k = 0; k < N; ++k) {
+        trips.emplace_back(N + k, N + k, 2.0 * w_sq);   // 0.5 * 2w * s^2 = w*s^2
+    }
+    P_ext.setFromTriplets(trips.begin(), trips.end());
+    P_ext.makeCompressed();
+
+    Eigen::VectorXd q_ext(n_dec);
+    q_ext.head(N) = q_vec;
+    q_ext.tail(N) = Eigen::VectorXd::Constant(N, w_sl);
 
     Eigen::VectorXd sol;
-    if (solver_->solve(P, q_vec, A_cons, l_cons, u_cons, sol) && sol.size() > 0) {
+    if (solver_->solve(P_ext, q_ext, A_cons, l_cons, u_cons, sol) && sol.size() >= N) {
         current_kappa_ += sol[0] * cfg_.Ts;
         current_kappa_ = std::clamp(current_kappa_, cfg_.kappa_min, cfg_.kappa_max);
 
         double steer_rad = std::atan(current_kappa_ * cfg_.L);
         // Apply kappa_gain for MORAI responsiveness
-        double raw_steer = steer_rad * cfg_.kappa_gain; 
-        
+        double raw_steer = steer_rad * cfg_.kappa_gain;
+
         // Apply rate limit on degrees
         double steer_deg_limited = steerRateLimit(raw_steer * 180.0 / M_PI, dt);
         double final_steer_rad = steer_deg_limited * M_PI / 180.0;
-        
+
         prev_steer_ = steer_deg_limited;
-        // MORAI steering: Unified to Positive = Left
-        // 후진 시 v_profile[0]이 음수 → abs로 sigmoid에 전달, 결과를 양수 km/h로 전달
-        double cmd_vel = velocitySigmoid(std::abs(v_profile[0]), dt);
+        // 회피 활성 + NPC 가까우면 추가 감속
+        // 회피 활성 중: 거리 기반 강한 감속. 정렬 cooldown 중: yaw 복귀 가능 속도 유지.
+        double v_factor = 1.0;
+        if (obs_active) {
+            v_factor = v_scale_obs;            // 회피 중 거리 기반 감속
+        } else if (avoidance_enabled_ && obs_block_until_align_) {
+            v_factor = cfg_.obs_cooldown_v_scale;   // 정렬까지 0.30 유지 (yaw 복귀용)
+        }
+        double v_cmd_mps = std::abs(v_profile[0]) * v_factor;
+        double cmd_vel = velocitySigmoid(v_cmd_mps, dt);
         publishCmd(cmd_vel * 3.6, final_steer_rad);
         rec["steer_cmd"] = final_steer_rad; rec["current_kappa"] = current_kappa_;
-        rec["target_vel"] = v_profile[0] * 3.6;
+        rec["target_vel"] = v_profile[0] * 3.6 * v_factor;
         rec["predicted_cte"] = dr + sol[0] * cfg_.Ts;
+        if (obs_active) {
+            rec["obs_d_min"]   = last_d_min_;
+            rec["obs_d_max"]   = last_d_max_;
+            rec["obs_dist_s"]  = last_obs_dist_s_;
+            rec["obs_v_scale"] = v_scale_obs;
+            // slack 합 (회피 가용성 지표; 클수록 corridor 위반)
+            double slack_sum = 0.0;
+            for (int k = 0; k < N; ++k) slack_sum += std::abs(sol[N + k]);
+            rec["obs_slack_sum"] = slack_sum;
+        }
     } else {
         rec["solve_failed"] = true;
     }

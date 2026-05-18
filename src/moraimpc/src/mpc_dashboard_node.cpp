@@ -14,9 +14,12 @@
 //   ~hdg_pct_thresh_deg (double, default=5.0)
 
 #include <ros/ros.h>
+#include <iostream>
 #include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
 #include <morai_msgs/EgoVehicleStatus.h>
+#include <morai_msgs/ObjectStatusList.h>
 #include <opencv2/opencv.hpp>
 #include <jsoncpp/json/json.h>
 
@@ -84,24 +87,25 @@ public:
         sub_perf_   = nh_.subscribe("/mpc_performance", 1, &Dashboard::cbPerf, this);
         sub_status_ = nh_.subscribe("/mpc_status",      1, &Dashboard::cbStatus, this);
         sub_ego_    = nh_.subscribe("/Ego_topic",       1, &Dashboard::cbEgo, this);
+        sub_obj_    = nh_.subscribe("/Object_topic",    1, &Dashboard::cbObj, this);
+        sub_avoid_  = nh_.subscribe("/avoidance_offset", 1, &Dashboard::cbAvoid, this);
 
         cv::namedWindow(kWin_, cv::WINDOW_AUTOSIZE);
+        cv::startWindowThread();
+        cv::Mat init(kH, kW, CV_8UC3, kBg);
+        cv::imshow(kWin_, init);
+        cv::waitKey(30);
     }
 
     void spin() {
+        ros::AsyncSpinner async(1);
+        async.start();
         ros::Rate r(20.0);
-        // ESC/q 키만 종료 트리거 — getWindowProperty는 X11 환경에 따라 -1 false-positive 발생
-        // (window manager가 윈도우를 hide할 때 등). ros::ok()가 false가 되면 자연 종료.
         while (ros::ok()) {
-            ros::spinOnce();
             render();
-            int k = cv::waitKey(1);
-            if (k == 27 || k == 'q') {
-                ros::shutdown();
-                break;
-            }
             r.sleep();
         }
+        async.stop();
         cv::destroyAllWindows();
     }
 
@@ -209,19 +213,19 @@ private:
     // ── 렌더링 진입점 ────────────────────────────────────────
     void render() {
         cv::Mat img(kH, kW, CV_8UC3, kBg);
-        std::lock_guard<std::mutex> lk(mu_);
-
-        drawHeader(img);
-        drawMap(img);
-        drawStatsPanel(img);
-        drawGraph(img, "[ CTE ]  LATERAL ERROR", t_buf_, cte_buf_, kCyan,
-                  kPanelX0, kPanelY0 + kStatsH + kGraphGap, kPanelW, kGraphH,
-                  /*center0*/ true,  /*lim_min*/ 0.30);
-        drawGraph(img, "[ HDG ]  HEADING ERROR", t_buf_, hdg_buf_, kAmber,
-                  kPanelX0, kPanelY0 + kStatsH + kGraphGap*2 + kGraphH, kPanelW, kGraphH,
-                  /*center0*/ true,  /*lim_min*/ 5.0);
-        drawSpeedGraph(img, kPanelX0, kPanelY0 + kStatsH + kGraphGap*3 + kGraphH*2, kPanelW, kGraphH);
-
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            drawHeader(img);
+            drawMap(img);
+            drawStatsPanel(img);
+            drawGraph(img, "[ CTE ]  LATERAL ERROR", t_buf_, cte_buf_, kCyan,
+                      kPanelX0, kPanelY0 + kStatsH + kGraphGap, kPanelW, kGraphH,
+                      true, 0.30);
+            drawGraph(img, "[ HDG ]  HEADING ERROR", t_buf_, hdg_buf_, kAmber,
+                      kPanelX0, kPanelY0 + kStatsH + kGraphGap*2 + kGraphH, kPanelW, kGraphH,
+                      true, 5.0);
+            drawSpeedGraph(img, kPanelX0, kPanelY0 + kStatsH + kGraphGap*3 + kGraphH*2, kPanelW, kGraphH);
+        }
         cv::imshow(kWin_, img);
     }
 
@@ -381,6 +385,58 @@ private:
             // glow: 두꺼운 외곽 (어둡게) + 얇은 중심 (밝게)
             cv::line(img, p1, p2, cv::Scalar(col[0]/3, col[1]/3, col[2]/3), thick + 2, cv::LINE_AA);
             cv::line(img, p1, p2, col, thick, cv::LINE_AA);
+        }
+
+        // ── 장애물 (NPC/보행자) 그리기 ──────────────────────────
+        // (render가 이미 mu_ lock 잡고 호출 — 재귀 lock 금지)
+        {
+            for (const auto& ob : obstacles_) {
+                cv::Point pc = W2I(ob.x, ob.y);
+                if (!inMap(pc)) continue;
+                double yaw_rad = ob.heading * M_PI / 180.0;
+                double cs = std::cos(yaw_rad), sn = std::sin(yaw_rad);
+                double hl = std::max(ob.sx, 1.0) * 0.5;   // half length
+                double hw = std::max(ob.sy, 1.0) * 0.5;   // half width
+                // 4 corners (world coord)
+                std::vector<cv::Point> corners;
+                for (auto [dx, dy] : std::vector<std::pair<double,double>>{
+                        {hl,  hw}, {hl, -hw}, {-hl, -hw}, {-hl, hw}}) {
+                    double wx = ob.x + cs * dx - sn * dy;
+                    double wy = ob.y + sn * dx + cs * dy;
+                    corners.push_back(W2I(wx, wy));
+                }
+                // 진한 빨강 채우기 + 흰색 테두리
+                cv::Scalar fill(40, 40, 220);   // BGR (red)
+                cv::Scalar edge(240, 240, 240);
+                std::vector<std::vector<cv::Point>> polys = {corners};
+                cv::fillPoly(img, polys, fill, cv::LINE_AA);
+                cv::polylines(img, polys, true, edge, 2, cv::LINE_AA);
+                // heading 화살표
+                double hx = ob.x + cs * hl, hy = ob.y + sn * hl;
+                cv::line(img, pc, W2I(hx, hy), cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+            }
+        }
+
+        // ── 회피 경로 (reference path + avoid_offset 만큼 lateral shift) ─
+        if (std::abs(avoid_offset_) > 0.05 && wp_d_x_.size() > 5) {
+            // wp_d 좌표를 path direction 기준 lateral 이동 (좌측+)
+            std::vector<cv::Point> avoid_pts;
+            for (size_t i = 1; i < wp_d_x_.size(); ++i) {
+                double dx = wp_d_x_[i] - wp_d_x_[i-1];
+                double dy = wp_d_y_[i] - wp_d_y_[i-1];
+                double len = std::hypot(dx, dy);
+                if (len < 1e-3) continue;
+                // 좌측 단위 벡터 (path 진행방향에서 90° ccw 회전)
+                double nx = -dy / len, ny = dx / len;
+                double sx = wp_d_x_[i] + avoid_offset_ * nx;
+                double sy = wp_d_y_[i] + avoid_offset_ * ny;
+                cv::Point p = W2I(sx, sy);
+                if (inMap(p)) avoid_pts.push_back(p);
+            }
+            for (size_t i = 1; i < avoid_pts.size(); ++i) {
+                cv::line(img, avoid_pts[i-1], avoid_pts[i],
+                         cv::Scalar(0, 255, 255), 3, cv::LINE_AA);  // 밝은 노랑 (BGR)
+            }
         }
 
         if (ego_rcvd_) {
@@ -666,9 +722,34 @@ private:
         cv::putText(img, s, cv::Point(x, y), font, scale, color, thickness, cv::LINE_AA);
     }
 
+    // ── 장애물 / 회피 콜백 ─────────────────────────────────────
+    void cbObj(const morai_msgs::ObjectStatusList::ConstPtr& msg) {
+        std::lock_guard<std::mutex> lk(mu_);
+        obstacles_.clear();
+        auto add = [&](const auto& list) {
+            for (const auto& o : list) {
+                Obstacle ob;
+                ob.x = o.position.x; ob.y = o.position.y;
+                ob.sx = o.size.x;    ob.sy = o.size.y;
+                ob.heading = o.heading;
+                obstacles_.push_back(ob);
+            }
+        };
+        add(msg->npc_list);
+        add(msg->pedestrian_list);
+        add(msg->obstacle_list);
+    }
+    void cbAvoid(const std_msgs::Float64::ConstPtr& msg) {
+        std::lock_guard<std::mutex> lk(mu_);
+        avoid_offset_ = msg->data;
+    }
+    struct Obstacle { double x, y, sx, sy, heading; };
+
     // ── 데이터 ────────────────────────────────────────────────
     ros::NodeHandle nh_;
-    ros::Subscriber sub_perf_, sub_status_, sub_ego_;
+    ros::Subscriber sub_perf_, sub_status_, sub_ego_, sub_obj_, sub_avoid_;
+    std::vector<Obstacle> obstacles_;
+    double avoid_offset_ = 0.0;
     std::string path_file_;
     double window_m_ = 18.0;
     double hdg_pct_thresh_ = 5.0;

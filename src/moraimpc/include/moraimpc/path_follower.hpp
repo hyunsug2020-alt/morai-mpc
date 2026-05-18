@@ -4,7 +4,9 @@
 #include <morai_msgs/EgoVehicleStatus.h>
 #include <morai_msgs/EventInfo.h>
 #include <morai_msgs/MoraiEventCmdSrv.h>
+#include <morai_msgs/ObjectStatusList.h>
 #include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
 #include <Eigen/Dense>
 #include <jsoncpp/json/json.h>
@@ -31,7 +33,22 @@ private:
 
     // ── ROS 콜백 ───────────────────────────────────────────────────
     void egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg);
+    void avoidanceCallback(const std_msgs::Float64::ConstPtr& msg);
+    void objectCallback(const morai_msgs::ObjectStatusList::ConstPtr& msg);
     void controlLoop(const ros::TimerEvent&);
+
+    // ── Frenet 회피 (Phase 1+2) ───────────────────────────────────
+    struct Obstacle {
+        double x, y;       // 월드 위치
+        double vx, vy;     // 월드 속도 (m/s)
+        double sx, sy;     // 사이즈 (m)
+    };
+    // 매 tick, k=0..N-1 의 corridor d_min/d_max 계산
+    // d_max[k] = +INF면 좌측 제약 없음, d_min[k] = -INF면 우측 제약 없음
+    void buildObstacleCorridor(const std::vector<double>& v_profile,
+                               std::vector<double>& d_min,
+                               std::vector<double>& d_max,
+                               double& v_scale);
 
     // ── 최근접 탐색 결과 ───────────────────────────────────────────
     struct NearResult {
@@ -168,8 +185,8 @@ private:
     double overshoot_dist_       = 0.10;
     double overshoot_damp_       = 0.40;
     double osc_cte_db_           = 0.10;  // 0.08 -> 0.10 (데드밴드 상향)
-    double osc_hdg_db_           = 0.12;  // 0.10 -> 0.12
-    double osc_damp_             = 0.60;
+    double osc_hdg_db_           = 0.08;  // 0.12→0.08 (작은 hdg 진동도 감지)
+    double osc_damp_             = 0.75;  // 0.60→0.75 (커브 후 진동 댐핑 강화)
     double near_cte_thresh_      = 0.08;
     double near_hdg_thresh_      = 0.08;
     double near_steer_damp_      = 0.85;
@@ -195,9 +212,25 @@ private:
     // ═══════════════════════════════════════════════════════════════
     // ROS
     // ═══════════════════════════════════════════════════════════════
+    // 회피 lateral offset (legacy) — avoidance_planner_node 호환용. Phase 1 이후 미사용.
+    bool   avoidance_enabled_ = false;   // launch param. false면 일반 추종 그대로
+    double avoidance_offset_ = 0.0;
+    ros::Subscriber avoid_sub_;
+
+    // 동적 장애물 (Frenet 회피) — Object_topic 직접 sub
+    std::vector<Obstacle> obstacles_;
+    ros::Subscriber obj_sub_;
+    // 디버그용 마지막 corridor (k=1)
+    double last_d_min_ = -1e6;
+    double last_d_max_ =  1e6;
+    double last_obs_dist_s_ = -1.0;
+    // 회피 활성 후 ego 정렬(cte<0.3, |yaw_err|<0.1rad) 만족까지 RECOV 차단
+    bool obs_block_until_align_ = false;
+
     ros::Subscriber ego_sub_;
     ros::Publisher  ctrl_pub_;
-    ros::ServiceClient gear_srv_;   // /Service_MoraiEventCmd 기어 전환용
+    ros::ServiceClient gear_srv_;   // /Service_MoraiEventCmd 기어 전환용 (primary)
+    ros::Publisher  event_pub_;     // /InsnControl EventInfo (fallback, service 미advertise 시)
     ros::Publisher  perf_pub_;
     ros::Publisher  status_pub_;
     ros::Timer      timer_;

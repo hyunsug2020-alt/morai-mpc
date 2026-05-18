@@ -11,7 +11,8 @@
     <arg name="pre_gear_change_dist" default="10.0" />  <!-- 5→10: 더 일찍 사전감속 (60km/h시 42m) -->
     <arg name="log_file"             default="$(find moraimpc)/logs/mpc_log.json" />
 
-    <!-- 0. (제거됨) morai_mode_init — path_follower가 직접 ctrl_mode + gear service로 설정. 충돌 방지. -->
+    <!-- 0. MORAI 자율주행 모드 활성화 (ctrl_mode=3 + D 진입) — 시작 시 1회 publish -->
+    <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
 
     <!-- 1. LTV-MPC + RTI-NMPC 경로 추종기 (전진 D / 후진 R 자동 전환)
          launch-prefix: 시작 전 smooth_waypoints 자동 적용 (recorded_file 존재 시) -->

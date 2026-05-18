@@ -45,11 +45,21 @@ struct LTVMPCConfig {
     double curve_min_vel       =  5.0 / 3.6; // 곡선 최소 5 km/h (10→5: D 끝 곡선 yaw 정렬)
 
     // --- 적응형 가중치 ---
-    double w_theta_low_speed   = 250.0;  // 350→250 (저속 sharp curve hdg overshoot ±11° 완화)
-    double w_theta_high_speed  = 150.0;  // 200→150 (고속은 이미 거의 완벽, 추가 진동 방지)
+    double w_theta_low_speed   = 250.0;  // 저속 sharp curve hdg overshoot 완화
+    double w_theta_high_speed  = 220.0;  // 150→220 (커브 후 헤딩 진동 댐핑 강화)
     double w_theta_v_low       = 3.0;    // 저속 기준 [m/s]
     double w_theta_v_high      = 15.0;   // 고속 기준 [m/s] (~54km/h)
     double w_dr_curve_boost    = 2.0;    // 커브 진입 시 w_dr 배수
+
+    // --- 동적 장애물 회피 (Frenet d 제약 + slack) ---
+    double obs_lat_safety   = 0.9;   // [m] NPC lateral half-width + safety margin
+    double obs_long_safety  = 2.5;   // [m] NPC longitudinal half + safety
+    double obs_s_window     = 12.0;  // [m] 활성화 거리 (NPC 가까이 올 때만, 너무 일찍 회피 방지)
+    double w_slack_quad     = 1.0e5; // slack quadratic penalty
+    double w_slack_lin      = 1.0e3; // slack linear penalty
+    double obs_v_decel_kmh  = 5.0;   // (미사용)
+    double obs_v_scale_min  = 0.15;  // 회피 활성 중 최저 속도
+    double obs_cooldown_v_scale = 0.30; // 회피 종료 후 정렬 cooldown 시 v (yaw 복귀 가능 최소)
 };
 
 struct MPCState {
