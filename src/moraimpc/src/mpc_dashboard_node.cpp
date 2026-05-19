@@ -98,14 +98,16 @@ public:
     }
 
     void spin() {
-        ros::AsyncSpinner async(1);
-        async.start();
+        // 단순 spinOnce + waitKey 패턴 (AsyncSpinner 제거 → GUI 응답성 향상)
+        // startWindowThread() ctor에서 호출됨 → main waitKey는 짧게(1ms) 호출하여 X event polling
         ros::Rate r(20.0);
         while (ros::ok()) {
+            ros::spinOnce();
             render();
+            int k = cv::waitKey(1);
+            if (k == 27 || k == 'q') { ros::shutdown(); break; }
             r.sleep();
         }
-        async.stop();
         cv::destroyAllWindows();
     }
 
@@ -479,6 +481,34 @@ private:
             // 중심점 (이중원: 외곽 흰, 내부 빨강)
             cv::circle(img, pego, 6, kCarEdge, cv::FILLED, cv::LINE_AA);
             cv::circle(img, pego, 4, kCarFill, cv::FILLED, cv::LINE_AA);
+        }
+
+        // ── 장애물 시각화 (/Object_topic) ─────────────────────
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            for (const auto& o : obstacles_) {
+                cv::Point poc = W2I(o.x, o.y);
+                if (!inMap(poc)) continue;
+                const double r_m  = 0.5 * std::hypot(std::max(o.sx, 1.0),
+                                                     std::max(o.sy, 1.0));
+                const int    r_px = std::max(6, (int)std::round(r_m * scale));
+                // safe margin band (얇은 외곽 — 1.5m default)
+                const int sm_px = std::max(r_px + 4,
+                                           (int)std::round((r_m + 1.5) * scale));
+                cv::circle(img, poc, sm_px, cv::Scalar(0, 200, 255), 1, cv::LINE_AA);  // 노랑 margin
+                cv::circle(img, poc, r_px,  cv::Scalar(0,  80, 230), 2, cv::LINE_AA);  // 주황 외곽
+                cv::circle(img, poc, std::max(3, r_px/3),
+                           cv::Scalar(0, 0, 230), cv::FILLED, cv::LINE_AA);             // 빨강 중심
+                // heading 화살표 (2m)
+                const double hx = o.x + 2.0 * std::cos(o.heading);
+                const double hy = o.y + 2.0 * std::sin(o.heading);
+                cv::Point phd = W2I(hx, hy);
+                cv::arrowedLine(img, poc, phd, cv::Scalar(0, 80, 230), 1,
+                                cv::LINE_AA, 0, 0.35);
+                // 라벨 OBS
+                putText(img, "OBS", poc.x + r_px + 2, poc.y - r_px - 2,
+                        0.4, cv::Scalar(0, 80, 230));
+            }
         }
 
         // 컴파스 N (좌상단)

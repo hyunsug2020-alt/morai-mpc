@@ -75,6 +75,10 @@ void RTINMPCController::setInitialKappa(double kappa) {
     u_warm_.assign(cfg_.N, Eigen::VectorXd::Zero(kRTINu));
 }
 
+void RTINMPCController::setObstacles(const std::vector<RTINMPCObstacle>& obs) {
+    obstacles_ = obs;
+}
+
 // ============================================================
 // 운동학 모델 f(x, u)
 // x = [px, py, psi, v, kappa], u = [av, a_kappa]
@@ -395,13 +399,128 @@ bool RTINMPCController::buildAndSolveQP(
         ub(cons_row+1) = cfg_.kappa_max - x_free(row_k);
     }
 
-    Eigen::SparseMatrix<double> P_sp = (2.0 * H_dense).sparseView();
+    // ────────────────────────────────────────────────────────────
+    // 장애물 stage 제약 (방안 B: NMPC stage 제약)
+    // 비선형 √((px-ox)² + (py-oy)²) ≥ r_safe → x_ref 둘레로 1차 Taylor
+    // soft slack penalty로 infeasibility 흡수
+    // ────────────────────────────────────────────────────────────
+    std::vector<RTINMPCObstacle> active_obs;
+    if (cfg_.obs_enable && !obstacles_.empty()) {
+        // 각 obstacle에 대해 예측 경로상 최소 거리 계산 → 활성 cap
+        std::vector<std::pair<double, int>> dist_idx;
+        for (size_t i = 0; i < obstacles_.size(); ++i) {
+            const auto& o = obstacles_[i];
+            double d_min = std::numeric_limits<double>::max();
+            for (int k = 0; k <= N; ++k) {
+                const double dx = x_ref[k](0) - o.cx;
+                const double dy = x_ref[k](1) - o.cy;
+                d_min = std::min(d_min, std::sqrt(dx*dx + dy*dy));
+            }
+            if (d_min < cfg_.obs_active_dist + o.r_safe) {
+                dist_idx.emplace_back(d_min, (int)i);
+            }
+        }
+        std::sort(dist_idx.begin(), dist_idx.end());
+        const int n_cap = std::min((int)dist_idx.size(), cfg_.obs_max_count);
+        for (int i = 0; i < n_cap; ++i) {
+            active_obs.push_back(obstacles_[dist_idx[i].second]);
+        }
+    }
+    const int n_obs   = (int)active_obs.size();
+    const int n_slack = n_obs * N;          // stage k=0..N-1 (sk=1..N), obs별 slack
+    const int n_dec_new = n_dec + n_slack;
+
+    if (n_obs == 0) {
+        // 기존 경로 유지 (zero overhead)
+        Eigen::SparseMatrix<double> P_sp = (2.0 * H_dense).sparseView();
+        P_sp = P_sp.triangularView<Eigen::Upper>();
+        P_sp.makeCompressed();
+        Eigen::SparseMatrix<double> A_sp = A_cons.sparseView();
+        A_sp.makeCompressed();
+        return solveOSQP(P_sp, 2.0 * f_vec, A_sp, lb, ub, u_opt);
+    }
+
+    // H_full = blockdiag(H_dense, w_slack_quad·I)
+    Eigen::MatrixXd H_full = Eigen::MatrixXd::Zero(n_dec_new, n_dec_new);
+    H_full.block(0, 0, n_dec, n_dec) = H_dense;
+    H_full.block(n_dec, n_dec, n_slack, n_slack) =
+        cfg_.w_obs_slack_quad * Eigen::MatrixXd::Identity(n_slack, n_slack);
+
+    Eigen::VectorXd f_full(n_dec_new);
+    f_full.head(n_dec) = f_vec;
+    f_full.tail(n_slack) = 0.5 * cfg_.w_obs_slack_lin * Eigen::VectorXd::Ones(n_slack);
+
+    // A_cons_new = [A_cons | 0; obs rows | I_slack; 0 | I_slack≥0]
+    const int n_obs_rows  = n_obs * N;       // obstacle 제약
+    const int n_slack_pos = n_slack;         // slack ≥ 0
+    const int n_cons_new  = n_cons + n_obs_rows + n_slack_pos;
+
+    Eigen::MatrixXd A_cons_new = Eigen::MatrixXd::Zero(n_cons_new, n_dec_new);
+    Eigen::VectorXd lb_new(n_cons_new), ub_new(n_cons_new);
+
+    A_cons_new.block(0, 0, n_cons, n_dec) = A_cons;
+    lb_new.head(n_cons) = lb;
+    ub_new.head(n_cons) = ub;
+
+    const double kInf = 1e30;
+    int row_off = n_cons;
+    for (int i = 0; i < n_obs; ++i) {
+        const auto& o = active_obs[i];
+        for (int k = 0; k < N; ++k) {
+            const int sk = k + 1;  // stage k+1 (k=0..N-1 → sk=1..N)
+            if (sk <= cfg_.obs_skip_first) {
+                // 너무 가까운 stage skip — slack 변수만 ≥0 강제
+                lb_new(row_off) = -kInf;
+                ub_new(row_off) =  kInf;
+                ++row_off;
+                continue;
+            }
+            const double px_nom = x_ref[sk](0);
+            const double py_nom = x_ref[sk](1);
+            const double dx = px_nom - o.cx;
+            const double dy = py_nom - o.cy;
+            const double d_nom = std::sqrt(dx*dx + dy*dy + 1e-9);
+            const double nx_g = dx / d_nom;
+            const double ny_g = dy / d_nom;
+
+            // row = nx · Gamma_px + ny · Gamma_py + slack
+            A_cons_new.row(row_off).head(n_dec) =
+                nx_g * Gamma.row(sk*Nx + 0) + ny_g * Gamma.row(sk*Nx + 1);
+            A_cons_new(row_off, n_dec + i*N + k) = 1.0;  // +slack
+
+            // bound: nx·px + ny·py + s ≥ r_safe + nx·ox + ny·oy
+            //        nx·(Phi*x0+Gamma*u+sigma)_px + ny·(...)_py + s ≥ ...
+            // → Gamma*u 항만 LHS, 나머지 RHS
+            const double bound = o.r_safe + nx_g*o.cx + ny_g*o.cy
+                               - nx_g * x_free(sk*Nx + 0)
+                               - ny_g * x_free(sk*Nx + 1);
+            lb_new(row_off) = bound;
+            ub_new(row_off) = kInf;
+            ++row_off;
+        }
+    }
+    // slack ≥ 0
+    for (int j = 0; j < n_slack; ++j) {
+        A_cons_new(row_off, n_dec + j) = 1.0;
+        lb_new(row_off) = 0.0;
+        ub_new(row_off) = kInf;
+        ++row_off;
+    }
+
+    Eigen::SparseMatrix<double> P_sp = (2.0 * H_full).sparseView();
     P_sp = P_sp.triangularView<Eigen::Upper>();
     P_sp.makeCompressed();
-    Eigen::SparseMatrix<double> A_sp = A_cons.sparseView();
+    Eigen::SparseMatrix<double> A_sp = A_cons_new.sparseView();
     A_sp.makeCompressed();
 
-    return solveOSQP(P_sp, 2.0 * f_vec, A_sp, lb, ub, u_opt);
+    Eigen::VectorXd z_opt;
+    const bool ok = solveOSQP(P_sp, 2.0 * f_full, A_sp, lb_new, ub_new, z_opt);
+    if (ok && z_opt.size() >= n_dec) {
+        u_opt = z_opt.head(n_dec);
+    } else {
+        u_opt = Eigen::VectorXd::Zero(n_dec);
+    }
+    return ok;
 }
 
 // ============================================================

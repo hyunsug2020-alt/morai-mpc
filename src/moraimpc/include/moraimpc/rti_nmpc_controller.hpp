@@ -35,6 +35,9 @@ public:
     // LTV→NMPC 인계: 외부에서 kappa_state_ 강제 설정 (warm-start)
     void setInitialKappa(double kappa);
 
+    // 장애물 설정 (매 tick 호출). 빈 vector 시 회피 비활성
+    void setObstacles(const std::vector<RTINMPCObstacle>& obs);
+
     // 메인 제어 계산
     // ego_pose      : 현재 차량 자세 (geometry_msgs/Pose)
     // reference_path: 참조 경로 (PoseStamped 목록)
@@ -101,6 +104,7 @@ private:
                    Eigen::VectorXd& solution);
 
     RTINMPCConfig cfg_;
+    std::vector<RTINMPCObstacle> obstacles_;   // setObstacles로 갱신
 
     std::vector<Eigen::VectorXd> u_warm_;   // warm-start 이전 입력 시퀀스
     double kappa_state_    = 0.0;

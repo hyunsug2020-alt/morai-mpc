@@ -58,6 +58,17 @@ struct RTINMPCConfig {
     double osqp_eps_abs    = 1e-5;
     double osqp_eps_rel    = 1e-5;
     bool   osqp_warm_start = true;
+
+    // ── 장애물 회피 (방안 B: NMPC stage 제약) ──────────────────────
+    // 비선형 거리 제약을 nominal trajectory 둘레로 1차 Taylor → 선형 half-space
+    // soft slack penalty로 infeasibility 방지
+    bool   obs_enable        = false;   // launch에서 true 설정 시만 활성
+    double obs_safe_margin   = 1.5;     // r_safe = r_obstacle + margin [m]
+    double obs_active_dist   = 30.0;    // 이 거리 내 obstacle만 stage 제약 추가
+    int    obs_max_count     = 5;       // 동시 처리 최대 obstacle 수
+    int    obs_skip_first    = 1;       // k=0..skip-1 stage는 제약 skip (현재 ego 위치)
+    double w_obs_slack_quad  = 1e5;     // slack 2차 penalty
+    double w_obs_slack_lin   = 1e3;     // slack 1차 penalty
 };
 
 // RTI-NMPC 상태 벡터 x = [px, py, psi, v, kappa]^T
@@ -73,6 +84,15 @@ struct RTINMPCState {
 struct RTINMPCInput {
     double av      = 0.0;  // 가속도 [m/s²]
     double a_kappa = 0.0;  // 곡률 변화율 [1/m·s]
+};
+
+// 장애물 (NMPC stage 제약용 — circle approximation)
+struct RTINMPCObstacle {
+    double cx     = 0.0;    // 중심 x [m]
+    double cy     = 0.0;    // 중심 y [m]
+    double r_safe = 1.5;    // 안전 반경 (r_obstacle + margin) [m]
+    double vx     = 0.0;    // 속도 x [m/s] (동적, 옵션)
+    double vy     = 0.0;    // 속도 y [m/s] (동적, 옵션)
 };
 
 // RTI-NMPC 명령 출력

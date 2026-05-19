@@ -49,11 +49,23 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
 
     nh.param<bool>("avoidance_enabled", avoidance_enabled_, false);
     nh.param<bool>("force_nmpc", force_nmpc_, false);  // true면 항상 RTI-NMPC 사용 (고속 튜닝용)
+
+    // NMPC stage 제약 (방안 B) — launch 파라미터
+    nh.param<bool>  ("nmpc_obs_enable",      rti_cfg_.obs_enable,      false);
+    nh.param<double>("nmpc_obs_safe_margin", rti_cfg_.obs_safe_margin, 1.5);
+    nh.param<double>("nmpc_obs_active_dist", rti_cfg_.obs_active_dist, 30.0);
+    nh.param<int>   ("nmpc_obs_max_count",   rti_cfg_.obs_max_count,   5);
+    nh.param<int>   ("nmpc_obs_skip_first",  rti_cfg_.obs_skip_first,  1);
+    nh.param<double>("nmpc_w_obs_slack_quad", rti_cfg_.w_obs_slack_quad, 1e5);
+    nh.param<double>("nmpc_w_obs_slack_lin",  rti_cfg_.w_obs_slack_lin,  1e3);
+    rti_nmpc_->setConfig(rti_cfg_);
+
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
-    if (avoidance_enabled_) {
-        // MPC corridor 회피만 사용. legacy /avoidance_offset는 더 이상 구독 안 함.
+    // NMPC obs 활성 또는 LTV corridor 활성 시 /Object_topic 구독
+    if (avoidance_enabled_ || rti_cfg_.obs_enable) {
         obj_sub_   = nh.subscribe("/Object_topic", 1, &PathFollower::objectCallback,  this);
-        ROS_INFO("[PathFollower] 회피 모드 ON (MPC Frenet corridor) — /Object_topic 구독");
+        ROS_INFO("[PathFollower] 회피 모드 ON — /Object_topic 구독 (LTV corridor=%d, NMPC stage=%d)",
+                 avoidance_enabled_ ? 1 : 0, rti_cfg_.obs_enable ? 1 : 0);
     }
     ctrl_pub_   = nh.advertise<morai_msgs::CtrlCmd>("/ctrl_cmd_0",       1);
     gear_srv_   = nh.serviceClient<morai_msgs::MoraiEventCmdSrv>("/Service_MoraiEventCmd");
@@ -1041,6 +1053,27 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         ego_pose.position.y = cur_y_;
         ego_pose.orientation.z = std::sin(cur_yaw_ * 0.5);
         ego_pose.orientation.w = std::cos(cur_yaw_ * 0.5);
+
+        // 장애물 NMPC stage 제약 (방안 B) — Object_topic 수집된 obstacles_ → 변환 전달
+        if (rti_cfg_.obs_enable && !obstacles_.empty()) {
+            std::vector<RTINMPCObstacle> nmpc_obs;
+            nmpc_obs.reserve(obstacles_.size());
+            for (const auto& o : obstacles_) {
+                RTINMPCObstacle no;
+                no.cx = o.x;
+                no.cy = o.y;
+                // bounding circle: 차량 footprint sx/sy를 원으로 근사
+                const double r_obs = 0.5 * std::hypot(std::max(o.sx, 1.0),
+                                                      std::max(o.sy, 1.0));
+                no.r_safe = r_obs + rti_cfg_.obs_safe_margin;
+                no.vx = o.vx;
+                no.vy = o.vy;
+                nmpc_obs.push_back(no);
+            }
+            rti_nmpc_->setObstacles(nmpc_obs);
+        } else {
+            rti_nmpc_->setObstacles({});
+        }
 
         // RTI에 전달할 v는 signed (R이면 음수)
         double v_signed_in = (cur_gear_ < 0 ? -1.0 : 1.0) * std::abs(cur_v_);
