@@ -93,6 +93,10 @@ private:
     // 런치 파라미터: 후진 최대 속도 (정확도 우선, 기본 2 km/h)
     double reverse_max_vel_kmh_ = 5.0;
 
+    // 고속 D 사전감속용: 이전 tick 의 목표 속도 (rate-limit / jerk 제한)
+    // 0.0 = 초기화 sentinel — 첫 tick 은 rate limit 미적용
+    double prev_v_target_kmh_ = 0.0;
+
     // ═══════════════════════════════════════════════════════════════
     // MPC
     // ═══════════════════════════════════════════════════════════════
@@ -185,8 +189,8 @@ private:
     double overshoot_dist_       = 0.10;
     double overshoot_damp_       = 0.40;
     double osc_cte_db_           = 0.10;  // 0.08 -> 0.10 (데드밴드 상향)
-    double osc_hdg_db_           = 0.08;  // 0.12→0.08 (작은 hdg 진동도 감지)
-    double osc_damp_             = 0.75;  // 0.60→0.75 (커브 후 진동 댐핑 강화)
+    double osc_hdg_db_           = 0.12;  // 원복: 데드밴드 (정상 추종 응답 보존)
+    double osc_damp_             = 0.60;  // 원복: 댐핑 (응답 둔감 방지)
     double near_cte_thresh_      = 0.08;
     double near_hdg_thresh_      = 0.08;
     double near_steer_damp_      = 0.85;
@@ -214,6 +218,7 @@ private:
     // ═══════════════════════════════════════════════════════════════
     // 회피 lateral offset (legacy) — avoidance_planner_node 호환용. Phase 1 이후 미사용.
     bool   avoidance_enabled_ = false;   // launch param. false면 일반 추종 그대로
+    bool   force_nmpc_ = false;          // launch param. true면 항상 RTI-NMPC (고속 튜닝용)
     double avoidance_offset_ = 0.0;
     ros::Subscriber avoid_sub_;
 
@@ -226,6 +231,7 @@ private:
     double last_obs_dist_s_ = -1.0;
     // 회피 활성 후 ego 정렬(cte<0.3, |yaw_err|<0.1rad) 만족까지 RECOV 차단
     bool obs_block_until_align_ = false;
+    int  align_stable_count_ = 0;   // align 연속 만족 tick (cte 가로지를 때 false-positive 차단)
 
     ros::Subscriber ego_sub_;
     ros::Publisher  ctrl_pub_;

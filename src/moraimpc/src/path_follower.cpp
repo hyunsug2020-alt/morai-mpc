@@ -48,6 +48,7 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     rti_nmpc_  = std::make_unique<RTINMPCController>(rti_cfg_);
 
     nh.param<bool>("avoidance_enabled", avoidance_enabled_, false);
+    nh.param<bool>("force_nmpc", force_nmpc_, false);  // true면 항상 RTI-NMPC 사용 (고속 튜닝용)
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
     if (avoidance_enabled_) {
         // MPC corridor 회피만 사용. legacy /avoidance_offset는 더 이상 구독 안 함.
@@ -644,13 +645,16 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
     // 후진 시 hdg 임계값 완화 (60°), 전진은 그대로 (35°)
     double hdg_thresh = (cur_gear_ < 0) ? kRecovHdgThreshR : kRecovHdgThresh;
-    // 회피 활성 시 cooldown flag 켜기 → ego가 정렬될 때까지 RECOV 차단
+    // 회피 활성 시 cooldown flag 켜기 → ego가 정확히 정렬될 때까지 RECOV/가속 차단
     bool obs_now_active = avoidance_enabled_ && (last_obs_dist_s_ > 0);
-    if (obs_now_active) obs_block_until_align_ = true;
-    // ego 정렬 검사: cte<0.5m + |yaw_err|<0.15rad(약 8.6°) 만족 시 cooldown 해제 (복귀 빠르게)
-    bool ego_aligned = (std::abs(near.signed_cte) < 0.5) &&
-                       (std::abs(near.heading_err) < 0.15);
-    if (obs_block_until_align_ && !obs_now_active && ego_aligned) {
+    if (obs_now_active) { obs_block_until_align_ = true; align_stable_count_ = 0; }
+    // 정확한 정렬: cte<0.2m + |yaw_err|<0.05rad(약 2.9°)
+    bool ego_aligned = (std::abs(near.signed_cte) < 0.2) &&
+                       (std::abs(near.heading_err) < 0.05);
+    // align stable check: 회피 path가 cte=0 가로지를 때 단일 tick 만족 false-positive 방지
+    if (ego_aligned) align_stable_count_++; else align_stable_count_ = 0;
+    const int kAlignStableTicks = 20;   // 1.0초 연속 정렬
+    if (obs_block_until_align_ && !obs_now_active && align_stable_count_ >= kAlignStableTicks) {
         obs_block_until_align_ = false;
     }
     bool recov_blocked = avoidance_enabled_ && obs_block_until_align_;
@@ -728,7 +732,10 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     //      → D2 같은 저속 sharp curve 영역에서 LTV 인커브 컷 회피
     //   3) 그 외 D 모드: LTV
     bool d_parking_sharp = (cur_gear_ > 0) && parking_mode_ && (max_kappa_ahead > 0.10);
-    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp || in_low_speed_;  // 원복: LTV 기본, NMPC는 R/parking/저속
+    // 회피 종료 cooldown — 큰 cte/yaw 비선형 영역. LTV mismatch → NMPC로 정확한 운동학 적용
+    bool obs_corridor_on = avoidance_enabled_ && (cur_gear_ > 0) && (last_obs_dist_s_ > 0);
+    bool obs_cooldown = avoidance_enabled_ && obs_block_until_align_ && !obs_corridor_on;
+    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp || in_low_speed_ || obs_cooldown || force_nmpc_;
 
     // LTV→NMPC 전환 감지: 직전 LTV의 steering을 RTI에 인계 (warm-start)
     // 이렇게 안 하면 전환 첫 tick에 RTI kappa=0에서 시작해 갑작스런 명령 점프 발생
@@ -793,7 +800,9 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     // (RECOV보다 우선 적용; 5-state 운동학 자전거, 암시적 오일러)
     // ═══════════════════════════════════════════════════════════════
     if (use_nmpc_now) {
-        rec["mode"]       = (cur_gear_ < 0) ? "NMPC_R" : "NMPC_LO";
+        // force_nmpc + 고속/non-low 시 NMPC_HS 표시 (GUI 명확화)
+        const char* fwd_mode = (force_nmpc_ && !in_low_speed_) ? "NMPC_HS" : "NMPC_LO";
+        rec["mode"]       = (cur_gear_ < 0) ? "NMPC_R" : fwd_mode;
         rec["gear"]       = (cur_gear_ < 0) ? "R"      : "D";
         rec["controller"] = "RTI_NMPC";
 
@@ -830,8 +839,72 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         } else if (d_parking_sharp) {
             // D2 sharp curve: 곡률 자동 속도 (3.5~5.0 km/h, ω≥15°/s 목표)
             v_mag_kmh = calc_v_from_kappa(max_kappa_ahead, 3.5, 5.0);
+        } else if (obs_cooldown) {
+            // 회피 종료 cooldown: 큰 cte/yaw 회복용 저속 (13 km/h)
+            v_mag_kmh = 13.0;
+        } else if (in_recov_ && cur_gear_ > 0) {
+            // RECOV (force_nmpc=true 때 비활성된 분기 대체) — 큰 cte/yaw 발산 회복용 저속
+            // NMPC가 이 속도로 ref_path lookahead 시작점 따라가며 부드럽게 정렬
+            v_mag_kmh = 8.0;
         } else {
-            v_mag_kmh = cfg_.target_vel * 3.6;
+            // 고속 D 일반주행: 사전감속 3중 제약 (A·B·C 결합)
+            //   C) 속도비례 lookahead — 빠를수록 더 멀리 곡률 탐색
+            //   B) 횡가속도 제한    — v² · κ ≤ a_lat_max (물리 한계)
+            //   1) 곡률 비례 감속   — v = v_max / (1 + α·κ) (부드러운 프로필)
+            //   A) jerk rate-limit  — target_vel step 변화 차단 (실제 사전감속 효과)
+            // 튜닝 (목표: 평균 속도 30 km/h 달성)
+            //   alpha 6   : κ=0.05 → 38.5km/h, κ=0.1 → 31.3km/h
+            //   a_lat 6.0: κ=0.05 → 39.5km/h, κ=0.1 → 27.9km/h
+            //   v_floor 28: 완만 곡선까지 최소 28km/h (sharp만 자동 감속)
+            constexpr double alpha     = 6.0;
+            constexpr double a_lat_max = 5.0;  // 6→5: 그립한계 더 엄수
+            constexpr double max_dec   = 4.0;
+            constexpr double max_acc   = 3.5;
+            constexpr double dt_tick   = 0.05;   // 제어 주기 [s] (RTI Ts와 매칭)
+
+            // C) lookahead 동적 (55m best)
+            const double v_now  = std::abs(cur_v_);
+            double la_dyn = v_now * 3.5 + (v_now * v_now) / (2.0 * 2.0);
+            double la_m_d = std::max(30.0, std::min(la_dyn, 55.0));
+            int la_steps_d = std::max(1, (int)std::round(la_m_d / wp_spacing_));
+            double max_k_d = 0.0;
+            for (int i = 0; i <= la_steps_d; ++i) {
+                int ki = std::min(nearest_idx_ + i, seg_hi_for_la);
+                max_k_d = std::max(max_k_d, std::abs(wp_k_[ki]));
+                if (ki == seg_hi_for_la) break;
+            }
+            rec["la_m_dyn"] = la_m_d;
+            rec["max_kappa_dyn"] = max_k_d;
+
+            // 1) 곡률 비례 감속
+            double v_kmh = (cfg_.target_vel / (1.0 + alpha * max_k_d)) * 3.6;
+            // B) 횡가속도 캡
+            if (max_k_d > 1e-3) {
+                double v_alat_kmh = std::sqrt(a_lat_max / max_k_d) * 3.6;
+                v_kmh = std::min(v_kmh, v_alat_kmh);
+            }
+            v_kmh = std::max(cfg_.curve_min_vel * 3.6, v_kmh);
+            // 평균 속도 floor + a_lat hard cap (그립한계 엄수)
+            auto cap_by_alat = [&](double v_floor) {
+                if (max_k_d < 1e-3) return v_floor;
+                double v_cap_kmh = std::sqrt(a_lat_max / max_k_d) * 3.6;
+                return std::min(v_floor, v_cap_kmh);
+            };
+            if (max_k_d < 0.08)      v_kmh = std::max(cap_by_alat(38.0), v_kmh);
+            else if (max_k_d < 0.15) v_kmh = std::max(cap_by_alat(26.0), v_kmh);
+            else if (max_k_d < 0.20) v_kmh = std::max(cap_by_alat(18.0), v_kmh);
+            // sharp(κ>0.20) 자동감속
+
+            // A) rate-limit (target_vel step → 부드러운 감속 = 사전감속)
+            if (prev_v_target_kmh_ > 0.0) {
+                double dv_up   = max_acc * dt_tick * 3.6;
+                double dv_down = max_dec * dt_tick * 3.6;
+                double dv = v_kmh - prev_v_target_kmh_;
+                dv = std::max(-dv_down, std::min(dv_up, dv));
+                v_kmh = prev_v_target_kmh_ + dv;
+            }
+            prev_v_target_kmh_ = v_kmh;
+            v_mag_kmh = v_kmh;
         }
         double v_target_mps = (cur_gear_ < 0 ? -1.0 : 1.0) * (v_mag_kmh / 3.6);
 
@@ -853,6 +926,58 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             eff_cfg.w_py    = 35.0;
             eff_cfg.w_psi   = 12.0;
             eff_cfg.w_kappa =  3.0;
+        } else if (obs_cooldown) {
+            // 회피 종료 cooldown: yaw 정렬 우선 + cte 부드럽게 회복 (overshoot 방지)
+            eff_cfg.w_px    = 15.0;   // lateral 압박 약화 (큰 yaw 변화 강요 X)
+            eff_cfg.w_py    = 15.0;
+            eff_cfg.w_psi   = 30.0;   // yaw 정렬 강화 (yaw 작게 유지)
+            eff_cfg.w_kappa =  5.0;   // input 부드럽게 (steer rate 변화 ↓)
+        } else if (in_recov_ && cur_gear_ > 0) {
+            // RECOV (D): cte/yaw 발산 회복 — steer 자체와 rate 둘 다 강 제한
+            // 핵심: kappa_max 강 제한 (steer 35°→13°) — 풀스트로크 못 내게
+            eff_cfg.w_px      = 10.0;
+            eff_cfg.w_py      = 10.0;
+            eff_cfg.w_psi     = 25.0;
+            eff_cfg.w_kappa   = 10.0;   // 5→10: kappa 자체 페널티
+            eff_cfg.w_akappa  = 25.0;
+            eff_cfg.akappa_min = -0.10;
+            eff_cfg.akappa_max =  0.10;
+            eff_cfg.kappa_min  = -0.08; // steer ±13.5° 한계 (이전 ±40° 풀스트로크)
+            eff_cfg.kappa_max  =  0.08;
+        } else {
+            // D 일반주행 적응형 게인 (곡선 정교화 우선)
+            //   곡선: w_kappa 강화 (ref_κ 정확 추종) + cte 약화 (yaw 강요 X) + heading 강화
+            //   원리: NMPC가 path 곡률을 ref_kappa로 직접 따라가게 → cte 보정용 풀스트로크 방지
+            const double v_kmh_now = std::abs(cur_v_) * 3.6;
+            const bool   straight  = (max_kappa_ahead < 0.03);  // κ<0.03 ≈ 반경 33m+
+            if (straight && v_kmh_now > 20.0) {
+                // 직선 고속 (C43: 진동 완전 제거 목표)
+                eff_cfg.w_px      =  5.0;
+                eff_cfg.w_py      =  5.0;
+                eff_cfg.w_psi     =  8.0;
+                eff_cfg.w_kappa   = 12.0;
+                eff_cfg.w_akappa  = 60.0;
+                eff_cfg.akappa_min = -0.04; // 0.06→0.04: 미세 변화 완전 차단
+                eff_cfg.akappa_max =  0.04;
+            } else if (!straight) {
+                // 곡선 분기 (C45 best 복원)
+                const bool sharp = (max_kappa_ahead > 0.15);
+                const double cte_abs = std::abs(near.signed_cte);
+                const double cte_boost = std::clamp(1.0 + 1.2 * std::max(0.0, cte_abs - 0.2), 1.0, 2.4);
+                eff_cfg.w_px      =  8.0 * cte_boost;
+                eff_cfg.w_py      =  8.0 * cte_boost;
+                eff_cfg.w_psi     = sharp ? 24.0 : 20.0;  // sharp 22→24, 일반 18→20
+                eff_cfg.w_kappa   = sharp ? 14.0 : 12.0;
+                const double base_akappa = sharp ? 30.0 : 25.0;
+                eff_cfg.w_akappa = base_akappa + 1.5 * std::max(0.0, v_kmh_now - 10.0);
+                if (sharp) {
+                    eff_cfg.akappa_min = -0.10;
+                    eff_cfg.akappa_max =  0.10;
+                } else {
+                    eff_cfg.akappa_min = -0.12;
+                    eff_cfg.akappa_max =  0.12;
+                }
+            }
         }
         rti_nmpc_->setConfig(eff_cfg);
 
@@ -861,6 +986,21 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         if (!gear_segments_.empty() && cur_segment_ < (int)gear_segments_.size()) {
             seg_lo = gear_segments_[cur_segment_].first;
             seg_hi = gear_segments_[cur_segment_].second;
+        }
+        // 회피 cooldown / RECOV: ref_path를 ego 앞 lookahead 지점부터 시작.
+        // nearest_idx 직접 사용 시 NMPC가 ego의 lateral 위치를 강제 fit하려고 큰 yaw 변화
+        // → overshoot. lookahead로 ego가 부드럽게 path에 합류하는 trajectory 생성.
+        if (obs_cooldown) {
+            int lookahead_steps = (int)std::round(3.0 / wp_spacing_);  // 3m 앞
+            seg_lo = std::max(seg_lo, nearest_idx_ + lookahead_steps);
+            seg_lo = std::min(seg_lo, seg_hi);
+        } else if (in_recov_ && cur_gear_ > 0) {
+            // RECOV: 짧은 lookahead (이전 15m → 5m). NMPC가 가까운 path 따라가 부드럽게 합류
+            double la_m = std::min(5.0, 1.5 + std::abs(near.signed_cte) * 0.4);
+            int lookahead_steps = (int)std::round(la_m / wp_spacing_);
+            seg_lo = std::max(seg_lo, nearest_idx_ + lookahead_steps);
+            seg_lo = std::min(seg_lo, seg_hi);
+            rec["recov_la_m"] = la_m;
         }
         // R 시 vehicle yaw는 path_yaw + π여야 정합 → ref yaw에도 +π 적용
         // R 진입 동기화: 처음 2m 이동 동안 ψ_ref를 entry_yaw → wp_h+π로 blend
@@ -924,9 +1064,11 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             rec["rti_model_us"]   = cmd.model_time_us;
         } else {
             rec["solve_failed"] = true;
-            // solve 실패 시 target 속도로 직진 fallback (멈춤 방지)
-            double v_pub = velocitySigmoid(v_mag_kmh / 3.6, dt) * 3.6;
-            publishCmd(v_pub, 0.0);
+            // solve 실패 시 이전 steer 유지 + 감속 (steer=0 직진 → 곡선 중 시각적 튐 방지)
+            double v_pub = velocitySigmoid(v_mag_kmh / 3.6 * 0.5, dt) * 3.6;  // 절반 감속
+            double fallback_steer_rad = prev_steer_ * M_PI / 180.0;
+            publishCmd(v_pub, fallback_steer_rad);
+            rec["steer_cmd"] = fallback_steer_rad;
         }
 
         // 성능 + status 토픽
@@ -943,7 +1085,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             perf_pub_.publish(perf);
 
             std_msgs::String status;
-            status.data = (cur_gear_ < 0) ? "NMPC_R" : "NMPC_LO";
+            const char* fwd_mode_s = (force_nmpc_ && !in_low_speed_) ? "NMPC_HS" : "NMPC_LO";
+            status.data = (cur_gear_ < 0) ? "NMPC_R" : fwd_mode_s;
             status_pub_.publish(status);
         }
         log_recs_.push_back(rec);

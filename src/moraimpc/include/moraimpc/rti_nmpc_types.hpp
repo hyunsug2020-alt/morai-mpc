@@ -8,9 +8,9 @@ namespace moraimpc {
 // RTI-NMPC 설정 구조체
 // 논문: 2410.12170v1.pdf (Implicit Discretization RTI-NMPC)
 struct RTINMPCConfig {
-    // 예측 파라미터 (Liu-Bai 2025 권장 horizon p=100)
-    int    N  = 60;     // 15→60 (3초 preview — R curve 끝까지 사전 인지)
-    double Ts = 0.05;   // 이산화 시간 간격 [s]
+    // 예측 파라미터 (N 60→80: 4s 미래 예측, 곡선 사전 대응 ↑)
+    int    N  = 80;
+    double Ts = 0.05;
 
     // IONIQ 5 차량 파라미터
     double wheelbase = 3.000;  // 축간거리 [m]
@@ -30,23 +30,33 @@ struct RTINMPCConfig {
     double kappa_min = -0.280;   // 최소 곡률 [1/m]
     double kappa_max =  0.280;   // 최대 곡률 [1/m]
 
-    // 비용 함수 가중치 (R 정밀 추종 + 조향 뒤틀림 억제)
-    double w_px     = 20.0;   // 10→20 (cte 정밀)
-    double w_py     = 20.0;   // 10→20
-    double w_psi    = 10.0;   // 8→10 (Liu-Bai 권장 q_x:q_θ ≈ 1:1)
+    // 비용 함수 가중치 (저속/R 기준 best — 고속은 path_follower eff_cfg에서 override)
+    double w_px     = 20.0;
+    double w_py     = 20.0;
+    double w_psi    = 10.0;
     double w_v      =  2.0;
-    double w_kappa  =  2.0;   // 1→2 (κ 추종)
+    double w_kappa  =  2.0;
     double w_av     =  0.5;
-    double w_akappa =  4.0;   // 1→4 (Wang 2019 fuzzy: 조향변화 강한 댐핑 — twisting 방지)
+    double w_akappa =  4.0;
+
+    // LTV 기법 이식 (C29) — path_follower eff_cfg와 중복 시 0으로 비활성
+    double w_av_v_gain      = 0.0;    // R(0,0) v 비례 (path_follower에서 처리)
+    double w_akappa_v_gain  = 0.0;    // R(1,1) v 비례 (path_follower에서 처리)
+    double w_psi_low_speed  = 10.0;   // 저속 hdg (default)
+    double w_psi_high_speed = 10.0;   // 고속 hdg (default)
+    double w_psi_v_low      = 3.0;
+    double w_psi_v_high     = 15.0;
+    double w_pos_curve_boost = 1.0;   // off (path_follower cte_boost 사용)
+    double curve_kappa_thresh = 0.05;
 
     // RTI/SQP 파라미터 (R1 곡선 정밀 강화)
-    int sqp_max_iter    = 3;   // 1→3 (곡선 비선형 정확도 ↑)
-    int newton_max_iter = 8;   // 3→8 (저속 stiff 영역 수렴)
+    int sqp_max_iter    = 5;
+    int newton_max_iter = 15;  // 10→15
 
     // OSQP 파라미터
-    int    osqp_max_iter   = 1000;
-    double osqp_eps_abs    = 1e-4;
-    double osqp_eps_rel    = 1e-4;
+    int    osqp_max_iter   = 2000;
+    double osqp_eps_abs    = 1e-5;
+    double osqp_eps_rel    = 1e-5;
     bool   osqp_warm_start = true;
 };
 

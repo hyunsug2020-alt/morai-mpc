@@ -280,14 +280,30 @@ bool RTINMPCController::buildAndSolveQP(
     const int Nu    = kRTINu;
     const int n_dec = N * Nu;
 
-    // 비용 행렬 Q, R
-    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(Nx, Nx);
-    Q(0,0) = cfg_.w_px;    Q(1,1) = cfg_.w_py;
-    Q(2,2) = cfg_.w_psi;   Q(3,3) = cfg_.w_v;
-    Q(4,4) = cfg_.w_kappa;
+    // LTV 기법 (C29): 곡선 boost + w_psi 속도 적응 계산
+    double max_kappa_ref = 0.0;
+    double v_avg = 0.0;
+    for (int k = 0; k <= N; ++k) {
+        max_kappa_ref = std::max(max_kappa_ref, std::abs(x_ref[k](4)));
+        v_avg += std::abs(x_ref[k](3));
+    }
+    v_avg /= (N + 1);
+    const double pos_mult = (max_kappa_ref > cfg_.curve_kappa_thresh) ? cfg_.w_pos_curve_boost : 1.0;
+    // w_psi 적응: 단 path_follower가 override(default 10에서 ±0.5 벗어남)했으면 그대로 사용
+    double w_psi_eff;
+    if (std::abs(cfg_.w_psi - 10.0) > 0.5) {
+        w_psi_eff = cfg_.w_psi;
+    } else {
+        const double t = std::clamp((v_avg - cfg_.w_psi_v_low)
+                                    / (cfg_.w_psi_v_high - cfg_.w_psi_v_low + 1e-6), 0.0, 1.0);
+        w_psi_eff = cfg_.w_psi_low_speed + t * (cfg_.w_psi_high_speed - cfg_.w_psi_low_speed);
+    }
 
-    Eigen::MatrixXd R = Eigen::MatrixXd::Zero(Nu, Nu);
-    R(0,0) = cfg_.w_av;    R(1,1) = cfg_.w_akappa;
+    // 비용 행렬 Q (스테이지 균일, 곡선 boost 적용)
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(Nx, Nx);
+    Q(0,0) = cfg_.w_px * pos_mult;    Q(1,1) = cfg_.w_py * pos_mult;
+    Q(2,2) = w_psi_eff;               Q(3,3) = cfg_.w_v;
+    Q(4,4) = cfg_.w_kappa;
 
     // 배치 예측 행렬: x(k) = Phi_k·x0 + Gamma_k·U + sigma_k
     Eigen::MatrixXd Phi   = Eigen::MatrixXd::Zero((N+1)*Nx, Nx);
@@ -320,10 +336,15 @@ bool RTINMPCController::buildAndSolveQP(
     for (int k = 0; k <= N; ++k)
         Q_bar.block(k*Nx, k*Nx, Nx, Nx) = (k == N) ? 3.0 * Q : Q;
 
-    // R_bar
+    // R_bar — LTV 기법: stage별 v 비례 input cost (직선 진동 제거 핵심)
     Eigen::MatrixXd R_bar = Eigen::MatrixXd::Zero(n_dec, n_dec);
-    for (int k = 0; k < N; ++k)
-        R_bar.block(k*Nu, k*Nu, Nu, Nu) = R;
+    for (int k = 0; k < N; ++k) {
+        const double v_k = std::abs(x_ref[k](3));
+        Eigen::Matrix2d Rk = Eigen::Matrix2d::Zero();
+        Rk(0,0) = cfg_.w_av     + cfg_.w_av_v_gain     * v_k;
+        Rk(1,1) = cfg_.w_akappa + cfg_.w_akappa_v_gain * v_k;
+        R_bar.block(k*Nu, k*Nu, Nu, Nu) = Rk;
+    }
 
     // X_ref 벡터
     Eigen::VectorXd X_ref((N+1)*Nx);
