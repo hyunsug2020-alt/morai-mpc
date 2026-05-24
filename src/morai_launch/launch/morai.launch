@@ -1,0 +1,10 @@
+<launch>
+  <!-- rosbridge (MORAI 연결, port 9090) -->
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch">
+    <arg name="port" value="9090"/>
+  </include>
+
+  <!-- MORAI 토픽 초기화 -->
+  <node pkg="morai_launch" type="morai_topic_init.py" name="morai_topic_init"
+        output="screen"/>
+</launch>
