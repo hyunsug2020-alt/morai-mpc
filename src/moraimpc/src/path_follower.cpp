@@ -257,9 +257,9 @@ void PathFollower::buildObstacleCorridor(const std::vector<double>& v_profile,
         if (s_obs_now < -2.0) continue;
         // 2) 너무 먼 NPC 무시
         if (s_obs_now > cfg_.obs_s_window) continue;
-        // 3) path-d 너무 큰 NPC 무시 (lane 폭 + 안전 margin 밖)
+        // 3) path-d 너무 큰 NPC 무시 — 경로 위 NPC만 회피 (±2m + NPC half)
         double lat_half = std::max(ob.sy, 1.0) * 0.5 + cfg_.obs_lat_safety;
-        if (std::abs(d_obs_now) > 4.0 + lat_half) continue;   // path lateral band ±4m
+        if (std::abs(d_obs_now) > 2.0 + lat_half) continue;   // ±4→±2 축소
 
         active_count++;
         if (s_obs_now < min_obs_s) min_obs_s = s_obs_now;
@@ -855,9 +855,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             // 회피 종료 cooldown: 큰 cte/yaw 회복용 저속 (13 km/h)
             v_mag_kmh = 13.0;
         } else if (in_recov_ && cur_gear_ > 0) {
-            // RECOV (force_nmpc=true 때 비활성된 분기 대체) — 큰 cte/yaw 발산 회복용 저속
-            // NMPC가 이 속도로 ref_path lookahead 시작점 따라가며 부드럽게 정렬
-            v_mag_kmh = 8.0;
+            // RECOV — 큰 cte/yaw 회복용. 8→25 km/h 부스트 (정지 시 ramp-up 가속)
+            v_mag_kmh = 25.0;
         } else {
             // 고속 D 일반주행: 사전감속 3중 제약 (A·B·C 결합)
             //   C) 속도비례 lookahead — 빠를수록 더 멀리 곡률 탐색
@@ -1054,15 +1053,45 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         ego_pose.orientation.z = std::sin(cur_yaw_ * 0.5);
         ego_pose.orientation.w = std::cos(cur_yaw_ * 0.5);
 
-        // 장애물 NMPC stage 제약 (방안 B) — Object_topic 수집된 obstacles_ → 변환 전달
+        // 장애물 NMPC stage 제약 — 차량 현재 위치 기준 전방 path 위 NPC만 활성
+        // (1) lateral d 필터: |d_path| ≤ 2m + NPC half (다른 차선 무시)
+        // (2) longitudinal idx 필터: NPC의 path 매칭점이 차량 nearest_idx ± lookahead 안 (차선 겹침 / 뒤편 NPC 무시)
         if (rti_cfg_.obs_enable && !obstacles_.empty()) {
+            const int n_wp = (int)wp_x_.size();
+            // 차량 진행 전방 lookahead window [현재, 현재+N], wp_spacing 0.3m 기준 ~30m (NMPC obs_active_dist 8m + 여유)
+            const int idx_lookahead = std::max(20, (int)(30.0 / std::max(wp_spacing_, 0.1)));
+            const int idx_lo = std::max(0, nearest_idx_ - 5);
+            const int idx_hi = std::min(n_wp - 1, nearest_idx_ + idx_lookahead);
+
+            auto projectPath = [&](double ox, double oy) {
+                // 차량 전방 window 내에서만 nearest wp 검색 (전체 path 검색 시 차선 겹침 잘못 매칭)
+                double best_d2 = 1e18; int best = idx_lo;
+                for (int i = idx_lo; i <= idx_hi; ++i) {
+                    double dx = wp_x_[i] - ox, dy = wp_y_[i] - oy;
+                    double dd = dx*dx + dy*dy;
+                    if (dd < best_d2) { best_d2 = dd; best = i; }
+                }
+                int bi1 = std::min(best + 1, n_wp - 1);
+                double th = std::atan2(wp_y_[bi1] - wp_y_[best], wp_x_[bi1] - wp_x_[best]);
+                double rx = ox - wp_x_[best], ry = oy - wp_y_[best];
+                double d = -std::sin(th) * rx + std::cos(th) * ry;
+                return std::make_pair(best, d);
+            };
+
             std::vector<RTINMPCObstacle> nmpc_obs;
             nmpc_obs.reserve(obstacles_.size());
             for (const auto& o : obstacles_) {
+                auto [obs_idx, d_proj] = projectPath(o.x, o.y);
+                // (1) lateral 필터 — 다른 차선 무시
+                double lat_half = std::max(o.sy, 1.0) * 0.5;
+                if (std::abs(d_proj) > 2.0 + lat_half) continue;
+                // (2) longitudinal 필터 — 매칭점이 lookahead 끝점이면 실제로는 path 밖 NPC (포함 안 함)
+                if (obs_idx >= idx_hi - 1) continue;
+                // (3) 차량 뒤편 NPC 무시 (현재 idx 이전)
+                if (obs_idx < nearest_idx_ - 2) continue;
                 RTINMPCObstacle no;
                 no.cx = o.x;
                 no.cy = o.y;
-                // bounding circle: 차량 footprint sx/sy를 원으로 근사
                 const double r_obs = 0.5 * std::hypot(std::max(o.sx, 1.0),
                                                       std::max(o.sy, 1.0));
                 no.r_safe = r_obs + rti_cfg_.obs_safe_margin;

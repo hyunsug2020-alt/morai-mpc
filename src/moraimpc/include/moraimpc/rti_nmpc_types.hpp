@@ -63,8 +63,8 @@ struct RTINMPCConfig {
     // 비선형 거리 제약을 nominal trajectory 둘레로 1차 Taylor → 선형 half-space
     // soft slack penalty로 infeasibility 방지
     bool   obs_enable        = false;   // launch에서 true 설정 시만 활성
-    double obs_safe_margin   = 1.5;     // r_safe = r_obstacle + margin [m]
-    double obs_active_dist   = 30.0;    // 이 거리 내 obstacle만 stage 제약 추가
+    double obs_safe_margin   = 1.0;     // 1.5→1.0 회피 거리 축소
+    double obs_active_dist   = 8.0;     // 30→8 활성 거리 축소 (회피 조기 트리거 방지)
     int    obs_max_count     = 5;       // 동시 처리 최대 obstacle 수
     int    obs_skip_first    = 1;       // k=0..skip-1 stage는 제약 skip (현재 ego 위치)
     double w_obs_slack_quad  = 1e5;     // slack 2차 penalty

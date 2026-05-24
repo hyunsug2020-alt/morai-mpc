@@ -54,7 +54,7 @@ struct LTVMPCConfig {
     // --- 동적 장애물 회피 (Frenet d 제약 + slack) ---
     double obs_lat_safety   = 0.9;   // [m] NPC lateral half-width + safety margin
     double obs_long_safety  = 2.5;   // [m] NPC longitudinal half + safety
-    double obs_s_window     = 12.0;  // [m] 활성화 거리 (NPC 가까이 올 때만, 너무 일찍 회피 방지)
+    double obs_s_window     = 12.0;  // b1f96bb 원본값 복원 (LTV corridor 활성 거리)
     double w_slack_quad     = 1.0e5; // slack quadratic penalty
     double w_slack_lin      = 1.0e3; // slack linear penalty
     double obs_v_decel_kmh  = 5.0;   // (미사용)

@@ -406,18 +406,16 @@ bool RTINMPCController::buildAndSolveQP(
     // ────────────────────────────────────────────────────────────
     std::vector<RTINMPCObstacle> active_obs;
     if (cfg_.obs_enable && !obstacles_.empty()) {
-        // 각 obstacle에 대해 예측 경로상 최소 거리 계산 → 활성 cap
+        // 차량 현재 위치(x0) 기준 거리만 사용 — 예측 경로 전체 검사 시 미래 path NPC도 활성되어 조기 회피 발생
+        const double ego_x = x_ref[0](0), ego_y = x_ref[0](1);
         std::vector<std::pair<double, int>> dist_idx;
         for (size_t i = 0; i < obstacles_.size(); ++i) {
             const auto& o = obstacles_[i];
-            double d_min = std::numeric_limits<double>::max();
-            for (int k = 0; k <= N; ++k) {
-                const double dx = x_ref[k](0) - o.cx;
-                const double dy = x_ref[k](1) - o.cy;
-                d_min = std::min(d_min, std::sqrt(dx*dx + dy*dy));
-            }
-            if (d_min < cfg_.obs_active_dist + o.r_safe) {
-                dist_idx.emplace_back(d_min, (int)i);
+            const double dx = ego_x - o.cx;
+            const double dy = ego_y - o.cy;
+            const double d_now = std::sqrt(dx*dx + dy*dy);
+            if (d_now < cfg_.obs_active_dist + o.r_safe) {
+                dist_idx.emplace_back(d_now, (int)i);
             }
         }
         std::sort(dist_idx.begin(), dist_idx.end());
