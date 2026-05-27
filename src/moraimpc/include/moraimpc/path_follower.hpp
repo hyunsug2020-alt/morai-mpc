@@ -79,8 +79,8 @@ private:
     // ═══════════════════════════════════════════════════════════════
     // 상수
     // ═══════════════════════════════════════════════════════════════
-    static constexpr int    kSearchWindow  = 100;           // 300→100 (self-overlapping path 잘못 매칭 방지)
-    static constexpr int    kMaxIndexStep  =  2;            // 5→2 (차량 30km/h≈1.4wp/frame, frame당 점프 cap)
+    static constexpr int    kSearchWindow  = 300;           // 원본 복원 (일반 추종 영향 차단)
+    static constexpr int    kMaxIndexStep  =  5;            // 원본 복원
     static constexpr double kRecovDist      = 1.5;            // [m]  RECOV 진입 (1.2→1.5: MPC가 더 처리)
     static constexpr double kRecovDistExit = 0.50;           // [m]  RECOV 탈출 (경로에 더 붙고 탈출)
     static constexpr double kRecovHdgThresh= 35.0*M_PI/180.0;// [rad] RECOV 진입: 전진 헤딩 기준
@@ -199,7 +199,7 @@ private:
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
     double k_stanley_            = 0.5;
-    double max_steer_rate_       = 25.0; // 40→25°/s (40은 진동 야기. 25 안정 best)
+    double max_steer_rate_       = 18.0; // 원본 복원 (회피 외 영역 영향 차단)
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;

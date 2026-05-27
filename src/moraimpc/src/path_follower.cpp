@@ -965,12 +965,10 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 double v_cap_kmh = std::sqrt(a_lat_max / max_k_d) * 3.6;
                 return std::min(v_floor, v_cap_kmh);
             };
-            // floor를 target_vel과 동기 — hardcoded 38 무시되던 버그 fix
-            const double tv_kmh = cfg_.target_vel * 3.6;  // R/D 부호 제거 (abs 사용)
-            const double tv_abs = std::abs(tv_kmh);
-            if (max_k_d < 0.08)      v_kmh = std::max(cap_by_alat(tv_abs), v_kmh);
-            else if (max_k_d < 0.15) v_kmh = std::max(cap_by_alat(tv_abs * 0.7), v_kmh);
-            else if (max_k_d < 0.20) v_kmh = std::max(cap_by_alat(tv_abs * 0.5), v_kmh);
+            // 원본 v_floor 복원 (일반 추종 영향 차단)
+            if (max_k_d < 0.08)      v_kmh = std::max(cap_by_alat(38.0), v_kmh);
+            else if (max_k_d < 0.15) v_kmh = std::max(cap_by_alat(26.0), v_kmh);
+            else if (max_k_d < 0.20) v_kmh = std::max(cap_by_alat(18.0), v_kmh);
             // sharp(κ>0.20) 자동감속
 
             // A) rate-limit (target_vel step → 부드러운 감속 = 사전감속)
@@ -1029,17 +1027,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             //   원리: NMPC가 path 곡률을 ref_kappa로 직접 따라가게 → cte 보정용 풀스트로크 방지
             const double v_kmh_now = std::abs(cur_v_) * 3.6;
             const bool   straight  = (max_kappa_ahead < 0.03);  // κ<0.03 ≈ 반경 33m+
-            // ── 회피 영역 감지 — active(진입 ~ 통과) vs cooldown(통과 후 30wp)
-            bool in_avoid_active = false;     // 회피 영역 안 또는 진입 직전
-            bool in_avoid_cooldown = false;   // 회피 통과 직후 (path 복귀 추종)
+            // ── 회피 영역 감지 — 현재 wp만 보고 결정 (일반 추종 영향 차단)
+            bool in_avoid_active = false;     // 차량이 회피 영역 wp에 있을 때만
+            bool in_avoid_cooldown = false;   // 회피 통과 직후 (path 복귀)
             if (!wp_avoid_off_.empty()) {
-                int la_fwd  = std::min((int)wp_avoid_off_.size() - 1, nearest_idx_ + 30);
-                // active: 현재 + 앞 30wp (진입 준비 + 통과 중)
-                for (int i = nearest_idx_; i <= la_fwd; ++i) {
-                    if (wp_avoid_off_[i] > 0.1) { in_avoid_active = true; break; }
-                }
-                if (!in_avoid_active) {
-                    // cooldown: 뒤 30wp 안 회피 영역 있으면
+                if (nearest_idx_ < (int)wp_avoid_off_.size() && wp_avoid_off_[nearest_idx_] > 0.1) {
+                    in_avoid_active = true;
+                } else {
+                    // cooldown: 뒤 30wp 안에 회피 wp 있으면
                     int la_back = std::max(0, nearest_idx_ - 30);
                     for (int i = la_back; i < nearest_idx_; ++i) {
                         if (wp_avoid_off_[i] > 0.1) { in_avoid_cooldown = true; break; }
@@ -1058,15 +1053,15 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 eff_cfg.akappa_max =  0.08;
                 eff_cfg.target_velocity = (cur_gear_ < 0 ? -1.0 : 1.0) * 18.0 / 3.6;
             } else if (in_avoid_cooldown) {
-                // 회피 cooldown — yaw 정렬 강화 (path 원본 방향 복귀)
-                eff_cfg.w_px      = 30.0;   // cte 추종 적정
-                eff_cfg.w_py      = 30.0;
-                eff_cfg.w_psi     = 40.0;   // yaw 강화 (path tangent 정렬 → path 복귀)
-                eff_cfg.w_kappa   = 20.0;
-                eff_cfg.w_akappa  = 100.0;  // 진동 방지
-                eff_cfg.akappa_min = -0.05;
-                eff_cfg.akappa_max =  0.05;
-                eff_cfg.target_velocity = (cur_gear_ < 0 ? -1.0 : 1.0) * 22.0 / 3.6;
+                // 회피 복귀 모드 — cte 강제 (path 원본 강하게 끌어당김)
+                eff_cfg.w_px      = 80.0;   // 30→80 cte cost 대폭 증가 (복귀 강제)
+                eff_cfg.w_py      = 80.0;
+                eff_cfg.w_psi     = 15.0;   // 40→15 yaw 약화 (cte 우선)
+                eff_cfg.w_kappa   = 30.0;   // 20→30 path curvature feedforward 강화
+                eff_cfg.w_akappa  = 100.0;
+                eff_cfg.akappa_min = -0.06;
+                eff_cfg.akappa_max =  0.06;
+                eff_cfg.target_velocity = (cur_gear_ < 0 ? -1.0 : 1.0) * 20.0 / 3.6;  // 22→20 천천히 복귀
             } else if (straight && v_kmh_now > 20.0) {
                 // 일반 직선 고속 (안전 default — 추종 안정성 유지)
                 eff_cfg.w_px      = 15.0;
@@ -1081,8 +1076,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 const bool sharp = (max_kappa_ahead > 0.15);
                 const double cte_abs = std::abs(near.signed_cte);
                 const double cte_boost = std::clamp(1.0 + 1.2 * std::max(0.0, cte_abs - 0.2), 1.0, 2.4);
-                eff_cfg.w_px      = 18.0 * cte_boost;  // 8→18: 곡선 cte 누적 (path 끝 sharp curve) 방지
-                eff_cfg.w_py      = 18.0 * cte_boost;
+                eff_cfg.w_px      =  8.0 * cte_boost;  // 일반 곡선 — 원본 best 복원 (사용자: 회피 외 영향 X)
+                eff_cfg.w_py      =  8.0 * cte_boost;
                 eff_cfg.w_psi     = sharp ? 28.0 : 22.0;
                 eff_cfg.w_kappa   = sharp ? 14.0 : 12.0;
                 const double base_akappa = sharp ? 30.0 : 25.0;
@@ -1163,7 +1158,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 if (wp_avoid_off_[i] > 0.1) { ego_in_avoid = true; break; }
             }
         }
-        constexpr double kActuatorLag = 0.12;  // [s] sim 차량 steer servo lag
+        constexpr double kActuatorLag = 0.12;  // 0.15 over-prediction → 0.12 anchor best (1.20m 영역)
         double lookahead_x = cur_x_;
         double lookahead_y = cur_y_;
         double lookahead_yaw = cur_yaw_;
