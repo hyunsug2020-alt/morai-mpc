@@ -79,8 +79,8 @@ private:
     // ═══════════════════════════════════════════════════════════════
     // 상수
     // ═══════════════════════════════════════════════════════════════
-    static constexpr int    kSearchWindow  = 300;
-    static constexpr int    kMaxIndexStep  =  5;            // 30→5: idx 점프 강하게 제한 (RECOV 발산 방지)
+    static constexpr int    kSearchWindow  = 100;           // 300→100 (self-overlapping path 잘못 매칭 방지)
+    static constexpr int    kMaxIndexStep  =  2;            // 5→2 (차량 30km/h≈1.4wp/frame, frame당 점프 cap)
     static constexpr double kRecovDist      = 1.5;            // [m]  RECOV 진입 (1.2→1.5: MPC가 더 처리)
     static constexpr double kRecovDistExit = 0.50;           // [m]  RECOV 탈출 (경로에 더 붙고 탈출)
     static constexpr double kRecovHdgThresh= 35.0*M_PI/180.0;// [rad] RECOV 진입: 전진 헤딩 기준
@@ -153,6 +153,7 @@ private:
     // 경로
     // ═══════════════════════════════════════════════════════════════
     std::vector<double> wp_x_, wp_y_, wp_h_, wp_k_;
+    std::vector<double> wp_s_;      // 누적 path 거리 [m] (loadPath에서 계산) — arc-length 기반 nearest 검색용
     std::vector<int>    wp_gear_;   // +1=전진(D), -1=후진(R)
     std::vector<std::pair<int,int>> gear_segments_;  // [start, end] inclusive — 같은 기어 연속 구간
     int  cur_segment_ = 0;          // gear_segments_ 내 현재 위치
@@ -173,6 +174,7 @@ private:
     // ═══════════════════════════════════════════════════════════════
     int  nearest_idx_ = 0;
     bool search_init_ = false;
+    double vehicle_s_ = 0.0;        // 차량의 path 진행 거리 [m] — self-overlap path 강건 매칭용
     int  cur_gear_    = 1;          // +1=D, -1=R (현재 기어 상태)
     bool gear_switching_ = false;   // 기어 전환 중 플래그
     bool gear_initialized_ = false; // 첫 틱에 MORAI에 기어 명령 보냈는지
@@ -196,7 +198,7 @@ private:
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
     double k_stanley_            = 0.5;
-    double max_steer_rate_       = 18.0; // 60km/h 빠른 반응 (rate-limit으로 cte buildup 막음)
+    double max_steer_rate_       = 25.0; // 40→25°/s (40은 진동 야기. 25 안정 best)
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;

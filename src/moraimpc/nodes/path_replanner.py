@@ -21,8 +21,11 @@ class PathReplanner:
         self.out_path = rospy.get_param('~out_path',
             os.path.expanduser('~/morai-mpc/src/moraimpc/data/mixed_avoid.json'))
         self.shift_max = rospy.get_param('~shift_max', 2.5)        # ±2.5m lateral 우회
-        self.bulge_half_m = rospy.get_param('~bulge_half_m', 12.0)  # NPC 중심 ±12m smooth
+        self.bulge_half_m = rospy.get_param('~bulge_half_m', 12.0)  # 호환용 폴백
+        self.bulge_half_front_m = rospy.get_param('~bulge_half_front_m', self.bulge_half_m)  # NPC 앞 진입 taper
+        self.bulge_half_back_m  = rospy.get_param('~bulge_half_back_m', 5.0)                  # NPC 뒤 복귀 taper (단축)
         self.lat_thresh = rospy.get_param('~lat_thresh', 1.5)      # path 위 NPC 판정 lateral d
+        self.merge_threshold_m = rospy.get_param('~merge_threshold_m', 50.0)  # plateau merge 복원 (분리 bulge → 두 번 회피 + 오버슛 야기)
         self.wait_npcs_sec = rospy.get_param('~wait_npcs_sec', 3.0)
 
         self.objs = None
@@ -78,8 +81,13 @@ class PathReplanner:
     def _apply_bulge(self, wps, npcs):
         n = len(wps)
         wp_spacing = max(0.3, math.hypot(wps[1]['x'] - wps[0]['x'], wps[1]['y'] - wps[0]['y']))
-        half_wp = max(20, int(self.bulge_half_m / wp_spacing))
-        bulges = []
+        half_front = max(20, int(self.bulge_half_front_m / wp_spacing))
+        half_back  = max(10, int(self.bulge_half_back_m  / wp_spacing))
+        merge_thr_wp = int(self.merge_threshold_m / wp_spacing)
+        rospy.loginfo(f"[replanner] taper front={self.bulge_half_front_m:.1f}m({half_front}wp) back={self.bulge_half_back_m:.1f}m({half_back}wp) merge_thr={self.merge_threshold_m:.1f}m")
+
+        # 1) NPC별 (c_idx, d_signed) 계산 — 회피 방향 통일 후 shift 결정
+        candidates = []
         for npc in npcs:
             ox, oy = npc.position.x, npc.position.y
             idx = self._nearest_idx(wps, ox, oy)
@@ -89,19 +97,57 @@ class PathReplanner:
             if abs(d_npc) > self.lat_thresh:
                 rospy.loginfo(f"[replanner] NPC ({ox:.1f},{oy:.1f}) d={d_npc:+.2f}m path 옆 → skip")
                 continue
-            shift = -self.shift_max if d_npc >= 0 else self.shift_max
-            rospy.loginfo(f"[replanner] NPC ({ox:.1f},{oy:.1f}) wp[{idx}] d={d_npc:+.2f}m shift={shift:+.2f}")
-            bulges.append((idx, shift))
+            candidates.append((idx, d_npc, ox, oy))
 
+        # 회피 방향 majority: d 절대값 가중 (path 중앙에 가까운 NPC는 약한 신호)
+        if candidates:
+            score = sum(d for _, d, _, _ in candidates)
+            # 모두 동일 방향으로 통일: score >= 0이면 좌측 NPC 가정 → 우측 회피(-shift), 반대도 동일
+            unified_shift = -self.shift_max if score >= 0 else self.shift_max
+            rospy.loginfo(f"[replanner] d_score={score:+.2f} → 통일 회피방향 shift={unified_shift:+.2f}")
+        else:
+            unified_shift = 0.0
+
+        bulges = []
+        for idx, d_npc, ox, oy in candidates:
+            rospy.loginfo(f"[replanner] NPC ({ox:.1f},{oy:.1f}) wp[{idx}] d={d_npc:+.2f}m shift={unified_shift:+.2f}")
+            bulges.append((idx, unified_shift))
+
+        # 2) 같은 방향 인접 NPC를 plateau group으로 merge (path nearest_idx 순)
+        bulges.sort(key=lambda b: b[0])
+        groups = []
+        for c_idx, sh in bulges:
+            if groups and (c_idx - groups[-1]['end'] < merge_thr_wp) and (sh * groups[-1]['shift'] > 0):
+                # 같은 방향 + 가까움 → 그룹 확장 (plateau 연장)
+                groups[-1]['end'] = c_idx
+                groups[-1]['members'].append(c_idx)
+            else:
+                groups.append({'start': c_idx, 'end': c_idx, 'shift': sh, 'members': [c_idx]})
+        for g in groups:
+            plat_m = (g['end'] - g['start']) * wp_spacing
+            rospy.loginfo(f"[replanner]   group: wp[{g['start']}..{g['end']}] plateau={plat_m:.1f}m shift={g['shift']:+.2f} NPCs={len(g['members'])}")
+
+        # 3) wp별 lateral offset = group 별 weight (사이 plateau=1) 합
         new = []
         for i, w in enumerate(wps):
             total = 0.0
-            for c_idx, sh in bulges:
-                dist = abs(i - c_idx)
-                if dist >= half_wp:
-                    continue
-                weight = 0.5 * (1.0 + math.cos(math.pi * dist / half_wp))
-                total += sh * weight
+            for g in groups:
+                if i < g['start']:
+                    dist = g['start'] - i
+                    if dist >= half_front: continue
+                    t = dist / half_front
+                    weight = 1.0 - (10*t**3 - 15*t**4 + 6*t**5)
+                elif i > g['end']:
+                    dist = i - g['end']
+                    if dist >= half_back: continue
+                    t = dist / half_back
+                    weight = 1.0 - (10*t**3 - 15*t**4 + 6*t**5)
+                else:
+                    weight = 1.0   # plateau: NPC들 사이 lateral 일정
+                total += g['shift'] * weight
+            # 같은 방향이면 cap, 반대 방향이면 그대로 (희귀 케이스)
+            if abs(total) > self.shift_max * 1.05:
+                total = math.copysign(self.shift_max, total)
             th = self._path_yaw(wps, i)
             nx = w['x'] + total * (-math.sin(th))
             ny = w['y'] + total * ( math.cos(th))

@@ -51,3 +51,7 @@ find_package(OpenCV REQUIRED)
 add_executable(mpc_dashboard_node src/mpc_dashboard_node.cpp)
 target_include_directories(mpc_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(mpc_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})
+
+add_executable(simple_dashboard_node src/simple_dashboard_node.cpp)
+target_include_directories(simple_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(simple_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})

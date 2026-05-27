@@ -176,8 +176,14 @@ void PathFollower::loadPath(const std::string& file) {
         for (int i = 1; i < n; ++i) total += std::hypot(wp_x_[i] - wp_x_[i-1], wp_y_[i] - wp_y_[i-1]);
         wp_spacing_ = total / (n - 1);
     }
-    ROS_INFO("[PathFollower] %d wp / %zu gear segments (start gear=%s)",
-             n, gear_segments_.size(), (cur_gear_ < 0) ? "R" : "D");
+    // ── 누적 path 거리 wp_s_ (arc-length 기반 nearest 검색용) ────
+    wp_s_.assign(n, 0.0);
+    for (int i = 1; i < n; ++i) {
+        wp_s_[i] = wp_s_[i-1] + std::hypot(wp_x_[i] - wp_x_[i-1], wp_y_[i] - wp_y_[i-1]);
+    }
+    vehicle_s_ = 0.0;  // 차량은 path 시작점에서 출발 가정
+    ROS_INFO("[PathFollower] %d wp / %zu gear segments (start gear=%s) total_s=%.1fm",
+             n, gear_segments_.size(), (cur_gear_ < 0) ? "R" : "D", n>0 ? wp_s_[n-1] : 0.0);
 }
 
 void PathFollower::avoidanceCallback(const std_msgs::Float64::ConstPtr& msg) {
@@ -345,36 +351,69 @@ PathFollower::NearResult PathFollower::findNearest() {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // arc-length s 기반 nearest 검색 (self-overlapping path 강건)
+    //   - 차량 vehicle_s_ 추적값 기준 [s-5m, s+30m] 윈도우 안에서만 매칭
+    //   - self-overlap 두 번째 lap wp는 s 차이 크므로 자동 제외
+    //   - 첫 frame search_init_=false: vehicle_s_=0 → wp[0] 근처
+    // ═══════════════════════════════════════════════════════════════
+    auto s_to_idx = [&](double s_target, int idx_lo, int idx_hi) -> int {
+        // wp_s_가 monotonic 가정 — std::lower_bound로 idx 찾음
+        auto it = std::lower_bound(wp_s_.begin() + idx_lo, wp_s_.begin() + idx_hi + 1, s_target);
+        int idx = static_cast<int>(it - wp_s_.begin());
+        return std::clamp(idx, idx_lo, idx_hi);
+    };
+
+    const double S_BACK    = 5.0;    // 차량 뒤로 검색 여유 [m]
+    const double S_FORWARD = 30.0;   // 차량 앞으로 검색 거리 [m]
+
+    int idx_lo = s_to_idx(vehicle_s_ - S_BACK,    allow_lo, allow_hi);
+    int idx_hi = s_to_idx(vehicle_s_ + S_FORWARD, allow_lo, allow_hi);
+    if (idx_hi < idx_lo) idx_hi = idx_lo;
+
     double min_d = std::numeric_limits<double>::max();
-    int closest = std::clamp(nearest_idx_, allow_lo, allow_hi);
-    if (search_init_) {
-        int w_s = std::max(allow_lo, nearest_idx_ - 10);
-        int w_e = std::min(allow_hi, nearest_idx_ + kSearchWindow);
-        for (int i = w_s; i <= w_e; ++i) {
-            double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
-            if (dx * hx + dy * hy < kDotThreshold) continue;
-            double dist = std::hypot(dx, dy);
-            if (dist < min_d) { min_d = dist; closest = i; }
+    int closest = std::clamp(nearest_idx_, idx_lo, idx_hi);
+    bool found = false;
+    for (int i = idx_lo; i <= idx_hi; ++i) {
+        double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
+        double dist = std::hypot(dx, dy);
+        // 차량 진행 방향(또는 R: 반대) 우선
+        bool fwd = (dx * hx + dy * hy >= kDotThreshold);
+        if (!found || (fwd && dist < min_d) || (!fwd && dist < min_d && min_d > kRecovDist)) {
+            min_d = dist; closest = i; found = true;
         }
     }
-    if (!search_init_ || min_d > kRecovDist) {
-        double best = std::numeric_limits<double>::max(); int best_idx = closest; bool found_fwd = false;
+
+    // window 안에 매칭 못 했거나 cte 매우 큼 → 전체 segment scan (fallback, 1회)
+    if (!found || min_d > 10.0) {
+        double best = std::numeric_limits<double>::max(); int best_idx = closest; bool fwd_found = false;
         for (int i = allow_lo; i <= allow_hi; ++i) {
             double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_, dist = std::hypot(dx, dy);
-            if (dx * hx + dy * hy > 0.0) { if (!found_fwd || dist < best) { best = dist; best_idx = i; found_fwd = true; } }
-            else if (!found_fwd && dist < best) { best = dist; best_idx = i; }
+            bool fwd = (dx * hx + dy * hy > 0.0);
+            if (fwd) {
+                if (!fwd_found || dist < best) { best = dist; best_idx = i; fwd_found = true; }
+            } else if (!fwd_found && dist < best) {
+                best = dist; best_idx = i;
+            }
         }
-        closest = best_idx; min_d = best; search_init_ = true;
+        closest = best_idx; min_d = best;
     }
+    search_init_ = true;
+
+    // ── nidx 점프 cap (kMaxIndexStep): self-overlap 점프 추가 방어 ──
     int delta = closest - nearest_idx_;
     if (delta < 0) closest = nearest_idx_;
-    // 항상 idx 점프 cap (이전엔 dist <= kRecovDist일 때만 → RECOV 들어가면 cap 풀려 발산함)
     else if (delta > kMaxIndexStep) closest = nearest_idx_ + kMaxIndexStep;
     nearest_idx_ = std::min(closest, n - 1);
+
     int ni = nearest_idx_, ni1 = std::min(ni + 1, n - 1);
     double path_yaw = std::atan2(wp_y_[ni1] - wp_y_[ni], wp_x_[ni1] - wp_x_[ni]);
     double rx = cur_x_ - wp_x_[ni], ry = cur_y_ - wp_y_[ni];
     double signed_cte = -std::sin(path_yaw) * rx + std::cos(path_yaw) * ry;
+
+    // ── vehicle_s_ 갱신: nearest wp의 s + path tangent에 차량 위치 투영 ──
+    double proj_along = std::cos(path_yaw) * rx + std::sin(path_yaw) * ry;
+    vehicle_s_ = wp_s_[ni] + proj_along;
     // legacy /avoidance_offset 평행이동 — 신규 corridor와 중복되어 비활성화 (2026-05-18)
     // if (avoidance_enabled_) { signed_cte -= avoidance_offset_; }
     // 후진 시: 차량은 경로 진행 방향의 반대를 향하므로 π 보정
@@ -932,11 +971,12 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             eff_cfg.w_py  = 30.0;
             eff_cfg.w_psi =  6.0;     // 8 → 6 (헤딩 가중치 약간 낮춤 — 위치 우선)
         } else if (cur_gear_ < 0) {
-            // R 모드: cte 추종 강화 (cte 2m+ 이탈 방지) + κ feedforward 강화
+            // R 모드: cte 추종 강화 + yaw 강화 (R hdg 36° → 안정화)
             eff_cfg.w_px    = 35.0;
             eff_cfg.w_py    = 35.0;
-            eff_cfg.w_psi   = 12.0;
-            eff_cfg.w_kappa =  3.0;
+            eff_cfg.w_psi   = 28.0;   // 12→28 yaw 정렬 강화 (R 후진 추종 정확도)
+            eff_cfg.w_kappa =  5.0;   // 3→5 curvature feedforward 강화
+            eff_cfg.w_akappa = 40.0;  // steer rate cost (진동 방지)
         } else if (obs_cooldown) {
             // 회피 종료 cooldown: yaw 정렬 우선 + cte 부드럽게 회복 (overshoot 방지)
             eff_cfg.w_px    = 15.0;   // lateral 압박 약화 (큰 yaw 변화 강요 X)
@@ -962,13 +1002,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             const double v_kmh_now = std::abs(cur_v_) * 3.6;
             const bool   straight  = (max_kappa_ahead < 0.03);  // κ<0.03 ≈ 반경 33m+
             if (straight && v_kmh_now > 20.0) {
-                // 직선 고속 (C43: 진동 완전 제거 목표)
-                eff_cfg.w_px      =  5.0;
-                eff_cfg.w_py      =  5.0;
-                eff_cfg.w_psi     =  8.0;
+                // 안전 default (w_akappa 풀면 진동 발산 — 강 rate cost 유지)
+                eff_cfg.w_px      = 15.0;
+                eff_cfg.w_py      = 15.0;
+                eff_cfg.w_psi     = 16.0;
                 eff_cfg.w_kappa   = 12.0;
-                eff_cfg.w_akappa  = 60.0;
-                eff_cfg.akappa_min = -0.04; // 0.06→0.04: 미세 변화 완전 차단
+                eff_cfg.w_akappa  = 90.0;   // 강 steer rate cost (진동 방지)
+                eff_cfg.akappa_min = -0.04;
                 eff_cfg.akappa_max =  0.04;
             } else if (!straight) {
                 // 곡선 분기 (C45 best 복원)

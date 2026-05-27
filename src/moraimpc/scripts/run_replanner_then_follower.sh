@@ -16,7 +16,8 @@ fi
 NODES_DIR="$(dirname "$SCRIPT_DIR")/nodes"
 /usr/bin/python3 "$NODES_DIR/path_replanner.py" \
     _in_path:="$PATH_SMOOTH" _out_path:="$PATH_FINAL" \
-    _shift_max:=2.5 _bulge_half_m:=12.0 _wait_npcs_sec:=3.0 \
+    _shift_max:=1.5 _bulge_half_front_m:=40.0 _bulge_half_back_m:=12.0 \
+    _wait_npcs_sec:=3.0 \
     && echo "[wrap] replanning OK"
 
 # 3) path_follower 실행
