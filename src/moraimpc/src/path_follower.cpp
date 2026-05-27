@@ -1027,20 +1027,9 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             //   원리: NMPC가 path 곡률을 ref_kappa로 직접 따라가게 → cte 보정용 풀스트로크 방지
             const double v_kmh_now = std::abs(cur_v_) * 3.6;
             const bool   straight  = (max_kappa_ahead < 0.03);  // κ<0.03 ≈ 반경 33m+
-            // ── 회피 영역 감지 — 현재 wp만 보고 결정 (일반 추종 영향 차단)
-            bool in_avoid_active = false;     // 차량이 회피 영역 wp에 있을 때만
-            bool in_avoid_cooldown = false;   // 회피 통과 직후 (path 복귀)
-            if (!wp_avoid_off_.empty()) {
-                if (nearest_idx_ < (int)wp_avoid_off_.size() && wp_avoid_off_[nearest_idx_] > 0.1) {
-                    in_avoid_active = true;
-                } else {
-                    // cooldown: 뒤 30wp 안에 회피 wp 있으면
-                    int la_back = std::max(0, nearest_idx_ - 30);
-                    for (int i = la_back; i < nearest_idx_; ++i) {
-                        if (wp_avoid_off_[i] > 0.1) { in_avoid_cooldown = true; break; }
-                    }
-                }
-            }
+            // 회피 모드 분기 비활성 — follower는 기존 NMPC default로 추종, 회피는 path_replanner 담당
+            bool in_avoid_active = false;
+            bool in_avoid_cooldown = false;
             bool in_avoid = in_avoid_active || in_avoid_cooldown;
             if (in_avoid_active) {
                 // 회피 active — cte 최우선 (path 정확 lateral 추종)
@@ -1148,30 +1137,12 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         }
 
         // ── ego pose 구성 ──
-        // ── NMPC actuator delay 보상 (lookahead shift, 논문 기반)
-        //    회피 영역 detect (in_avoid scope 다름 — 여기서 재계산)
-        bool ego_in_avoid = false;
-        if (!wp_avoid_off_.empty()) {
-            int la_fwd  = std::min((int)wp_avoid_off_.size() - 1, nearest_idx_ + 30);
-            int la_back = std::max(0, nearest_idx_ - 30);
-            for (int i = la_back; i <= la_fwd; ++i) {
-                if (wp_avoid_off_[i] > 0.1) { ego_in_avoid = true; break; }
-            }
-        }
-        constexpr double kActuatorLag = 0.12;  // 0.15 over-prediction → 0.12 anchor best (1.20m 영역)
-        double lookahead_x = cur_x_;
-        double lookahead_y = cur_y_;
-        double lookahead_yaw = cur_yaw_;
-        if (ego_in_avoid) {
-            lookahead_x   = cur_x_ + cur_v_signed_ * std::cos(cur_yaw_) * kActuatorLag;
-            lookahead_y   = cur_y_ + cur_v_signed_ * std::sin(cur_yaw_) * kActuatorLag;
-            lookahead_yaw = cur_yaw_ + cur_v_signed_ * current_kappa_ * kActuatorLag;
-        }
+        // 일반 ego pose (follower는 path만 추종, 회피는 path_replanner 담당)
         geometry_msgs::Pose ego_pose;
-        ego_pose.position.x = lookahead_x;
-        ego_pose.position.y = lookahead_y;
-        ego_pose.orientation.z = std::sin(lookahead_yaw * 0.5);
-        ego_pose.orientation.w = std::cos(lookahead_yaw * 0.5);
+        ego_pose.position.x = cur_x_;
+        ego_pose.position.y = cur_y_;
+        ego_pose.orientation.z = std::sin(cur_yaw_ * 0.5);
+        ego_pose.orientation.w = std::cos(cur_yaw_ * 0.5);
 
         // 장애물 NMPC stage 제약 — 차량 현재 위치 기준 전방 path 위 NPC만 활성
         // (1) lateral d 필터: |d_path| ≤ 2m + NPC half (다른 차선 무시)

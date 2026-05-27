@@ -14,8 +14,8 @@
     <arg name="log_file"             default="$(find moraimpc)/logs/mpc_log.json" />
 
     <!-- NMPC stage 제약 (방안 B) 회피 인자 -->
-    <arg name="nmpc_obs_enable"       default="true" />
-    <arg name="nmpc_obs_safe_margin"  default="1.0" />   <!-- 1.0 (1.5 효과 미미, 복원) -->
+    <arg name="nmpc_obs_enable"       default="false" />  <!-- path만 추종 (path_replanner가 회피 path 생성, follower는 path만) -->
+    <arg name="nmpc_obs_safe_margin"  default="1.0" />
     <arg name="nmpc_obs_active_dist"  default="8.0" />   <!-- 12→8 복원 (조기 트리거 오버슛 방지) -->
     <arg name="nmpc_obs_max_count"    default="5" />     <!-- 동시 처리 최대 개수 -->
     <arg name="nmpc_obs_skip_first"   default="1" />     <!-- k=1..skip stage 제약 skip -->
@@ -45,11 +45,5 @@
         <param name="nmpc_w_obs_slack_lin"  value="$(arg nmpc_w_obs_slack_lin)" />
     </node>
 
-    <!-- 2. simple dashboard GUI (path + avoid + 차량 + NPC 단순 시각화) -->
-    <node pkg="moraimpc" type="simple_dashboard_node" name="simple_dashboard" output="screen">
-        <param name="path_file"        value="$(find moraimpc)/data/mixed.json" />
-        <param name="avoid_path_file"  value="$(arg path_file)" />
-        <param name="window_size"      value="700" />
-        <param name="view_margin_m"    value="30.0" />
-    </node>
+    <!-- 2. simple_dashboard는 cycle 외부 영구 실행 (infinite_cycle.sh가 nohup으로 띄움 — mtime watch로 mixed_avoid.json 변경 자동 reload) -->
 </launch>

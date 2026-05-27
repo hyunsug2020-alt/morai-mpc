@@ -17,26 +17,28 @@
 #include <vector>
 #include <deque>
 #include <cmath>
+#include <sys/stat.h>
 
 struct Pt { double x, y; double kappa = 0.0; };
 
 class SimpleDashboard {
 public:
     SimpleDashboard(ros::NodeHandle& nh) {
-        std::string path_file, avoid_file;
-        nh.param<std::string>("path_file", path_file, "");
-        nh.param<std::string>("avoid_path_file", avoid_file, "");
+        nh.param<std::string>("path_file", path_file_, "");
+        nh.param<std::string>("avoid_path_file", avoid_file_, "");
         nh.param<int>("window_size", win_size_, 700);
         nh.param<double>("view_margin_m", view_margin_, 30.0);
 
-        loadPath(path_file, path_);
-        loadPath(avoid_file, avoid_);
+        loadPath(path_file_, path_);
+        loadPath(avoid_file_, avoid_);
+        path_mtime_  = fileMtime(path_file_);
+        avoid_mtime_ = fileMtime(avoid_file_);
 
         ego_sub_ = nh.subscribe("/Ego_topic", 1, &SimpleDashboard::egoCb, this);
         obj_sub_ = nh.subscribe("/Object_topic", 1, &SimpleDashboard::objCb, this);
         perf_sub_ = nh.subscribe("/mpc_performance", 1, &SimpleDashboard::perfCb, this);
 
-        ROS_INFO("[simple_dashboard] path=%zu avoid=%zu win=%dpx",
+        ROS_INFO("[simple_dashboard] path=%zu avoid=%zu win=%dpx (mtime watch enabled)",
                  path_.size(), avoid_.size(), win_size_);
         cv::namedWindow(kWin_, cv::WINDOW_AUTOSIZE);
         cv::moveWindow(kWin_, 50, 50);
@@ -44,12 +46,39 @@ public:
 
     void spin() {
         ros::Rate rate(20);
+        int reload_tick = 0;
         while (ros::ok()) {
             ros::spinOnce();
+            // 매 1초 path 파일 mtime 체크 — 갱신 시 reload (cycle 끝 후 새 cycle path 자동 적용)
+            if (++reload_tick >= 20) {
+                reload_tick = 0;
+                auto m1 = fileMtime(path_file_);
+                if (m1 != path_mtime_ && m1 != 0) {
+                    std::vector<Pt> tmp;
+                    loadPath(path_file_, tmp);
+                    if (!tmp.empty()) { std::lock_guard<std::mutex> lk(m_); path_ = tmp; }
+                    path_mtime_ = m1;
+                    ROS_INFO("[simple_dashboard] path reloaded (%zu)", path_.size());
+                }
+                auto m2 = fileMtime(avoid_file_);
+                if (m2 != avoid_mtime_ && m2 != 0) {
+                    std::vector<Pt> tmp;
+                    loadPath(avoid_file_, tmp);
+                    if (!tmp.empty()) { std::lock_guard<std::mutex> lk(m_); avoid_ = tmp; }
+                    avoid_mtime_ = m2;
+                    ROS_INFO("[simple_dashboard] avoid reloaded (%zu)", avoid_.size());
+                }
+            }
             render();
             cv::waitKey(1);
             rate.sleep();
         }
+    }
+
+    static time_t fileMtime(const std::string& f) {
+        if (f.empty()) return 0;
+        struct stat st;
+        return (::stat(f.c_str(), &st) == 0) ? st.st_mtime : 0;
     }
 
 private:
@@ -167,6 +196,8 @@ private:
         }
     }
 
+    std::string path_file_, avoid_file_;
+    time_t path_mtime_ = 0, avoid_mtime_ = 0;
     ros::Subscriber ego_sub_, obj_sub_, perf_sub_;
     std::mutex m_;
     std::vector<Pt> path_, avoid_;
