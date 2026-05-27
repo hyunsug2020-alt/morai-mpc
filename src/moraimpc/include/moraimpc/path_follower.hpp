@@ -153,7 +153,8 @@ private:
     // 경로
     // ═══════════════════════════════════════════════════════════════
     std::vector<double> wp_x_, wp_y_, wp_h_, wp_k_;
-    std::vector<double> wp_s_;      // 누적 path 거리 [m] (loadPath에서 계산) — arc-length 기반 nearest 검색용
+    std::vector<double> wp_s_;        // 누적 path 거리 [m]
+    std::vector<double> wp_avoid_off_;// 원본 path 대비 lateral offset [m] — 회피 영역 detect용
     std::vector<int>    wp_gear_;   // +1=전진(D), -1=후진(R)
     std::vector<std::pair<int,int>> gear_segments_;  // [start, end] inclusive — 같은 기어 연속 구간
     int  cur_segment_ = 0;          // gear_segments_ 내 현재 위치

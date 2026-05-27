@@ -176,12 +176,37 @@ void PathFollower::loadPath(const std::string& file) {
         for (int i = 1; i < n; ++i) total += std::hypot(wp_x_[i] - wp_x_[i-1], wp_y_[i] - wp_y_[i-1]);
         wp_spacing_ = total / (n - 1);
     }
-    // ── 누적 path 거리 wp_s_ (arc-length 기반 nearest 검색용) ────
+    // ── 누적 path 거리 wp_s_ ────
     wp_s_.assign(n, 0.0);
     for (int i = 1; i < n; ++i) {
         wp_s_[i] = wp_s_[i-1] + std::hypot(wp_x_[i] - wp_x_[i-1], wp_y_[i] - wp_y_[i-1]);
     }
-    vehicle_s_ = 0.0;  // 차량은 path 시작점에서 출발 가정
+    vehicle_s_ = 0.0;
+
+    // ── 회피 lateral offset 계산 (mixed.json 원본과 비교) ────
+    wp_avoid_off_.assign(n, 0.0);
+    // 같은 디렉토리의 mixed.json 시도 (avoid path만 사용 시 0)
+    std::string mixed_file = file;
+    size_t pos = mixed_file.find("mixed_avoid.json");
+    if (pos != std::string::npos) {
+        mixed_file.replace(pos, std::string("mixed_avoid.json").length(), "mixed.json");
+        std::ifstream m_ifs(mixed_file);
+        if (m_ifs.is_open()) {
+            Json::Value m_root; Json::Reader m_reader;
+            if (m_reader.parse(m_ifs, m_root)) {
+                const Json::Value m_wps = m_root["waypoints"];
+                int mn = std::min(n, (int)m_wps.size());
+                for (int i = 0; i < mn; ++i) {
+                    double mx = m_wps[i]["x"].asDouble();
+                    double my = m_wps[i]["y"].asDouble();
+                    wp_avoid_off_[i] = std::hypot(wp_x_[i] - mx, wp_y_[i] - my);
+                }
+                int n_avoid = 0; for (int i = 0; i < n; ++i) if (wp_avoid_off_[i] > 0.05) ++n_avoid;
+                ROS_INFO("[PathFollower] 회피 영역: %d/%d wp (mixed.json 비교)", n_avoid, n);
+            }
+        }
+    }
+
     ROS_INFO("[PathFollower] %d wp / %zu gear segments (start gear=%s) total_s=%.1fm",
              n, gear_segments_.size(), (cur_gear_ < 0) ? "R" : "D", n>0 ? wp_s_[n-1] : 0.0);
 }
@@ -940,9 +965,12 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
                 double v_cap_kmh = std::sqrt(a_lat_max / max_k_d) * 3.6;
                 return std::min(v_floor, v_cap_kmh);
             };
-            if (max_k_d < 0.08)      v_kmh = std::max(cap_by_alat(38.0), v_kmh);
-            else if (max_k_d < 0.15) v_kmh = std::max(cap_by_alat(26.0), v_kmh);
-            else if (max_k_d < 0.20) v_kmh = std::max(cap_by_alat(18.0), v_kmh);
+            // floor를 target_vel과 동기 — hardcoded 38 무시되던 버그 fix
+            const double tv_kmh = cfg_.target_vel * 3.6;  // R/D 부호 제거 (abs 사용)
+            const double tv_abs = std::abs(tv_kmh);
+            if (max_k_d < 0.08)      v_kmh = std::max(cap_by_alat(tv_abs), v_kmh);
+            else if (max_k_d < 0.15) v_kmh = std::max(cap_by_alat(tv_abs * 0.7), v_kmh);
+            else if (max_k_d < 0.20) v_kmh = std::max(cap_by_alat(tv_abs * 0.5), v_kmh);
             // sharp(κ>0.20) 자동감속
 
             // A) rate-limit (target_vel step → 부드러운 감속 = 사전감속)
@@ -1001,23 +1029,61 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             //   원리: NMPC가 path 곡률을 ref_kappa로 직접 따라가게 → cte 보정용 풀스트로크 방지
             const double v_kmh_now = std::abs(cur_v_) * 3.6;
             const bool   straight  = (max_kappa_ahead < 0.03);  // κ<0.03 ≈ 반경 33m+
-            if (straight && v_kmh_now > 20.0) {
-                // 안전 default (w_akappa 풀면 진동 발산 — 강 rate cost 유지)
+            // ── 회피 영역 감지 — active(진입 ~ 통과) vs cooldown(통과 후 30wp)
+            bool in_avoid_active = false;     // 회피 영역 안 또는 진입 직전
+            bool in_avoid_cooldown = false;   // 회피 통과 직후 (path 복귀 추종)
+            if (!wp_avoid_off_.empty()) {
+                int la_fwd  = std::min((int)wp_avoid_off_.size() - 1, nearest_idx_ + 30);
+                // active: 현재 + 앞 30wp (진입 준비 + 통과 중)
+                for (int i = nearest_idx_; i <= la_fwd; ++i) {
+                    if (wp_avoid_off_[i] > 0.1) { in_avoid_active = true; break; }
+                }
+                if (!in_avoid_active) {
+                    // cooldown: 뒤 30wp 안 회피 영역 있으면
+                    int la_back = std::max(0, nearest_idx_ - 30);
+                    for (int i = la_back; i < nearest_idx_; ++i) {
+                        if (wp_avoid_off_[i] > 0.1) { in_avoid_cooldown = true; break; }
+                    }
+                }
+            }
+            bool in_avoid = in_avoid_active || in_avoid_cooldown;
+            if (in_avoid_active) {
+                // 회피 active — cte 최우선 (path 정확 lateral 추종)
+                eff_cfg.w_px      = 60.0;
+                eff_cfg.w_py      = 60.0;
+                eff_cfg.w_psi     = 3.0;    // yaw 거의 무시 (over-react 차단)
+                eff_cfg.w_kappa   = 80.0;
+                eff_cfg.w_akappa  = 70.0;
+                eff_cfg.akappa_min = -0.08;
+                eff_cfg.akappa_max =  0.08;
+                eff_cfg.target_velocity = (cur_gear_ < 0 ? -1.0 : 1.0) * 18.0 / 3.6;
+            } else if (in_avoid_cooldown) {
+                // 회피 cooldown — yaw 정렬 강화 (path 원본 방향 복귀)
+                eff_cfg.w_px      = 30.0;   // cte 추종 적정
+                eff_cfg.w_py      = 30.0;
+                eff_cfg.w_psi     = 40.0;   // yaw 강화 (path tangent 정렬 → path 복귀)
+                eff_cfg.w_kappa   = 20.0;
+                eff_cfg.w_akappa  = 100.0;  // 진동 방지
+                eff_cfg.akappa_min = -0.05;
+                eff_cfg.akappa_max =  0.05;
+                eff_cfg.target_velocity = (cur_gear_ < 0 ? -1.0 : 1.0) * 22.0 / 3.6;
+            } else if (straight && v_kmh_now > 20.0) {
+                // 일반 직선 고속 (안전 default — 추종 안정성 유지)
                 eff_cfg.w_px      = 15.0;
                 eff_cfg.w_py      = 15.0;
                 eff_cfg.w_psi     = 16.0;
                 eff_cfg.w_kappa   = 12.0;
-                eff_cfg.w_akappa  = 90.0;   // 강 steer rate cost (진동 방지)
+                eff_cfg.w_akappa  = 90.0;
                 eff_cfg.akappa_min = -0.04;
                 eff_cfg.akappa_max =  0.04;
             } else if (!straight) {
-                // 곡선 분기 (C45 best 복원)
+                // 곡선 분기 — path 끝부근 R=30~50m 영역 cte tracking 강화
                 const bool sharp = (max_kappa_ahead > 0.15);
                 const double cte_abs = std::abs(near.signed_cte);
                 const double cte_boost = std::clamp(1.0 + 1.2 * std::max(0.0, cte_abs - 0.2), 1.0, 2.4);
-                eff_cfg.w_px      =  8.0 * cte_boost;
-                eff_cfg.w_py      =  8.0 * cte_boost;
-                eff_cfg.w_psi     = sharp ? 24.0 : 20.0;  // sharp 22→24, 일반 18→20
+                eff_cfg.w_px      = 18.0 * cte_boost;  // 8→18: 곡선 cte 누적 (path 끝 sharp curve) 방지
+                eff_cfg.w_py      = 18.0 * cte_boost;
+                eff_cfg.w_psi     = sharp ? 28.0 : 22.0;
                 eff_cfg.w_kappa   = sharp ? 14.0 : 12.0;
                 const double base_akappa = sharp ? 30.0 : 25.0;
                 eff_cfg.w_akappa = base_akappa + 1.5 * std::max(0.0, v_kmh_now - 10.0);
@@ -1087,11 +1153,30 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         }
 
         // ── ego pose 구성 ──
+        // ── NMPC actuator delay 보상 (lookahead shift, 논문 기반)
+        //    회피 영역 detect (in_avoid scope 다름 — 여기서 재계산)
+        bool ego_in_avoid = false;
+        if (!wp_avoid_off_.empty()) {
+            int la_fwd  = std::min((int)wp_avoid_off_.size() - 1, nearest_idx_ + 30);
+            int la_back = std::max(0, nearest_idx_ - 30);
+            for (int i = la_back; i <= la_fwd; ++i) {
+                if (wp_avoid_off_[i] > 0.1) { ego_in_avoid = true; break; }
+            }
+        }
+        constexpr double kActuatorLag = 0.12;  // [s] sim 차량 steer servo lag
+        double lookahead_x = cur_x_;
+        double lookahead_y = cur_y_;
+        double lookahead_yaw = cur_yaw_;
+        if (ego_in_avoid) {
+            lookahead_x   = cur_x_ + cur_v_signed_ * std::cos(cur_yaw_) * kActuatorLag;
+            lookahead_y   = cur_y_ + cur_v_signed_ * std::sin(cur_yaw_) * kActuatorLag;
+            lookahead_yaw = cur_yaw_ + cur_v_signed_ * current_kappa_ * kActuatorLag;
+        }
         geometry_msgs::Pose ego_pose;
-        ego_pose.position.x = cur_x_;
-        ego_pose.position.y = cur_y_;
-        ego_pose.orientation.z = std::sin(cur_yaw_ * 0.5);
-        ego_pose.orientation.w = std::cos(cur_yaw_ * 0.5);
+        ego_pose.position.x = lookahead_x;
+        ego_pose.position.y = lookahead_y;
+        ego_pose.orientation.z = std::sin(lookahead_yaw * 0.5);
+        ego_pose.orientation.w = std::cos(lookahead_yaw * 0.5);
 
         // 장애물 NMPC stage 제약 — 차량 현재 위치 기준 전방 path 위 NPC만 활성
         // (1) lateral d 필터: |d_path| ≤ 2m + NPC half (다른 차선 무시)

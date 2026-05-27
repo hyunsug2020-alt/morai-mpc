@@ -6,3 +6,8 @@ __pycache__/
 *.so
 *.o
 *.a
+
+# auto cycle 누적 로그 (재현 가능)
+src/moraimpc/logs/run_iter*.json
+src/moraimpc/logs/mpc_analysis.png
+src/moraimpc/logs/_*.png

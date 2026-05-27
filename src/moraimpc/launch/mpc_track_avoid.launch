@@ -8,7 +8,7 @@
     <arg name="recorded_file"        default="$(find moraimpc)/data/waypoints_recorded.json" />
     <arg name="path_file"            default="$(find moraimpc)/data/mixed_avoid.json" />
     <arg name="smoothed_path"        default="$(find moraimpc)/data/mixed.json" />
-    <arg name="target_vel"           default="30.0" />  <!-- 25 너무 느려 회피 정점에서 yaw 변화율 부족 → 30 적정 -->
+    <arg name="target_vel"           default="30.0" />
     <arg name="reverse_max_vel"      default="2.0" />
     <arg name="pre_gear_change_dist" default="10.0" />
     <arg name="log_file"             default="$(find moraimpc)/logs/mpc_log.json" />

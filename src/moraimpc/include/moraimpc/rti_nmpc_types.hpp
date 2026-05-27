@@ -12,8 +12,8 @@ struct RTINMPCConfig {
     int    N  = 80;
     double Ts = 0.05;
 
-    // IONIQ 5 차량 파라미터
-    double wheelbase = 3.000;  // 축간거리 [m]
+    // IONIQ 5 차량 파라미터 (nmpc_controller.hpp L=2.7과 일관 맞춤 — RTI 3.0 mismatch가 cte 발산 원인)
+    double wheelbase = 2.700;  // 축간거리 [m]
 
     // 속도 제한
     double max_velocity     =  30.0;   // 최대 전진 속도 [m/s]
