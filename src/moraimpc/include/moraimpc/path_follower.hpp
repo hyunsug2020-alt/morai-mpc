@@ -6,6 +6,7 @@
 #include <morai_msgs/MoraiEventCmdSrv.h>
 #include <morai_msgs/ObjectStatusList.h>
 #include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
 #include <Eigen/Dense>
@@ -30,11 +31,14 @@ public:
 private:
     // ── 경로 로드 ──────────────────────────────────────────────────
     void loadPath(const std::string& file);
+    void loadWaypoints(const Json::Value& wps, const std::string& src_file = "");  // 파일/토픽 공용
 
     // ── ROS 콜백 ───────────────────────────────────────────────────
     void egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg);
     void avoidanceCallback(const std_msgs::Float64::ConstPtr& msg);
     void objectCallback(const morai_msgs::ObjectStatusList::ConstPtr& msg);
+    void avoidWpsCallback(const std_msgs::String::ConstPtr& msg);   // hdmap_lane_avoid 동적 경로
+    void avoidVelCallback(const std_msgs::Float32::ConstPtr& msg);  // IDM 목표속도 상한
     void controlLoop(const ros::TimerEvent&);
 
     // ── Frenet 회피 (Phase 1+2) ───────────────────────────────────
@@ -224,6 +228,14 @@ private:
     bool   force_nmpc_ = false;          // launch param. true면 항상 RTI-NMPC (고속 튜닝용)
     double avoidance_offset_ = 0.0;
     ros::Subscriber avoid_sub_;
+    // ── hdmap_lane_avoid (IDM+MOBIL) 동적 경로/속도 ──
+    ros::Subscriber avoid_wps_sub_;
+    ros::Subscriber avoid_vel_sub_;
+    bool      use_avoid_path_       = false;
+    double    avoid_target_vel_mps_ = 0.0;
+    bool      avoid_vel_rcvd_       = false;
+    ros::Time avoid_vel_time_;
+    double    prev_avoid_cmd_kmh_   = 0.0;   // avoid 경로 속도 직접출력 rate-limit 상태
 
     // 동적 장애물 (Frenet 회피) — Object_topic 직접 sub
     std::vector<Obstacle> obstacles_;
@@ -235,6 +247,7 @@ private:
     // 회피 활성 후 ego 정렬(cte<0.3, |yaw_err|<0.1rad) 만족까지 RECOV 차단
     bool obs_block_until_align_ = false;
     int  align_stable_count_ = 0;   // align 연속 만족 tick (cte 가로지를 때 false-positive 차단)
+    int  obs_clear_count_ = 0;      // 장애물 사라진 후 경과 tick (정렬 못해도 타임아웃 해제 — deadlock 방지)
 
     ros::Subscriber ego_sub_;
     ros::Publisher  ctrl_pub_;

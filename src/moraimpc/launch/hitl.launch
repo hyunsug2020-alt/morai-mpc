@@ -1,0 +1,30 @@
+<launch>
+    <!-- HITL: 실제 planner(hdmap_lane_avoid) + 실제 follower(LTV-MPC) + vehicle_sim(Ioniq5 자전거) -->
+    <arg name="ego_lane"    default="1" />
+    <arg name="npc_specs"   default="[]" />
+    <arg name="cruise_kmh"  default="45" />
+    <arg name="sim_time"    default="22" />
+    <arg name="result_file" default="/tmp/hitl_result.json" />
+
+    <node pkg="moraimpc" type="hdmap_lane_avoid.py" name="hdmap_lane_avoid" output="log">
+        <param name="cruise_mps"        value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="change_cooldown_s" value="2.0" />
+    </node>
+
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">
+        <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+        <param name="path_file"      value="$(find moraimpc)/data/hdmap_path.json" />
+        <param name="target_vel"     value="$(arg cruise_kmh)" />
+        <param name="force_nmpc"     value="false" />
+        <param name="use_avoid_path" value="true" />
+        <param name="log_file"       value="/tmp/hitl_follower_log.json" />
+    </node>
+
+    <node pkg="moraimpc" type="vehicle_sim.py" name="vehicle_sim" output="screen" required="true">
+        <param name="ego_lane"    value="$(arg ego_lane)" />
+        <param name="cruise_mps"  value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="sim_time"    value="$(arg sim_time)" />
+        <param name="npc_specs"   value="$(arg npc_specs)" />
+        <param name="result_file" value="$(arg result_file)" />
+    </node>
+</launch>

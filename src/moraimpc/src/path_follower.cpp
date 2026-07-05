@@ -4,7 +4,9 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <limits>
+#include <set>
 
 #include <jsoncpp/json/json.h>
 
@@ -59,6 +61,14 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     nh.param<double>("nmpc_w_obs_slack_quad", rti_cfg_.w_obs_slack_quad, 1e5);
     nh.param<double>("nmpc_w_obs_slack_lin",  rti_cfg_.w_obs_slack_lin,  1e3);
     rti_nmpc_->setConfig(rti_cfg_);
+
+    // hdmap_lane_avoid(IDM+MOBIL) 동적 경로/속도 구독
+    nh.param<bool>("use_avoid_path", use_avoid_path_, false);
+    if (use_avoid_path_) {
+        avoid_wps_sub_ = nh.subscribe("/avoid_waypoints",  1, &PathFollower::avoidWpsCallback, this);
+        avoid_vel_sub_ = nh.subscribe("/avoid_target_vel", 1, &PathFollower::avoidVelCallback, this);
+        ROS_INFO("[PathFollower] 동적 회피경로 모드 ON — /avoid_waypoints + /avoid_target_vel 구독");
+    }
 
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
     // NMPC obs 활성 또는 LTV corridor 활성 시 /Object_topic 구독
@@ -118,13 +128,72 @@ void PathFollower::flushLog() {
     std::ofstream ofs(log_file_);
     Json::StreamWriterBuilder wb; wb["indentation"] = " ";
     ofs << Json::writeString(wb, root);
+
+    // ── CSV: 모든 데이터값 1파일, 매 주행 덮어쓰기 (빠른추종 문제진단용) ──
+    //  컬럼 = 전 레코드 키 합집합(자주쓰는 것 먼저). flush마다 truncate = 주행당 1파일.
+    {
+        static const std::vector<std::string> preferred = {
+            "t","x","y","v_kmh","actual_vel","target_vel","vel_error",
+            "cte","hdg_err_deg","near_dist","nearest_idx","cur_gear","gear",
+            "path_curvature","max_kappa_ahead","lateral_accel","yaw_rate",
+            "mode","controller","steer_cmd","steering_rate","solve_ms",
+            "in_recov","obs_block_align","ego_aligned","dist_end","solve_failed"
+        };
+        std::set<std::string> seen;
+        std::vector<std::string> cols;
+        for (const auto& k : preferred) { cols.push_back(k); seen.insert(k); }
+        for (auto& r : log_recs_)
+            for (const auto& m : r.getMemberNames())
+                if (seen.insert(m).second) cols.push_back(m);
+
+        std::string csv_path = log_file_;
+        size_t dot = csv_path.find_last_of('.');
+        if (dot != std::string::npos) csv_path = csv_path.substr(0, dot);
+        csv_path += ".csv";
+        std::ofstream cf(csv_path);
+        for (size_t i = 0; i < cols.size(); ++i) { if (i) cf << ','; cf << cols[i]; }
+        cf << '\n';
+        cf << std::fixed << std::setprecision(6);
+        for (auto& r : log_recs_) {
+            for (size_t i = 0; i < cols.size(); ++i) {
+                if (i) cf << ',';
+                if (!r.isMember(cols[i])) continue;
+                const Json::Value& v = r[cols[i]];
+                if (v.isString())        cf << v.asString();
+                else if (v.isBool())     cf << (v.asBool() ? 1 : 0);
+                else if (v.isIntegral()) cf << v.asInt64();
+                else if (v.isNumeric())  cf << v.asDouble();
+            }
+            cf << '\n';
+        }
+    }
 }
 
 void PathFollower::loadPath(const std::string& file) {
     std::ifstream ifs(file);
     Json::Value root; Json::Reader reader;
     if (!reader.parse(ifs, root)) return;
-    const Json::Value wps = root["waypoints"];
+    loadWaypoints(root["waypoints"], file);
+}
+
+// hdmap_lane_avoid 동적 경로 수신 → 롤링호라이즌 경로 교체 + 매처 재획득
+void PathFollower::avoidWpsCallback(const std_msgs::String::ConstPtr& msg) {
+    if (!use_avoid_path_) return;
+    Json::Value root; Json::Reader reader;
+    if (!reader.parse(msg->data, root)) return;
+    const Json::Value& wps = root["waypoints"];
+    if (wps.size() < 2) return;
+    loadWaypoints(wps);
+    search_init_ = false;   // ego 기준 재획득 (경로가 ego 전방서 시작)
+}
+
+void PathFollower::avoidVelCallback(const std_msgs::Float32::ConstPtr& msg) {
+    avoid_target_vel_mps_ = msg->data;
+    avoid_vel_rcvd_ = true;
+    avoid_vel_time_ = ros::Time::now();
+}
+
+void PathFollower::loadWaypoints(const Json::Value& wps, const std::string& src_file) {
     int n = static_cast<int>(wps.size());
     wp_x_.resize(n); wp_y_.resize(n); wp_h_.resize(n); wp_k_.resize(n, 0.0);
     wp_gear_.resize(n, 1);  // 기본값: 전진(D)
@@ -186,7 +255,7 @@ void PathFollower::loadPath(const std::string& file) {
     // ── 회피 lateral offset 계산 (mixed.json 원본과 비교) ────
     wp_avoid_off_.assign(n, 0.0);
     // 같은 디렉토리의 mixed.json 시도 (avoid path만 사용 시 0)
-    std::string mixed_file = file;
+    std::string mixed_file = src_file;   // 토픽(동적경로) 시 빈 문자열 → 아래 블록 skip
     size_t pos = mixed_file.find("mixed_avoid.json");
     if (pos != std::string::npos) {
         mixed_file.replace(pos, std::string("mixed_avoid.json").length(), "mixed.json");
@@ -360,10 +429,6 @@ void PathFollower::egoCallback(const morai_msgs::EgoVehicleStatus::ConstPtr& msg
 
 PathFollower::NearResult PathFollower::findNearest() {
     const int n = static_cast<int>(wp_x_.size());
-    // 후진 구간이면 heading 벡터를 180° 반전하여 dot product 계산
-    double gear_sign = (cur_gear_ < 0) ? -1.0 : 1.0;
-    const double hx = gear_sign * std::cos(cur_yaw_), hy = gear_sign * std::sin(cur_yaw_);
-
     // ── 기어 세그먼트 범위 결정: 현재 세그먼트만 검색. 전환 중이면 다음 세그먼트도 포함 ──
     int allow_lo = 0, allow_hi = n - 1;
     if (!gear_segments_.empty()) {
@@ -377,59 +442,56 @@ PathFollower::NearResult PathFollower::findNearest() {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // arc-length s 기반 nearest 검색 (self-overlapping path 강건)
-    //   - 차량 vehicle_s_ 추적값 기준 [s-5m, s+30m] 윈도우 안에서만 매칭
-    //   - self-overlap 두 번째 lap wp는 s 차이 크므로 자동 제외
-    //   - 첫 frame search_init_=false: vehicle_s_=0 → wp[0] 근처
+    // 순서대로(in-order) 추종 매처 — self-overlapping path 강건
+    //   - 최초 1회: heading 정렬(<90°)된 최근접 wp 획득 → 역방향 겹침(복귀 leg) 배제
+    //   - 이후: [nearest_idx_, +WIN] 전방 윈도우만 검색, index 단조 전진
+    //   경로가 자기 자신과 겹쳐도(전진 leg → 복귀 leg) index 순서로만 진행하므로
+    //   기하적으로 가까운 복귀 leg wp로 튀지 않음. (구 arc-s 윈도우+전체fallback
+    //   조합의 +5/tick 폭주 제거)
     // ═══════════════════════════════════════════════════════════════
-    auto s_to_idx = [&](double s_target, int idx_lo, int idx_hi) -> int {
-        // wp_s_가 monotonic 가정 — std::lower_bound로 idx 찾음
-        auto it = std::lower_bound(wp_s_.begin() + idx_lo, wp_s_.begin() + idx_hi + 1, s_target);
-        int idx = static_cast<int>(it - wp_s_.begin());
-        return std::clamp(idx, idx_lo, idx_hi);
-    };
+    // 현재 세그먼트로 클램프 — 기어 전환 시 새 세그먼트 시작으로 밀고 재획득
+    if (nearest_idx_ < allow_lo) { nearest_idx_ = allow_lo; search_init_ = false; }
+    if (nearest_idx_ > allow_hi)   nearest_idx_ = allow_hi;
 
-    const double S_BACK    = 5.0;    // 차량 뒤로 검색 여유 [m]
-    const double S_FORWARD = 30.0;   // 차량 앞으로 검색 거리 [m]
-
-    int idx_lo = s_to_idx(vehicle_s_ - S_BACK,    allow_lo, allow_hi);
-    int idx_hi = s_to_idx(vehicle_s_ + S_FORWARD, allow_lo, allow_hi);
-    if (idx_hi < idx_lo) idx_hi = idx_lo;
-
-    double min_d = std::numeric_limits<double>::max();
-    int closest = std::clamp(nearest_idx_, idx_lo, idx_hi);
-    bool found = false;
-    for (int i = idx_lo; i <= idx_hi; ++i) {
-        double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
-        double dist = std::hypot(dx, dy);
-        // 차량 진행 방향(또는 R: 반대) 우선
-        bool fwd = (dx * hx + dy * hy >= kDotThreshold);
-        if (!found || (fwd && dist < min_d) || (!fwd && dist < min_d && min_d > kRecovDist)) {
-            min_d = dist; closest = i; found = true;
-        }
+    // MORAI 리셋/텔레포트 감지 — 추적점에서 15m+ 벗어나면 재획득 (전방 윈도우로는
+    // 뒤로 못 가므로, 차가 시작점으로 리셋되면 여기서 전역 재획득 트리거).
+    if (search_init_) {
+        double d_track = std::hypot(wp_x_[nearest_idx_] - cur_x_, wp_y_[nearest_idx_] - cur_y_);
+        if (d_track > 15.0) search_init_ = false;
     }
 
-    // window 안에 매칭 못 했거나 cte 매우 큼 → 전체 segment scan (fallback, 1회)
-    if (!found || min_d > 10.0) {
-        double best = std::numeric_limits<double>::max(); int best_idx = closest; bool fwd_found = false;
+    double min_d;
+    if (!search_init_) {
+        // 최초 획득: heading 90° 이내 정렬 wp 중 최근접 (역방향 겹침 leg 제외)
+        double best = std::numeric_limits<double>::max();
+        int best_idx = allow_lo; bool aligned_found = false;
         for (int i = allow_lo; i <= allow_hi; ++i) {
-            double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_, dist = std::hypot(dx, dy);
-            bool fwd = (dx * hx + dy * hy > 0.0);
-            if (fwd) {
-                if (!fwd_found || dist < best) { best = dist; best_idx = i; fwd_found = true; }
-            } else if (!fwd_found && dist < best) {
-                best = dist; best_idx = i;
+            double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
+            double dist = std::hypot(dx, dy);
+            int i1 = std::min(i + 1, allow_hi);
+            double pyaw = std::atan2(wp_y_[i1] - wp_y_[i], wp_x_[i1] - wp_x_[i]);
+            double hderr = (cur_gear_ < 0) ? wrapAngle(cur_yaw_ - pyaw + M_PI)
+                                           : wrapAngle(cur_yaw_ - pyaw);
+            bool aligned = std::abs(hderr) < M_PI_2;   // <90° = 같은 진행방향
+            if (aligned) {
+                if (!aligned_found || dist < best) { best = dist; best_idx = i; aligned_found = true; }
+            } else if (!aligned_found && dist < best) {
+                best = dist; best_idx = i;             // 정렬 wp 전무 시 fallback
             }
         }
-        closest = best_idx; min_d = best;
+        nearest_idx_ = best_idx; min_d = best; search_init_ = true;
+    } else {
+        // 단조 전진: [nearest_idx_, +kSearchWindow] 최근접 (역주행/점프 금지)
+        const int kSearchWindow = 40;   // ~20m@0.5m spacing — 60km/h 1tick 이동 여유
+        int hi = std::min(allow_hi, nearest_idx_ + kSearchWindow);
+        double best = std::numeric_limits<double>::max(); int best_idx = nearest_idx_;
+        for (int i = nearest_idx_; i <= hi; ++i) {
+            double dist = std::hypot(wp_x_[i] - cur_x_, wp_y_[i] - cur_y_);
+            if (dist < best) { best = dist; best_idx = i; }
+        }
+        nearest_idx_ = best_idx; min_d = best;
     }
-    search_init_ = true;
-
-    // ── nidx 점프 cap (kMaxIndexStep): self-overlap 점프 추가 방어 ──
-    int delta = closest - nearest_idx_;
-    if (delta < 0) closest = nearest_idx_;
-    else if (delta > kMaxIndexStep) closest = nearest_idx_ + kMaxIndexStep;
-    nearest_idx_ = std::min(closest, n - 1);
+    nearest_idx_ = std::min(nearest_idx_, n - 1);
 
     int ni = nearest_idx_, ni1 = std::min(ni + 1, n - 1);
     double path_yaw = std::atan2(wp_y_[ni1] - wp_y_[ni], wp_x_[ni1] - wp_x_[ni]);
@@ -481,50 +543,16 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     // ── 초기 기어 + 자율주행 모드 동기화 ──────────────────────
     // 첫 틱: 정지 명령 + service call 보내고 dwell 진입.
     // service call은 차량 정지 후 호출해야 MORAI가 수락 (단, 첫 틱은 v=0 시작이라 즉시 OK).
-    if (!gear_initialized_ && !gear_switching_ && !wp_gear_.empty()) {
+    if (!gear_initialized_ && !wp_gear_.empty()) {
+        // 기어/모드는 사용자가 MORAI에서 직접 설정 — 노드는 gear service/InsnControl
+        // 일절 건들지 않음. 진행방향만 내부 추종용으로 반영하고 즉시 제어 진입(dwell 없음).
         gear_initialized_ = true;
-        gear_switching_ = true;
-        // 시작 시점은 무조건 정지 가정 → 즉시 service call (v<0.1 대기 생략)
-        gear_switch_sent_ = true;
-        gear_switch_target_ = wp_gear_[0];
-        cur_gear_ = gear_switch_target_;
-        gear_switch_time_ = now;
-        morai_msgs::MoraiEventCmdSrv srv;
-        srv.request.request.option = 3;
-        srv.request.request.ctrl_mode = 3;
-        srv.request.request.gear = (cur_gear_ < 0) ? 2 : 4;
-        int ok_n = 0;
-        for (int retry = 0; retry < 5; ++retry) {
-            if (gear_srv_.call(srv)) ok_n++;
-        }
-        // /InsnControl topic fallback (service 미advertise 환경 대응)
-        morai_msgs::EventInfo ev;
-        ev.option = 3; ev.ctrl_mode = 3; ev.gear = srv.request.request.gear;
-        for (int retry = 0; retry < 10; ++retry) {
-            event_pub_.publish(ev);
-            ros::Duration(0.05).sleep();
-        }
-        ROS_INFO("[PathFollower] 시작 기어 강제 설정: %s (gear=%d) [service ok=%d/5 + topic 10회]",
-                 (cur_gear_ < 0) ? "R" : "D", srv.request.request.gear, ok_n);
-        publishCmd(0.0, 0.0);
-        return;
+        cur_gear_ = wp_gear_[0];
     }
 
     // 기어 역전 감지 — 명령 D인데 차량이 0.5 m/s 이상 후진 중이면 MORAI gear 잘못
     // (또는 명령 R인데 0.5 이상 전진) → service 재호출
-    if (!gear_switching_ && ego_rcvd_) {
-        bool inversion = (cur_gear_ > 0 && cur_v_signed_ < -0.5) ||
-                         (cur_gear_ < 0 && cur_v_signed_ > +0.5);
-        if (inversion) {
-            ROS_WARN_THROTTLE(2.0, "[PathFollower] 기어 역전 감지: cmd_gear=%s v_signed=%.2f → service 재호출",
-                              (cur_gear_ < 0) ? "R" : "D", cur_v_signed_);
-            gear_switching_ = true;
-            gear_switch_sent_ = false;
-            gear_switch_target_ = cur_gear_;
-            publishCmd(0.0, 0.0);
-            return;
-        }
-    }
+    // 기어 역전 감지 → service 재호출 로직 제거 — 기어는 사용자 관리(노드 미개입).
 
     // ── 기어 전환 관리 ─────────────────────────────────────────
     // 현재 세그먼트 끝점에 도달했고 다음 세그먼트가 다른 기어이면 전환 시작
@@ -723,20 +751,30 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     double hdg_thresh = (cur_gear_ < 0) ? kRecovHdgThreshR : kRecovHdgThresh;
     // 회피 활성 시 cooldown flag 켜기 → ego가 정확히 정렬될 때까지 RECOV/가속 차단
     bool obs_now_active = avoidance_enabled_ && (last_obs_dist_s_ > 0);
-    if (obs_now_active) { obs_block_until_align_ = true; align_stable_count_ = 0; }
-    // 정확한 정렬: cte<0.2m + |yaw_err|<0.05rad(약 2.9°)
-    bool ego_aligned = (std::abs(near.signed_cte) < 0.2) &&
-                       (std::abs(near.heading_err) < 0.05);
+    if (obs_now_active) { obs_block_until_align_ = true; align_stable_count_ = 0; obs_clear_count_ = 0; }
+    else obs_clear_count_++;   // 장애물 사라진 후 경과 tick
+    // 정렬 판정 완화: cte<0.5m + |yaw_err|<0.1rad(약 5.7°) — 0.2/0.05는 너무 엄격해 안 풀림
+    bool ego_aligned = (std::abs(near.signed_cte) < 0.5) &&
+                       (std::abs(near.heading_err) < 0.1);
     // align stable check: 회피 path가 cte=0 가로지를 때 단일 tick 만족 false-positive 방지
     if (ego_aligned) align_stable_count_++; else align_stable_count_ = 0;
     const int kAlignStableTicks = 20;   // 1.0초 연속 정렬
-    if (obs_block_until_align_ && !obs_now_active && align_stable_count_ >= kAlignStableTicks) {
+    const int kObsClearTimeout  = 40;   // 2.0초 — 장애물 없으면 정렬 못해도 강제 해제 (deadlock 방지)
+    // 해제: 장애물 없음 + (정렬 20틱  OR  장애물 사라진지 2초 경과)
+    if (obs_block_until_align_ && !obs_now_active &&
+        (align_stable_count_ >= kAlignStableTicks || obs_clear_count_ >= kObsClearTimeout)) {
         obs_block_until_align_ = false;
     }
     bool recov_blocked = avoidance_enabled_ && obs_block_until_align_;
-    bool enter_recov = !recov_blocked && (
+    // hdmap_lane_avoid 회피/추월 경로 추종 중엔 RECOV 진입 금지 — swerve 차선변경은 CTE/heading_err가
+    // 크지만 정상 기동임. RECOV로 빠지면 속도가 recov_vel(저속 ~16km/h)로 캡돼 급가속 통과가 죽음.
+    // planner가 corner cap·근접제동으로 안전속도 계산하므로 avoid 경로 위에선 planner 신뢰.
+    bool on_avoid_path = use_avoid_path_ && avoid_vel_rcvd_ &&
+                         (ros::Time::now() - avoid_vel_time_).toSec() < 0.5;
+    bool enter_recov = !recov_blocked && !on_avoid_path && (
         (near.dist > kRecovDist) || (std::abs(near.heading_err) > hdg_thresh));
-    bool exit_recov = (near.dist < kRecovDistExit) && (std::abs(near.heading_err) < kRecovHdgExit);
+    bool exit_recov = on_avoid_path ||
+                      ((near.dist < kRecovDistExit) && (std::abs(near.heading_err) < kRecovHdgExit));
     if (exit_recov) in_recov_ = false; else if (enter_recov) in_recov_ = true;
     if (recov_blocked && in_recov_) in_recov_ = false;   // 회피 cooldown 중 잔여 RECOV 강제 해제
     rec["obs_block_align"] = obs_block_until_align_ ? 1 : 0;
@@ -919,8 +957,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             // 회피 종료 cooldown: 큰 cte/yaw 회복용 저속 (13 km/h)
             v_mag_kmh = 13.0;
         } else if (in_recov_ && cur_gear_ > 0) {
-            // RECOV — 큰 cte/yaw 회복용. 8→25 km/h 부스트 (정지 시 ramp-up 가속)
+            // RECOV — 큰 cte/yaw 회복용. 25 km/h 부스트. 단, 급커브 구간이면
+            // 그립 초과(스핀) 방지 위해 a_lat 기준 감속 (커브서 RECOV 진입 시 안전망).
             v_mag_kmh = 25.0;
+            if (max_kappa_ahead > 1e-3) {
+                double v_alat_recov = std::sqrt(4.5 / max_kappa_ahead) * 3.6;
+                v_mag_kmh = std::min(v_mag_kmh, v_alat_recov);
+            }
+            v_mag_kmh = std::max(v_mag_kmh, 6.0);   // 최소 회복 추진력 유지
         } else {
             // 고속 D 일반주행: 사전감속 3중 제약 (A·B·C 결합)
             //   C) 속도비례 lookahead — 빠를수록 더 멀리 곡률 탐색
@@ -932,8 +976,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             //   a_lat 6.0: κ=0.05 → 39.5km/h, κ=0.1 → 27.9km/h
             //   v_floor 28: 완만 곡선까지 최소 28km/h (sharp만 자동 감속)
             constexpr double alpha     = 6.0;
-            constexpr double a_lat_max = 5.0;  // 6→5: 그립한계 더 엄수
-            constexpr double max_dec   = 4.0;
+            constexpr double a_lat_max = 4.5;  // 그립한계 (커브 목표속도 결정)
+            constexpr double max_dec   = 6.0;  // 4→6: 급커브 앞 사전감속 제시간 확보
             constexpr double max_acc   = 3.5;
             constexpr double dt_tick   = 0.05;   // 제어 주기 [s] (RTI Ts와 매칭)
 
@@ -981,6 +1025,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             }
             prev_v_target_kmh_ = v_kmh;
             v_mag_kmh = v_kmh;
+        }
+        // hdmap_lane_avoid IDM 목표속도 = 추종속도로 신뢰 (상한 아닌 SET).
+        // planner가 corner cap(곡률 안전속도)·근접제동·급가속을 모두 계산하므로, follower의 자체
+        // 곡률감속(swerve 경로 코너서 16km/h로 급감)이 급가속 통과를 죽이는 것을 방지. planner 권위.
+        if (use_avoid_path_ && avoid_vel_rcvd_ &&
+            (ros::Time::now() - avoid_vel_time_).toSec() < 0.5) {
+            v_mag_kmh = avoid_target_vel_mps_ * 3.6;
         }
         double v_target_mps = (cur_gear_ < 0 ? -1.0 : 1.0) * (v_mag_kmh / 3.6);
 
@@ -1518,6 +1569,21 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 }
 
 void PathFollower::publishCmd(double vel_kmh, double steer_deg) {
+    // avoid 경로(hdmap_lane_avoid) 추종 중엔 planner 속도를 직접 출력 — follower 자체 속도로직
+    // (곡률감속·NMPC_LO·velocitySigmoid)이 급가속 통과를 죽임(50 지령→17만 출력, 결국 stall).
+    // planner에 corner cap·근접제동·정지대기 다 있어 안전. 조향(steer)은 MPC 그대로 사용.
+    if (use_avoid_path_ && avoid_vel_rcvd_ &&
+        (ros::Time::now() - avoid_vel_time_).toSec() < 0.5) {
+        double av = avoid_target_vel_mps_ * 3.6;
+        double dv = av - prev_avoid_cmd_kmh_;
+        double up = 45.0 * cfg_.Ts;    // 급가속 허용 (~3.5 m/s²)
+        double dn = 70.0 * cfg_.Ts;    // 감속은 더 빠르게 (안전)
+        dv = std::max(-dn, std::min(up, dv));
+        prev_avoid_cmd_kmh_ += dv;
+        vel_kmh = prev_avoid_cmd_kmh_;
+    } else {
+        prev_avoid_cmd_kmh_ = std::abs(cur_v_) * 3.6;   // 비활성시 현재속도 동기화 (재진입 부드럽게)
+    }
     morai_msgs::CtrlCmd cmd; cmd.longlCmdType = 2;
     // 후진 시에도 MORAI에는 양수 속도 전달 (기어가 R이면 자동 후진)
     cmd.velocity = std::abs(vel_kmh); cmd.steering = steer_deg;

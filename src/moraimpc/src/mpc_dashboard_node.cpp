@@ -20,6 +20,7 @@
 #include <std_msgs/String.h>
 #include <morai_msgs/EgoVehicleStatus.h>
 #include <morai_msgs/ObjectStatusList.h>
+#include <nav_msgs/Path.h>
 #include <opencv2/opencv.hpp>
 #include <jsoncpp/json/json.h>
 
@@ -89,9 +90,12 @@ public:
         sub_ego_    = nh_.subscribe("/Ego_topic",       1, &Dashboard::cbEgo, this);
         sub_obj_    = nh_.subscribe("/Object_topic",    1, &Dashboard::cbObj, this);
         sub_avoid_  = nh_.subscribe("/avoidance_offset", 1, &Dashboard::cbAvoid, this);
+        sub_livepath_ = nh_.subscribe("/avoid_path",     1, &Dashboard::cbLivePath, this);  // planner live 경로(차가 실제 추종)
+        sub_mode_   = nh_.subscribe("/avoid_mode",       1, &Dashboard::cbMode, this);  // 현재 모드(추월/회피/직진)
 
         cv::namedWindow(kWin_, cv::WINDOW_AUTOSIZE);
-        cv::startWindowThread();
+        cv::moveWindow(kWin_, 0, 0);   // WSLg: 좌상단 고정
+        // startWindowThread() 제거 — WSLg/GTK에서 별도 GUI 스레드가 메인 imshow 갱신 막아 검은화면
         cv::Mat init(kH, kW, CV_8UC3, kBg);
         cv::imshow(kWin_, init);
         cv::waitKey(30);
@@ -104,7 +108,7 @@ public:
         while (ros::ok()) {
             ros::spinOnce();
             render();
-            int k = cv::waitKey(1);
+            int k = cv::waitKey(30);   // WSLg: 이벤트펌핑+repaint 보장 (1ms는 갱신누락→검은화면)
             if (k == 27 || k == 'q') { ros::shutdown(); break; }
             r.sleep();
         }
@@ -160,6 +164,11 @@ private:
         if (win_f30_.size() > kWin) { sum_w30_ -= win_f30_.front(); win_f30_.pop_front(); }
         if (win_f50_.size() > kWin) { sum_w50_ -= win_f50_.front(); win_f50_.pop_front(); }
         if (win_fhd_.size() > kWin) { sum_whd_ -= win_fhd_.front(); win_fhd_.pop_front(); }
+    }
+
+    void cbMode(const std_msgs::String::ConstPtr& msg) {
+        std::lock_guard<std::mutex> lk(mu_);
+        avoid_mode_ = msg->data;
     }
 
     void cbStatus(const std_msgs::String::ConstPtr& msg) {
@@ -219,6 +228,7 @@ private:
             std::lock_guard<std::mutex> lk(mu_);
             drawHeader(img);
             drawMap(img);
+            drawAvoidMode(img);
             drawStatsPanel(img);
             drawGraph(img, "[ CTE ]  LATERAL ERROR", t_buf_, cte_buf_, kCyan,
                       kPanelX0, kPanelY0 + kStatsH + kGraphGap, kPanelW, kGraphH,
@@ -229,6 +239,24 @@ private:
             drawSpeedGraph(img, kPanelX0, kPanelY0 + kStatsH + kGraphGap*3 + kGraphH*2, kPanelW, kGraphH);
         }
         cv::imshow(kWin_, img);
+    }
+
+    // ── planner 모드 배너 (추월/회피/순항) — 지도 좌상단, 색상 구분 ──
+    void drawAvoidMode(cv::Mat& img) {
+        std::string m = avoid_mode_.empty() ? std::string("CRUISE") : avoid_mode_;
+        cv::Scalar col;
+        if      (m.rfind("OVERTAKE:BOOST", 0) == 0) col = cv::Scalar(60, 90, 255);   // 빨강: 급가속 추월
+        else if (m.rfind("OVERTAKE", 0)      == 0)  col = cv::Scalar(60, 200, 255);  // 주황: 차선변경 진입
+        else if (m.rfind("AVOID", 0)         == 0)  col = cv::Scalar(230, 200, 60);  // 시안: 회피
+        else                                        col = cv::Scalar(120, 200, 120); // 녹: 순항
+        int x = 16, y = kHeaderH + 30;
+        double sc = 0.85;
+        cv::Size sz = cv::getTextSize(m, cv::FONT_HERSHEY_DUPLEX, sc, 2, nullptr);
+        cv::rectangle(img, cv::Rect(x - 10, y - sz.height - 12, sz.width + 20, sz.height + 22),
+                      cv::Scalar(20, 24, 30), cv::FILLED);
+        cv::rectangle(img, cv::Rect(x - 10, y - sz.height - 12, sz.width + 20, sz.height + 22), col, 2);
+        cv::rectangle(img, cv::Rect(x - 10, y - sz.height - 12, 6, sz.height + 22), col, cv::FILLED);
+        putText(img, m, x + 6, y, sc, col, cv::FONT_HERSHEY_DUPLEX, 2);
     }
 
     // ── HUD 헤더 배너 ────────────────────────────────────────
@@ -336,11 +364,25 @@ private:
             }
         }
 
-        // D 경로 — 시안 (close-up에서 더 잘 보이게)
+        // ── LIVE 경로 우선: planner가 발행한 실제 추종경로 하나만 표시 (static과 이중표시 제거) ──
+        bool have_live = !live_x_.empty() && (ros::Time::now() - live_stamp_).toSec() < 1.0;
+        int path_dot_r = follow_vehicle_ ? 2 : 1;
+        if (have_live) {
+            const cv::Scalar kLive(70, 255, 120);   // bright green — 차가 실제 따라가는 경로
+            for (size_t i = 1; i < live_x_.size(); ++i) {
+                cv::Point p1 = W2I(live_x_[i-1], live_y_[i-1]);
+                cv::Point p2 = W2I(live_x_[i],   live_y_[i]);
+                if (inMap(p1) || inMap(p2)) cv::line(img, p1, p2, kLive, 2, cv::LINE_AA);
+            }
+            for (size_t i = 0; i < live_x_.size(); i += 2) {
+                cv::Point p = W2I(live_x_[i], live_y_[i]);
+                if (inMap(p)) cv::circle(img, p, path_dot_r, kLive, cv::FILLED);
+            }
+        } else {
+        // D 경로 — 시안 (close-up에서 더 잘 보이게) — live 없을때만(planner off)
         const cv::Scalar kPathD(220, 170, 40);   // brighter cyan
         const cv::Scalar kPathR(50, 170, 240);   // brighter amber
         // 차량 중심 모드에서는 점 키움
-        int path_dot_r = follow_vehicle_ ? 2 : 1;
         for (size_t i = 0; i < wp_d_x_.size(); ++i) {
             cv::Point p = W2I(wp_d_x_[i], wp_d_y_[i]);
             if (inMap(p)) cv::circle(img, p, path_dot_r, kPathD, cv::FILLED);
@@ -367,6 +409,7 @@ private:
                     cv::line(img, p1, p2, kPathR, 1, cv::LINE_AA);
             }
         }
+        }  // end else (static 경로 — live 없을때만)
 
         // ── 트레일 (그라디언트 + 글로우 효과) ────────────────
         // 오래된 점 → 어둡고 얇음, 최근 점 → 밝고 두꺼움 (깃발 효과)
@@ -420,7 +463,8 @@ private:
         }
 
         // ── 회피 경로 (reference path + avoid_offset 만큼 lateral shift) ─
-        if (std::abs(avoid_offset_) > 0.05 && wp_d_x_.size() > 5) {
+        // live 경로 표시중이면 이 가짜(offset shift) 경로는 그리지 않음 — 이중선 제거
+        if (!have_live && std::abs(avoid_offset_) > 0.05 && wp_d_x_.size() > 5) {
             // wp_d 좌표를 path direction 기준 lateral 이동 (좌측+)
             std::vector<cv::Point> avoid_pts;
             for (size_t i = 1; i < wp_d_x_.size(); ++i) {
@@ -485,7 +529,7 @@ private:
 
         // ── 장애물 시각화 (/Object_topic) ─────────────────────
         {
-            std::lock_guard<std::mutex> lk(mu_);
+            // render()가 이미 mu_ 보유 → 재lock 금지(non-recursive mutex 이중lock=데드락→검은화면)
             for (const auto& o : obstacles_) {
                 cv::Point poc = W2I(o.x, o.y);
                 if (!inMap(poc)) continue;
@@ -773,13 +817,26 @@ private:
         std::lock_guard<std::mutex> lk(mu_);
         avoid_offset_ = msg->data;
     }
+    // planner가 실제 발행하는 live 경로 — 차가 이걸 따라감. 대시보드도 이거 하나만 표시.
+    void cbLivePath(const nav_msgs::Path::ConstPtr& msg) {
+        std::lock_guard<std::mutex> lk(mu_);
+        live_x_.clear(); live_y_.clear();
+        for (const auto& ps : msg->poses) {
+            live_x_.push_back(ps.pose.position.x);
+            live_y_.push_back(ps.pose.position.y);
+        }
+        live_stamp_ = ros::Time::now();
+    }
     struct Obstacle { double x, y, sx, sy, heading; };
 
     // ── 데이터 ────────────────────────────────────────────────
     ros::NodeHandle nh_;
-    ros::Subscriber sub_perf_, sub_status_, sub_ego_, sub_obj_, sub_avoid_;
+    ros::Subscriber sub_perf_, sub_status_, sub_ego_, sub_obj_, sub_avoid_, sub_livepath_, sub_mode_;
     std::vector<Obstacle> obstacles_;
+    std::string avoid_mode_ = "직진";   // planner 현재 모드(추월/회피/직진)
     double avoid_offset_ = 0.0;
+    std::vector<double> live_x_, live_y_;   // planner live 경로 (차 실제 추종경로)
+    ros::Time live_stamp_;
     std::string path_file_;
     double window_m_ = 18.0;
     double hdg_pct_thresh_ = 5.0;

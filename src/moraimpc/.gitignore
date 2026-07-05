@@ -1,0 +1,19 @@
+# 런타임 로그/산출물
+logs/
+*.log
+mpc_log.*
+mpc_analysis.png
+
+# 빌드 산출물
+build/
+devel/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.o
+
+# 에디터/OS
+.vscode/
+*.swp
+.DS_Store
