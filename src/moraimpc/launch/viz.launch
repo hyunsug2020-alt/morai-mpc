@@ -1,0 +1,9 @@
+<launch>
+    <!-- 실제 MORAI 주행 시각화 (foxglove/rviz). 주행엔 관여 안 함.
+         전제: morai.launch(rosbridge 9090) + 주행 스택(planner/follower) 이미 실행중.
+         Foxglove Studio → Rosbridge → ws://localhost:9090 → /viz/markers, /avoid_path -->
+    <arg name="hdmap_zip" default="/mnt/c/Users/Hyunsug2014/Downloads/drive-download-20260701T154301Z-3-001.zip"/>
+    <node pkg="moraimpc" type="hdmap_viz.py" name="hdmap_viz" output="screen">
+        <param name="hdmap_zip" value="$(arg hdmap_zip)"/>
+    </node>
+</launch>

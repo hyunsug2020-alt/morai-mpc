@@ -1,0 +1,23 @@
+<launch>
+  <!-- HDMAP lane-change planner + LTV-only follower + live monitor/logging. -->
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="rviz" default="true" />
+  <arg name="log_file" default="$(find moraimpc)/logs/ltv_debug_log.json" />
+  <arg name="monitor_csv" default="$(find moraimpc)/logs/ltv_drive_trace.csv" />
+
+  <include file="$(find moraimpc)/launch/hdmap_lane_change.launch">
+    <arg name="path_file" value="$(arg path_file)" />
+    <arg name="log_file" value="$(arg log_file)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="follower" value="true" />
+    <arg name="rviz" value="$(arg rviz)" />
+    <arg name="ltv_only" value="true" />
+    <arg name="live_tuning" value="true" />
+  </include>
+
+  <node pkg="moraimpc" type="drive_monitor.py" name="drive_monitor" output="screen">
+    <param name="win" value="60" />
+    <param name="csv" value="$(arg monitor_csv)" />
+  </node>
+</launch>

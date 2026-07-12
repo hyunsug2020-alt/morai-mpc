@@ -29,6 +29,8 @@ public:
     ~PathFollower();
 
 private:
+    ros::NodeHandle nh_;
+
     // ── 경로 로드 ──────────────────────────────────────────────────
     void loadPath(const std::string& file);
     void loadWaypoints(const Json::Value& wps, const std::string& src_file = "");  // 파일/토픽 공용
@@ -73,6 +75,7 @@ private:
     // ── 후처리 ─────────────────────────────────────────────────────
     double steerRateLimit(double steer_deg, double dt);
     double velocitySigmoid(double v_tgt, double dt);
+    void reloadRuntimeParams(bool force = false);
 
     // ── 명령 발행 ──────────────────────────────────────────────────
     void publishCmd(double vel_kmh, double steer_deg);
@@ -193,6 +196,13 @@ private:
     double curve_spd_hdg_thresh_ = 0.20;
     double curve_spd_gain_       = 0.06;
     double curve_spd_min_ratio_  = 0.70;
+    bool   curve_decel_enable_   = true;
+    double curve_speed_alpha_    = 12.0;
+    double curve_alat_max_       = 2.8;
+    double curve_lookahead_min_m_ = 25.0;
+    double curve_lookahead_max_m_ = 70.0;
+    double curve_lookahead_time_s_ = 2.5;
+    double curve_brake_decel_mps2_ = 2.0;
     double overshoot_dist_       = 0.10;
     double overshoot_damp_       = 0.40;
     double osc_cte_db_           = 0.10;  // 0.08 -> 0.10 (데드밴드 상향)
@@ -203,7 +213,7 @@ private:
     double near_steer_damp_      = 0.85;
     double near_v_scale_         = 0.96;
     double k_stanley_            = 0.5;
-    double max_steer_rate_       = 18.0; // 원본 복원 (회피 외 영역 영향 차단)
+    double max_steer_rate_       = 50.0; // 18→50: 18°/s는 위상지연으로 커브서 위빙 리밋사이클 유발 (autodrive 폐루프서 확인)
     double max_steer_deg_        = 35.0;
     double sig_tau_up_           = 0.30;
     double sig_tau_down_         = 0.15;
@@ -219,6 +229,9 @@ private:
     bool      v_sig_init_      = false;
     double    v_sig_           = 0.0;
     ros::Time prev_cmd_time_;
+    bool      live_tuning_ = true;
+    double    param_reload_period_s_ = 0.5;
+    ros::Time last_param_reload_time_;
 
     // ═══════════════════════════════════════════════════════════════
     // ROS
@@ -226,12 +239,16 @@ private:
     // 회피 lateral offset (legacy) — avoidance_planner_node 호환용. Phase 1 이후 미사용.
     bool   avoidance_enabled_ = false;   // launch param. false면 일반 추종 그대로
     bool   force_nmpc_ = false;          // launch param. true면 항상 RTI-NMPC (고속 튜닝용)
+    bool   ltv_only_ = false;            // true면 전진 D 구간은 저속/회피여도 LTV만 사용
+    bool   stop_at_path_end_ = true;      // false면 rolling horizon 경로를 무한 추종
+    double avoid_reacquire_dist_m_ = 3.0; // rolling path가 멀어졌을 때만 매처 재획득
     double avoidance_offset_ = 0.0;
     ros::Subscriber avoid_sub_;
     // ── hdmap_lane_avoid (IDM+MOBIL) 동적 경로/속도 ──
     ros::Subscriber avoid_wps_sub_;
     ros::Subscriber avoid_vel_sub_;
     bool      use_avoid_path_       = false;
+    bool      avoid_vel_as_cap_     = true;
     double    avoid_target_vel_mps_ = 0.0;
     bool      avoid_vel_rcvd_       = false;
     ros::Time avoid_vel_time_;

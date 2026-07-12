@@ -9,6 +9,7 @@
     <node pkg="moraimpc" type="hdmap_lane_avoid.py" name="hdmap_lane_avoid" output="log">
         <param name="cruise_mps"        value="$(eval arg('cruise_kmh')/3.6)" />
         <param name="change_cooldown_s" value="2.0" />
+        <param name="enable_overtake"   value="false" />
     </node>
 
     <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">

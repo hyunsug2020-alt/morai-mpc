@@ -5,7 +5,7 @@ vehicle_sim — MORAI 대체 헤드리스 차량 시뮬 (HITL: 실제 LTV-MPC fo
   구독: /ctrl_cmd (CtrlCmd: longlCmdType=2, velocity[km/h], steering[rad 전륜각])
   발행: /Ego_topic (EgoVehicleStatus), /Object_topic (ObjectStatusList, 차선추종 NPC)
   모델: Ioniq5 운동학 자전거 + 조향 rate/lag + 종방향 가감속 한계.
-  종료: sim_time 경과 or 충돌 → /tmp/hitl_result.json 기록 후 shutdown.
+  종료: sim_time 경과 or roslaunch shutdown → /tmp/hitl_result.json 기록 후 shutdown.
 
   실제 planner(hdmap_lane_avoid) + 실제 follower(path_follower_node)와 함께 구동.
 """
@@ -169,13 +169,20 @@ class VehicleSim:
 
     def spin(self):
         dt=0.02; r=rospy.Rate(1.0/dt); pub_every=2; k=0
-        while not rospy.is_shutdown() and self.t<self.Tsim and not self.collided:
+        ncol=0; last_cause=None
+        while not rospy.is_shutdown() and self.t<self.Tsim:
             self._step(dt)
+            if self.collided:                       # 무제한 관찰: 충돌 비치명(로그만+계속주행)
+                ncol+=1
+                last_cause=self.cause
+                rospy.logwarn_throttle(1.0,"[vsim] 충돌#%d cause=%s @(%.0f,%.0f) v=%.1f",ncol,self.cause,self.x,self.y,self.v*3.6)
+                self.collided=False; self.cause=None
             self._publish_ego()
             if k%pub_every==0: self._publish_objs()
             k+=1; self.t+=dt
             r.sleep()
-        res={"collision":self.collided,"cause":self.cause,"max_cte":round(self.max_cte,3),
+        res={"collision":(ncol>0 or self.collided),"cause":(self.cause or last_cause),
+             "n_collisions":ncol,"max_cte":round(self.max_cte,3),
              "overtaken":len(self.overtaken),"n_slow":len(self.slow),"final_v":round(self.v,2),
              "stopped":self.v<0.5,"t":round(self.t,2),"ego_lane":self.ego_lane,"v_set":round(self.v_set,2)}
         try:

@@ -17,6 +17,7 @@
         <param name="change_cooldown_s"     value="2.0" />
         <param name="route_len_m"           value="300.0" />   <!-- 긴 경로(무한반복 테스트) -->
         <param name="rate_hz"               value="10.0" />
+        <param name="enable_overtake"       value="false" />
     </node>
 
     <!-- 2. LTV 추종기 (동적 경로 /avoid_waypoints + IDM 속도 /avoid_target_vel 사용) -->

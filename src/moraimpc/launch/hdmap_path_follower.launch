@@ -1,0 +1,65 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="ltv_only" default="true" />
+  <arg name="live_tuning" default="true" />
+  <arg name="param_reload_period_s" default="0.5" />
+  <arg name="use_avoid_path" default="true" />
+  <arg name="avoid_vel_as_cap" default="true" />
+  <arg name="stop_at_path_end" default="false" />
+  <arg name="avoid_reacquire_dist_m" default="3.0" />
+  <arg name="curve_decel_enable" default="true" />
+  <arg name="curve_speed_alpha" default="12.0" />
+  <arg name="curve_alat_max" default="2.8" />
+  <arg name="curve_lookahead_min_m" default="25.0" />
+  <arg name="curve_lookahead_max_m" default="70.0" />
+  <arg name="curve_lookahead_time_s" default="2.5" />
+  <arg name="curve_brake_decel_mps2" default="2.0" />
+  <arg name="curve_min_vel_kmh" default="6.0" />
+  <arg name="kappa_gain" default="1.28" />
+  <arg name="max_steer_rate" default="50.0" />
+  <arg name="max_steer_deg" default="35.0" />
+  <arg name="w_dr" default="220.0" />
+  <arg name="w_theta_low_speed" default="250.0" />
+  <arg name="w_theta_high_speed" default="220.0" />
+  <arg name="w_kappa" default="120.0" />
+  <arg name="w_u" default="5200.0" />
+  <arg name="w_u_v_gain" default="350.0" />
+  <arg name="w_dr_curve_boost" default="2.8" />
+  <arg name="log_file" default="$(find moraimpc)/logs/lane_change_log.json" />
+
+  <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
+    <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="target_vel" value="$(arg cruise_kmh)" />
+    <param name="force_nmpc" value="false" />
+    <param name="ltv_only" value="$(arg ltv_only)" />
+    <param name="live_tuning" value="$(arg live_tuning)" />
+    <param name="param_reload_period_s" value="$(arg param_reload_period_s)" />
+    <param name="use_avoid_path" value="$(arg use_avoid_path)" />
+    <param name="avoid_vel_as_cap" value="$(arg avoid_vel_as_cap)" />
+    <param name="stop_at_path_end" value="$(arg stop_at_path_end)" />
+    <param name="avoid_reacquire_dist_m" value="$(arg avoid_reacquire_dist_m)" />
+    <param name="curve_decel_enable" value="$(arg curve_decel_enable)" />
+    <param name="curve_speed_alpha" value="$(arg curve_speed_alpha)" />
+    <param name="curve_alat_max" value="$(arg curve_alat_max)" />
+    <param name="curve_lookahead_min_m" value="$(arg curve_lookahead_min_m)" />
+    <param name="curve_lookahead_max_m" value="$(arg curve_lookahead_max_m)" />
+    <param name="curve_lookahead_time_s" value="$(arg curve_lookahead_time_s)" />
+    <param name="curve_brake_decel_mps2" value="$(arg curve_brake_decel_mps2)" />
+    <param name="curve_min_vel_kmh" value="$(arg curve_min_vel_kmh)" />
+    <param name="kappa_gain" value="$(arg kappa_gain)" />
+    <param name="max_steer_rate" value="$(arg max_steer_rate)" />
+    <param name="max_steer_deg" value="$(arg max_steer_deg)" />
+    <param name="w_dr" value="$(arg w_dr)" />
+    <param name="w_theta_low_speed" value="$(arg w_theta_low_speed)" />
+    <param name="w_theta_high_speed" value="$(arg w_theta_high_speed)" />
+    <param name="w_kappa" value="$(arg w_kappa)" />
+    <param name="w_u" value="$(arg w_u)" />
+    <param name="w_u_v_gain" value="$(arg w_u_v_gain)" />
+    <param name="w_dr_curve_boost" value="$(arg w_dr_curve_boost)" />
+    <param name="log_file" value="$(arg log_file)" />
+  </node>
+</launch>

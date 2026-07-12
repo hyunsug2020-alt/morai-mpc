@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-hdmap_lane_avoid — HDMAP link_set 기반 IDM+MOBIL 추월/회피 플래너
+hdmap_lane_avoid — HDMAP link_set 기반 차선변경/회피 플래너
 
 검증: 헤드리스 10,000회 시뮬 충돌 0.000%, 추월성공 ~74% (test_avoid.py).
 
 이론:
   - 종방향 IDM (Intelligent Driver Model): 앞차 안전거리 유지 → 추돌 원천봉쇄
-  - 차선변경/추월 MOBIL: 이득(가속여유↑) + 안전(뒤차 급제동X) 판정
+  - HD map 차선기반 lane-change: 인접 차선 존재 + 차선변경 허용 구간에서만 진입
   - 원래차선 복귀 bias, 예측 cut-in lead, 변경 커밋+쿨다운
   - NPC 등속예측 (/Object_topic velocity)
 
@@ -79,11 +79,16 @@ class LaneAvoid:
         self.pref_lane=None; self.tgt_link=None; self._ev=5.0
         self.t_last_change=-99.0
         self.ref_link=None; self.changing=False; self._last_link=None; self.change_tgt_lane=None
-        self.overtook_first=False; self._clear_cnt=0   # 추월은 처음 본 차량만 / 클리어 지속시 리셋
+        self.overtook_first=False; self._clear_cnt=0   # 추월 모드 호환용 상태
         self.ot_phase=None; self.ot_home_lane=None; self.ot_target_v=0.0  # 추월 기동 상태/원차선/넘길차속도
         self.ot_side=None                                                # 추월 우회방향 고정(진동방지)
+        self._sw_can_offset=False; self._sw_side=None                    # 실제 인접차선 존재시만 우회 허용
+        self._ot_adj=None; self._sw_adj=None                             # 추월 기동중 목표차선 링크 락(flip-flop 방지)
         self.ot_boost=rospy.get_param("~overtake_speed_mult", 2.5)  # 추월 급가속: 상대차속의 N배
         self.ot_straight_kappa=rospy.get_param("~overtake_max_kappa", 0.02)  # 추월 허용 최대곡률 (R>50m=직선)
+        self.enable_overtake = rospy.get_param("~enable_overtake", False)
+        self.lc_home_lane = None
+        self.lc_reason = None
 
         rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/Object_topic", ObjectStatusList, self._obj_cb, queue_size=1)
@@ -91,8 +96,9 @@ class LaneAvoid:
         self.pub_vel=rospy.Publisher("/avoid_target_vel", Float32, queue_size=1)
         self.pub_path=rospy.Publisher("/avoid_path", Path, queue_size=1)
         self.pub_mode=rospy.Publisher("/avoid_mode", String, queue_size=1)   # 현재 모드(추월/회피/직진) → 대시보드 표시
-        rospy.loginfo("[lane_avoid] IDM+MOBIL 추월/회피 ON  (link %d, 차선변경 %d)",
-                      len(self.links), sum(1 for L in self.links.values() if L.can_l or L.can_r))
+        rospy.loginfo("[lane_avoid] HDMAP 차선변경/회피 ON  (link %d, 차선변경 %d, 추월=%s)",
+                      len(self.links), sum(1 for L in self.links.values() if L.can_l or L.can_r),
+                      "ON" if self.enable_overtake else "OFF")
 
     def _load_map(self, zp):
         with zipfile.ZipFile(zp) as z:
@@ -132,17 +138,68 @@ class LaneAvoid:
         # want_lane 지정 시 그 lane 번호 링크만 (차선변경 중 목표 lane 재-anchor용)
         last=getattr(self,"_last_link",None)
         best=None; bs=1e18
+        fb=None; fb_d=1e18                      # heading게이트 실패 시 거리최근접 fallback(대향 제외)
         for L in self.links.values():
             if want_lane is not None and L.lane!=want_lane: continue
             s,lat,dist,th=self._proj(ex,ey,L)
             if dist>8.0: continue
             hd=abs(norm(th-eh))
-            if hd>math.radians(60): continue
+            if want_lane is None and hd<math.radians(100) and dist<fb_d: fb_d=dist; fb=L
+            if hd>math.radians(80): continue     # 60→80: 커브서 heading오차 커져도 현재도로 유지(None→발행중단 방지)
             score=abs(lat)+0.4*hd
             if want_lane is None and last is not None and L.idx==last: score-=0.7
             if score<bs: bs=score; best=L
+        if best is None: best=fb                 # 게이트 통과 없으면 거리최근접(대향제외)로 — None 방지
         if best is not None and want_lane is None: self._last_link=best.idx
         return best
+
+    def _adjacent_lane(self, ex, ey, eh, side):
+        """ego 기준 side(+1좌 / -1우)에 '실제 존재하는' 평행 인접차선 링크 반환(없으면 None).
+           기하(같은방향 + 횡거리≈차선폭 + 전후 근접)로 탐색 → 옆차선 없으면 None → 오프로드 추월 봉쇄."""
+        nlx, nly = -math.sin(eh), math.cos(eh)          # ego 좌측 단위법선
+        best=None; bscore=1e18
+        for L in self.links.values():
+            bd=1e18; bi=0
+            for i,(x,y) in enumerate(L.pts):
+                d=(ex-x)**2+(ey-y)**2
+                if d<bd: bd=d; bi=i
+            if bd>2500.0: continue                      # 50m+ 무시
+            i1=min(bi+1,len(L.pts)-1)
+            th=math.atan2(L.pts[i1][1]-L.pts[bi][1], L.pts[i1][0]-L.pts[bi][0])
+            if abs(norm(th-eh))>math.radians(35): continue   # 같은방향 차선만(역주행 제외)
+            vx,vy=L.pts[bi][0]-ex, L.pts[bi][1]-ey
+            lateral=vx*nlx+vy*nly                        # +면 L이 ego 좌측
+            longit =vx*math.cos(eh)+vy*math.sin(eh)
+            if abs(longit)>12.0: continue                # 전후 12m내(진짜 옆에 있는 차선)
+            if side>0 and not (2.2<lateral<5.4): continue    # 좌측 인접(차선폭 근방)
+            if side<0 and not (-5.4<lateral<-2.2): continue  # 우측 인접
+            score=abs(abs(lateral)-3.5)+0.3*abs(longit)
+            if score<bscore: bscore=score; best=L
+        if best is None: return None
+        # 평행성 검증: ego 직선전방 8/16/24/32m서 후보차선 '전방체인'이 차선폭 유지하는지 → 발산(램프/분기) 배제.
+        #   단일 링크만 보면 링크는 평행이나 그 forward chain이 갈라지는 경우 놓침 → 체인 전체로 검증.
+        adj_pts=self._chain_pts_raw(self._forward(best, 40.0))
+        if len(adj_pts)<3: return None
+        for ahead in (8.0, 16.0, 24.0, 32.0):
+            fx, fy = ex+ahead*math.cos(eh), ey+ahead*math.sin(eh)
+            bd=1e18; bp=adj_pts[0]
+            for p in adj_pts:
+                d=(p[0]-fx)**2+(p[1]-fy)**2
+                if d<bd: bd=d; bp=p
+            lat=(bp[0]-ex)*nlx+(bp[1]-ey)*nly
+            lon=(bp[0]-ex)*math.cos(eh)+(bp[1]-ey)*math.sin(eh)
+            if abs(lon-ahead)>6.0: return None            # adj가 그 종거리까지 안뻗음(짧은 연결링크/발산)
+            if side>0 and not (1.9<lat<5.9): return None
+            if side<0 and not (-5.9<lat<-1.9): return None
+        return best
+
+    def _lane_off_from_ref(self, adj, refpt, refth):
+        """인접차선 adj 중심선의, ref중심선(refpt,refth) 대비 부호있는 횡offset(+좌). y_peak = 실제 차선위치."""
+        bd=1e18; bp=adj.pts[0]
+        for p in adj.pts:
+            d=(p[0]-refpt[0])**2+(p[1]-refpt[1])**2
+            if d<bd: bd=d; bp=p
+        return -math.sin(refth)*(bp[0]-refpt[0])+math.cos(refth)*(bp[1]-refpt[1])
 
     def _forward(self, start, length):
         # 전방 링크 체인. route_len 만큼 이어붙임 (재방문 금지 → 0길이링크 무한루프 방지)
@@ -286,9 +343,11 @@ class LaneAvoid:
                 need_acq=True
             if need_acq:
                 rl=self._current_link(ex,ey,eh)
-                if rl is None:
+                if rl is not None:
+                    self.ref_link=rl.idx
+                elif self.ref_link is None or self.ref_link not in self.links:
                     rospy.logwarn_throttle(3.0,"[lane_avoid] 현재 차선 못찾음"); return
-                self.ref_link=rl.idx
+                # else: 재획득 실패해도 '이전 ref_link 유지' → 커브서 경로발행 안 끊음(계속 이어서 생성)
         if self.ref_link is None or self.ref_link not in self.links:
             return
         cur=self.links[self.ref_link]
@@ -302,7 +361,7 @@ class LaneAvoid:
         else:
             blk_s=blk_lat=blk_v=None; lead_cur=None
 
-        # ── 추월 상태머신 (sw_tgt robust 추적 — ego프레임 아님) ──
+        # ── 추월 상태머신 (기존 로직 호환; 기본은 비활성) ──
         # (1)out: 옆으로 진입 → (2)boost: 대상과 횡간격(차폭+여유) 확보후 급가속 통과.
         # 대상이 뒤로 완전통과(sw_tgt 소멸)하면 종료 → _route_to_link로 원차선 복귀.
         # ※ ego프레임 횡거리는 ego가 차선변경으로 heading 틀면 먼 차가 과대평가돼 대상 놓침 →
@@ -315,8 +374,10 @@ class LaneAvoid:
                     home=self._current_link(ex,ey,eh, want_lane=self.ot_home_lane)
                     if home is not None:
                         self.ref_link=home.idx; cur=self.links[self.ref_link]
-                self.ot_phase=None; self.ot_side=None
+                self.ot_phase=None; self.ot_side=None; self._ot_adj=None
                 self.overtook_first=False                        # 한 대 추월 완료 → 다음 저속차도 차례로 추월 가능
+                if self.ot_home_lane is not None:                # 원차선 복귀 기동(재anchor)→ 추월차선 눌러앉기 방지
+                    self.changing=True; self.change_tgt_lane=self.ot_home_lane
             elif self.ot_phase=="out":
                 _,ego_lat,_,_=self._proj(ex,ey,cur)              # ego 중심선 횡offset
                 if abs(ego_lat-blk_lat)>1.2:                     # 차선변경 착수(반차폭+) → 바로 급가속
@@ -342,27 +403,63 @@ class LaneAvoid:
         # ※ '순항속도(v_set) 기준'으로 느림 판정 — ego가 앞차 따라 느려져도(현재속도 기준이면 판정깨짐)
         #    "저 차는 내 순항보다 느리다"를 감지해 추월 발동.
         slow_lead = sw_tgt is not None and blk_v<self.v_set-1.0 and blk_s<40.0
-        can_ot = slow_lead and (not self.overtook_first) and self._straight_ahead(ex,ey,cur)
+        # 추월은 기본 OFF. 켜더라도 직선구간 + 실인접차선 조건을 모두 만족해야만 함.
+        can_ot = (self.enable_overtake and slow_lead and (not self.overtook_first)
+                  and self._straight_ahead(ex,ey,cur) and self._sw_can_offset)
         is_blocked = sw_tgt is not None and blk_s<30.0 and blk_v<1.5 and not can_ot
+        need_lane_change = sw_tgt is not None and self._sw_can_offset and (slow_lead or is_blocked)
 
         # 추월 개시 (HDMAP 인접링크 불필요 — 장애물 우회경로를 직접 계산해 주행)
         if (self.ot_phase is None) and can_ot and (now-self.t_last_change>=self.cooldown):
             self.overtook_first=True                       # 처음 본 차량만
             self.ot_phase="out"; self.ot_home_lane=cur.lane
             self.ot_target_v=max(blk_v, self.v_set*0.6)    # 상대차속의 2.5배, 하한 순항×0.6
-            # 우회방향 고정(매사이클 부호흔들림 방지). HDMAP 인접차선 있는 쪽(도로 존재) 우선 → 오프로드 방지
-            if cur.can_l and not cur.can_r:   self.ot_side = 1.0
-            elif cur.can_r and not cur.can_l: self.ot_side = -1.0
-            else:                             self.ot_side = -1.0 if blk_lat>0.0 else 1.0
+            self.ot_side=self._sw_side                     # swerve가 판정한 '실제 인접차선 있는 쪽' 고정
+            self._ot_adj=self._sw_adj                      # 목표차선 링크 락 (기동 내내 유지→commit, 재탐색X)
             self.t_last_change=now
+
+        # 추월 대신 인접 차선으로 진입하는 일반 lane-change 모드.
+        if (not self.enable_overtake) and (self.ot_phase is None) and (not self.changing) and need_lane_change and (now-self.t_last_change>=self.cooldown):
+            if self._sw_adj is not None and self._sw_adj in self.links:
+                dst = self.links[self._sw_adj]
+                self.lc_home_lane = cur.lane
+                self.lc_reason = "slow" if slow_lead else "blocked"
+                self.changing = True
+                self.change_tgt_lane = dst.lane
+                self.t_last_change = now
+
+        # lane-change 완료 후 막힘이 해소되면 원래 차선으로 복귀.
+        if (not self.enable_overtake) and (self.ot_phase is None) and (not self.changing):
+            if self.lc_home_lane is not None and cur.lane != self.lc_home_lane and sw_tgt is None and (now-self.t_last_change>=self.cooldown):
+                home = self._current_link(ex, ey, eh, want_lane=self.lc_home_lane)
+                if home is not None:
+                    self.changing = True
+                    self.change_tgt_lane = self.lc_home_lane
+                    self.t_last_change = now
+                    self.lc_reason = "return"
+            elif self.lc_home_lane is not None and cur.lane == self.lc_home_lane and sw_tgt is None:
+                self.lc_home_lane = None
+                self.lc_reason = None
 
         decision="직진(lane%s)"%cur.lane
         if self.ot_phase=="out":     decision="추월(진입)→우회 lane%s"%cur.lane
         elif self.ot_phase=="boost": decision="추월(급가속)→통과 lane%s"%cur.lane
+        elif self.changing and self.lc_reason=="return": decision="원차선 복귀 lane%s"%cur.lane
+        elif self.changing and self.lc_reason=="slow":   decision="차선변경(저속차 회피) lane%s"%cur.lane
+        elif self.changing and self.lc_reason=="blocked": decision="차선변경(정지장애물 회피) lane%s"%cur.lane
         elif is_blocked:             decision="회피(우회) lane%s"%cur.lane
 
-        # 경로: 추월/회피면 장애물 직접 우회 corridor(robust), 아니면 중심선 추종
-        if self.ot_phase is not None or is_blocked:
+        # 경로 선택:
+        #   추월중 → route_sw(실제 인접차선 lane-change)
+        #   비추월존 blocker(옆차선 없음) → node기반 차선내 회피(불가시 원차선, 정지는 감속담당)
+        #   옆차선 있는 정지차 막힘 → route_sw / 그 외 → 중심선 추종
+        if self.ot_phase is not None:
+            route=route_sw
+        elif self.changing:
+            route=self._route_to_link(ex,ey, self.links[self.ref_link])
+        elif sw_tgt is not None and not self._sw_can_offset:
+            route=self._inlane_avoid(cur, ex, ey, eh, blk_lat)
+        elif is_blocked:
             route=route_sw
         else:
             route=self._route_to_link(ex,ey, self.links[self.ref_link])
@@ -453,40 +550,67 @@ class LaneAvoid:
                 th=TH[i]; out.append((ref[i][0]-math.sin(th)*off, ref[i][1]+math.cos(th)*off))
             return out, None
         s_rel,lat_obs,k_obs,ov=tgt
-        # 우회방향: 추월중엔 개시때 고정한 ot_side(진동방지). 아니면 HDMAP 인접차선(도로 있는 쪽)
-        # 우선 → 도로 없는 쪽으로 우회해 오프로드 가는 것 방지. 둘다/없으면 장애물 반대쪽.
-        if overtake and self.ot_side is not None:      side=self.ot_side
-        elif cur.can_l and not cur.can_r:              side=1.0
-        elif cur.can_r and not cur.can_l:              side=-1.0
-        elif lat_obs>0.4:                              side=-1.0
-        elif lat_obs<-0.4:                             side=1.0
-        else:                                          side=1.0 if cur.can_l else (-1.0 if cur.can_r else 1.0)
-        clear=CAR_W+0.6                                 # 차폭+0.6m 여유 (edge gap)
-        y_peak=max(-3.0,min(3.0, lat_obs+side*clear))   # |y_peak|≤clear (중앙 장애물일때 최대)
-        out=[]
-        if overtake:
-            # 추월(이동차): 일정 횡rate로 옆차선(y_peak) 진입후 평행 유지. cosine램프는 시작slope=0이라
-            # 매사이클 ego서 재빌드시 offset 누적 안돼 못 벗어남 → 선형(시작slope 유지)로 실제 진입.
-            # 복귀는 상태머신 종료후 _route_to_link.
-            lat_rate=0.22; dy=y_peak-d_ego
-            for i in range(ci,n):
-                de=S[i]-S[ci]
-                off=d_ego+math.copysign(min(abs(dy), lat_rate*de), dy)
-                th=TH[i]; out.append((ref[i][0]-math.sin(th)*off, ref[i][1]+math.cos(th)*off))
+        # ── 우회 목표차선(adj) 결정 ──
+        #   추월 기동중: 시작때 락한 adj 링크 유지(ego 움직여도 재탐색 안함→flip-flop 방지).
+        #   신규: 장애물 반대쪽 우선, HDMAP 차선변경 허용 + 실제 평행 인접차선 있는 쪽만.
+        if overtake and self.ot_side is not None and self._ot_adj is not None and self._ot_adj in self.links:
+            side=self.ot_side; adj=self.links[self._ot_adj]
+        elif overtake and self.ot_side is not None:
+            side=self.ot_side; adj=self._adjacent_lane(ex,ey,th0,side)
         else:
-            # 회피(정지/저속 막힘): 장애물 위치에 y_peak 맞춰 도달→평행통과→통과후 복귀 (검증 99.7% 프로파일)
-            hold=CAR_LEN; s_obs=S[k_obs]
-            ramp=max((s_obs-hold)-S[ci], 4.0)
-            Lx=max(5.0, math.pi*V*math.sqrt(max(abs(y_peak),0.1)/(2.0*self.a_y_max*1.5)))
+            order=[-1.0,1.0] if lat_obs>0.0 else [1.0,-1.0]
+            side=None; adj=None
+            for cand in order:
+                if not (cur.can_l if cand>0 else cur.can_r): continue   # HDMAP 차선변경 허용 방향만
+                a=self._adjacent_lane(ex,ey,th0,cand)
+                if a is not None: side=cand; adj=a; break
+        if adj is None:
+            # 실제 옆차선 없음 → 우회 안함(원차선 복귀). blocker(tgt)는 반환 → 추종/감속 유지.
+            self._sw_can_offset=False; self._sw_side=None; self._sw_adj=None
+            Lx=max(6.0, math.pi*V*math.sqrt(max(abs(d_ego),0.05)/(2.0*self.a_y_max)))
+            rate=abs(d_ego)/Lx; out=[]
             for i in range(ci,n):
-                ds=S[i]-s_obs
-                if ds<-hold:
-                    t=min(1.0,(S[i]-S[ci])/ramp); w=0.5*(1-math.cos(math.pi*t)); off=d_ego+(y_peak-d_ego)*w
-                elif ds<=hold: off=y_peak
-                else:
-                    t=min(1.0,(ds-hold)/Lx); off=y_peak*0.5*(1+math.cos(math.pi*t))
+                off=math.copysign(max(0.0,abs(d_ego)-rate*(S[i]-S[ci])), d_ego)
                 th=TH[i]; out.append((ref[i][0]-math.sin(th)*off, ref[i][1]+math.cos(th)*off))
-        return out, (s_rel,lat_obs,ov)
+            return out, (s_rel,lat_obs,ov)
+        self._sw_can_offset=True; self._sw_side=side; self._sw_adj=adj.idx
+        # 경로 = 실제 adj차선으로 lane-change 후 그 차선 실제 geometry 추종 → 항상 도로 위(on-road).
+        #   transition은 선형·단축(12m) → 매사이클 ego서 재빌드해도 옆차선 진입 commit (cosine은 시작slope0→commit실패).
+        return self._lane_change_route(cur, ex, ey, adj, trans_m=12.0), (s_rel, lat_obs, ov)
+
+    def _inlane_avoid(self, cur, ex, ey, eh, blk_lat):
+        """추월불가 구간(옆차선 없음): HDMAP 차선 중심선(node) base로 '차선폭 내에서만' 동적장애물 우회.
+           장애물 반대쪽으로 nudge해 차폭 분리 확보되면 통과, 안되면 원차선 유지(감속·정지는 속도로직).
+           → 오프로드/역주행 없이 노드 기반 회피."""
+        ref=self._resample(self._chain_pts_raw(self._forward(cur,self.route_len)),0.5)
+        n=len(ref)
+        if n<5: return [(p[0],p[1]) for p in ref]
+        S=[0.0]*n; TH=[0.0]*n
+        for i in range(1,n):
+            S[i]=S[i-1]+math.hypot(ref[i][0]-ref[i-1][0], ref[i][1]-ref[i-1][1])
+        for i in range(n):
+            a=max(0,i-1); b=min(n-1,i+1)
+            TH[i]=math.atan2(ref[b][1]-ref[a][1], ref[b][0]-ref[a][0])
+        ci=min(range(n),key=lambda i:(ref[i][0]-ex)**2+(ref[i][1]-ey)**2)
+        th0=TH[ci]
+        d_ego=-math.sin(th0)*(ex-ref[ci][0])+math.cos(th0)*(ey-ref[ci][1])
+        half=(cur.width or 3.5)/2.0
+        room=half-CAR_W/2.0-0.15                          # ego 중심이 차선내서 갈 수 있는 최대 |횡offset|
+        target=0.0
+        if room>0.15 and blk_lat is not None:
+            side=-1.0 if blk_lat>0 else 1.0               # 장애물 반대쪽
+            cand=side*room
+            if abs(cand-blk_lat)>=CAR_W:                  # 차선폭 내에서 차폭만큼 벌어지면 통과 가능
+                target=cand
+        lat_rate=0.30; out=[]
+        for i in range(ci,n):
+            de=S[i]-S[ci]
+            if abs(target)<1e-3:                          # 회피불가/복귀 → 원차선으로
+                off=math.copysign(max(0.0, abs(d_ego)-lat_rate*de), d_ego)
+            else:
+                off=d_ego+math.copysign(min(abs(target-d_ego), lat_rate*de), target-d_ego)
+            th=TH[i]; out.append((ref[i][0]-math.sin(th)*off, ref[i][1]+math.cos(th)*off))
+        return out
 
     def _route_to_link(self, ex, ey, ref_link):
         """ego 현재위치 → 기준 링크 중심선으로 lc_trans 동안 lateral 블렌드 후 전방 추종.
@@ -516,13 +640,14 @@ class LaneAvoid:
                 route.append((ref[j][0]-math.sin(th)*off, ref[j][1]+math.cos(th)*off))
         return route
 
-    def _lane_change_route(self, cur, ex, ey, dst):
+    def _lane_change_route(self, cur, ex, ey, dst, trans_m=None):
         cur_pts=self._chain_pts(self._forward(cur,self.route_len),ex,ey)
         dst_re=self._resample(self._chain_pts_raw(self._forward(dst,self.route_len)),0.5)
-        trans_n=int(self.lc_trans/0.5); route=[]
+        if len(dst_re)<2: return cur_pts
+        trans_n=max(2,int((trans_m or self.lc_trans)/0.5)); route=[]
         for i in range(len(cur_pts)):
             if i<trans_n:
-                t=i/max(1,trans_n-1); w=0.5*(1-math.cos(math.pi*t))
+                w=i/max(1,trans_n-1)                                 # 선형 가중(시작slope>0 → 재anchor해도 commit)
                 dj=min(range(len(dst_re)),key=lambda j:(dst_re[j][0]-cur_pts[i][0])**2+(dst_re[j][1]-cur_pts[i][1])**2)
                 route.append(((1-w)*cur_pts[i][0]+w*dst_re[dj][0],(1-w)*cur_pts[i][1]+w*dst_re[dj][1]))
             else: break

@@ -1,0 +1,35 @@
+<launch>
+    <!-- practic — MORAI SIM 없이 HDMAP 위에서 추월 동작 관찰(foxglove/rviz).
+         practice_sim이 ego를 주행시키고 추월가능 구간에 15km/h 가상차 배치, planner가 추월경로 생성.
+         ※ morai.launch와 동시 실행 금지 (/Ego_topic·rosbridge 9090 충돌) -->
+
+    <arg name="hdmap_zip"     default="/mnt/c/Users/Hyunsug2014/Downloads/drive-download-20260701T154301Z-3-001.zip"/>
+    <arg name="cruise_kmh"    default="40.0"/>
+    <arg name="npc_speed_kmh" default="15.0"/>
+    <arg name="rviz"          default="false"/>
+
+    <!-- 1. 경량 시뮬레이터: ego 주행 + 추월가능 구간 15km/h 가상차 -->
+    <node pkg="moraimpc" type="practice_sim.py" name="practice_sim" output="screen">
+        <param name="hdmap_zip"     value="$(arg hdmap_zip)"/>
+        <param name="npc_speed_kmh" value="$(arg npc_speed_kmh)"/>
+        <param name="cruise_mps"    value="$(eval arg('cruise_kmh')/3.6)"/>
+        <param name="route_len_m"   value="500.0"/>
+        <param name="npc_spacing_m" value="90.0"/>
+    </node>
+
+    <!-- 2. HDMAP 추월/회피 planner (실제 인접차선 기반) -->
+    <node pkg="moraimpc" type="hdmap_lane_avoid.py" name="hdmap_lane_avoid" output="screen">
+        <param name="hdmap_zip"   value="$(arg hdmap_zip)"/>
+        <param name="cruise_mps"  value="$(eval arg('cruise_kmh')/3.6)"/>
+        <param name="route_len_m" value="200.0"/>
+        <param name="rate_hz"     value="10.0"/>
+        <param name="enable_overtake" value="false"/>
+    </node>
+
+    <!-- 3. foxglove 연결(rosbridge 9090). Foxglove Studio → Open connection → Rosbridge → ws://localhost:9090 -->
+    <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/>
+
+    <!-- 4. (선택) rviz: roslaunch ... rviz:=true -->
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+          args="-d $(find moraimpc)/config/practice.rviz" output="screen"/>
+</launch>

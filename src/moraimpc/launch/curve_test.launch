@@ -1,0 +1,32 @@
+<launch>
+    <!-- 급커브 추종정밀도 테스트: planner 대신 curve_test(점점 급해지는 아크) + 진짜 follower + vehicle_sim + monitor -->
+    <arg name="cruise_kmh" default="40" />
+    <arg name="radii"      default="20,12,8,6,5" />
+
+    <node pkg="moraimpc" type="curve_test.py" name="curve_test" output="screen">
+        <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="a_lat"      value="2.5" />
+        <param name="radii"      value="$(arg radii)" />
+    </node>
+
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">
+        <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+        <param name="path_file"      value="$(find moraimpc)/data/hdmap_path.json" />
+        <param name="target_vel"     value="$(arg cruise_kmh)" />
+        <param name="force_nmpc"     value="false" />
+        <param name="use_avoid_path" value="true" />
+        <param name="log_file"       value="/tmp/curvetest_follower.json" />
+    </node>
+
+    <node pkg="moraimpc" type="vehicle_sim.py" name="vehicle_sim" output="log" required="true">
+        <param name="ego_lane"    value="1" />
+        <param name="cruise_mps"  value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="sim_time"    value="999999" />
+        <param name="npc_specs"   value="[]" />
+        <param name="result_file" value="/tmp/curvetest_result.json" />
+    </node>
+
+    <node pkg="moraimpc" type="drive_monitor.py" name="drive_monitor" output="screen">
+        <param name="csv" value="/tmp/curve_trace.csv" />
+    </node>
+</launch>

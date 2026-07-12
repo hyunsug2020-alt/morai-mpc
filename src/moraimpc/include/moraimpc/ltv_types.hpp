@@ -15,14 +15,14 @@ struct LTVMPCConfig {
     int N = 30;
     double Ts = 0.05;
     double L = 2.7;
-    double kappa_gain = 1.2; // 1.5 -> 1.2 (저주파 진동 억제)
+    double kappa_gain = 1.28; // 조향 응답 소폭 상향: 곡선/복귀 구간 추종 강화
 
     // --- MORAI 최적 파라미터 (사용자 지정값 기반) ---
-    double w_dr    = 150.0;   // 80→150 (cte 누적 방지 — 위치 우선순위 ↑, hdg overshoot 완화)
-    double w_theta = 250.0;   // 40 -> 250 (헤딩 댐핑 대폭 강화 - 웨이브 방지 핵심)
-    double w_kappa = 100.0;   
-    double w_u     = 7500.0;  // 기본 input cost
-    double w_u_v_gain = 600.0;  // 1200→600 (고속 sluggishness 절반 — cte 누적 방지)
+    double w_dr    = 220.0;   // lateral 오차 우선순위 상향
+    double w_theta = 280.0;   // heading 추종 강화
+    double w_kappa = 120.0;
+    double w_u     = 5200.0;  // 입력 cost 완화: 조향이 더 빨리 따라붙도록 조정
+    double w_u_v_gain = 350.0;  // 고속에서도 과도하게 둔해지지 않게 완화
     // Wang 2019 fuzzy adaptive: cte 클 때 w_u 동적 증가
     double w_u_cte_boost_thresh = 0.5;  // 이 이상 cte이면 boost 시작
     double w_u_cte_boost_max    = 4.0;  // 최대 4배 증가
@@ -41,7 +41,7 @@ struct LTVMPCConfig {
     // --- 커브 속도 프로파일 ---
     double curve_kappa_thresh  = 0.01;   // 곡률 임계값 [rad/m] (연속 감속 시작점)
     double curve_speed_factor  = 0.5;    // 미사용 (연속 감속으로 대체)
-    double curve_lookahead_m   = 25.0;   // 곡률 프리뷰 거리 [m] (고속 대응)
+    double curve_lookahead_m   = 18.0;   // 로컬 곡률 반응 강화
     double curve_min_vel       =  5.0 / 3.6; // 곡선 최소 5 km/h (10→5: D 끝 곡선 yaw 정렬)
 
     // --- 적응형 가중치 ---
@@ -49,7 +49,7 @@ struct LTVMPCConfig {
     double w_theta_high_speed  = 220.0;  // 150→220 (커브 후 헤딩 진동 댐핑 강화)
     double w_theta_v_low       = 3.0;    // 저속 기준 [m/s]
     double w_theta_v_high      = 15.0;   // 고속 기준 [m/s] (~54km/h)
-    double w_dr_curve_boost    = 2.0;    // 커브 진입 시 w_dr 배수
+    double w_dr_curve_boost    = 2.8;    // 커브 진입 시 lateral 추종 우선
 
     // --- 동적 장애물 회피 (Frenet d 제약 + slack) ---
     double obs_lat_safety   = 0.9;   // [m] NPC lateral half-width + safety margin

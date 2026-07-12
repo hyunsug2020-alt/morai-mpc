@@ -19,7 +19,7 @@ static double wrapAngle(double a) {
 }
 
 // ── 생성자 ─────────────────────────────────────────────────────────
-PathFollower::PathFollower(ros::NodeHandle& nh) {
+PathFollower::PathFollower(ros::NodeHandle& nh) : nh_(nh) {
     std::string path_file;
     double target_vel = 20.0;
     nh.param<std::string>("path_file",   path_file,   "/tmp/waypoints.json");
@@ -29,6 +29,19 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     nh.param<double>("reverse_max_vel", reverse_max_vel_kmh_, 2.0);
     nh.param<double>("low_speed_thresh_kmh", low_speed_thresh_kmh_, 4.0);
     nh.param<double>("pre_gear_change_dist_m", pre_gear_change_dist_m_, 5.0);
+    nh.param<bool>  ("curve_decel_enable", curve_decel_enable_, true);
+    nh.param<double>("curve_speed_alpha", curve_speed_alpha_, 12.0);
+    nh.param<double>("curve_alat_max", curve_alat_max_, 2.8);
+    nh.param<double>("curve_lookahead_min_m", curve_lookahead_min_m_, 25.0);
+    nh.param<double>("curve_lookahead_max_m", curve_lookahead_max_m_, 70.0);
+    nh.param<double>("curve_lookahead_time_s", curve_lookahead_time_s_, 2.5);
+    nh.param<double>("curve_brake_decel_mps2", curve_brake_decel_mps2_, 2.0);
+    double curve_lookahead_m = cfg_.curve_lookahead_m;
+    double curve_min_vel_kmh = cfg_.curve_min_vel * 3.6;
+    nh.param<double>("curve_lookahead_m", curve_lookahead_m, cfg_.curve_lookahead_m);
+    nh.param<double>("curve_min_vel_kmh", curve_min_vel_kmh, curve_min_vel_kmh);
+    cfg_.curve_lookahead_m = std::max(1.0, curve_lookahead_m);
+    cfg_.curve_min_vel = std::max(0.5, curve_min_vel_kmh) / 3.6;
     nh.param<std::string>("log_file", log_file_, "/tmp/mpc_log.json");
     log_t0_ = ros::Time::now();
     log_recs_.reserve(20000);
@@ -51,6 +64,11 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
 
     nh.param<bool>("avoidance_enabled", avoidance_enabled_, false);
     nh.param<bool>("force_nmpc", force_nmpc_, false);  // true면 항상 RTI-NMPC 사용 (고속 튜닝용)
+    nh.param<bool>("ltv_only", ltv_only_, false);
+    nh.param<bool>("live_tuning", live_tuning_, true);
+    nh.param<double>("param_reload_period_s", param_reload_period_s_, 0.5);
+    nh.param<bool>("stop_at_path_end", stop_at_path_end_, true);
+    nh.param<double>("avoid_reacquire_dist_m", avoid_reacquire_dist_m_, 3.0);
 
     // NMPC stage 제약 (방안 B) — launch 파라미터
     nh.param<bool>  ("nmpc_obs_enable",      rti_cfg_.obs_enable,      false);
@@ -64,10 +82,12 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
 
     // hdmap_lane_avoid(IDM+MOBIL) 동적 경로/속도 구독
     nh.param<bool>("use_avoid_path", use_avoid_path_, false);
+    nh.param<bool>("avoid_vel_as_cap", avoid_vel_as_cap_, true);
     if (use_avoid_path_) {
         avoid_wps_sub_ = nh.subscribe("/avoid_waypoints",  1, &PathFollower::avoidWpsCallback, this);
         avoid_vel_sub_ = nh.subscribe("/avoid_target_vel", 1, &PathFollower::avoidVelCallback, this);
-        ROS_INFO("[PathFollower] 동적 회피경로 모드 ON — /avoid_waypoints + /avoid_target_vel 구독");
+        ROS_INFO("[PathFollower] 동적 회피경로 모드 ON — /avoid_waypoints + /avoid_target_vel 구독 (vel_as_cap=%s)",
+                 avoid_vel_as_cap_ ? "true" : "false");
     }
 
     ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
@@ -86,7 +106,15 @@ PathFollower::PathFollower(ros::NodeHandle& nh) {
     timer_ = nh.createTimer(ros::Duration(cfg_.Ts), &PathFollower::controlLoop, this);
     prev_cmd_time_ = ros::Time::now();
 
-    ROS_INFO("[PathFollower] Mobility-Structure MPC 시작 — 목표속도: %.1f km/h", target_vel);
+    ROS_INFO("[PathFollower] Mobility-Structure MPC 시작 — 목표속도: %.1f km/h, stop_at_path_end=%s",
+             target_vel, stop_at_path_end_ ? "true" : "false");
+    ROS_INFO("[PathFollower] controller mode: %s", ltv_only_ ? "LTV-only for forward D" : "LTV + RTI-NMPC fallback");
+    reloadRuntimeParams(true);
+    ROS_INFO("[PathFollower] curve decel=%s lookahead %.1f~%.1fm time=%.1fs brake=%.1fm/s2 alpha=%.1f alat=%.1fm/s2 min=%.1fkm/h",
+             curve_decel_enable_ ? "ON" : "OFF",
+             curve_lookahead_min_m_, curve_lookahead_max_m_, curve_lookahead_time_s_,
+             curve_brake_decel_mps2_, curve_speed_alpha_, curve_alat_max_,
+             cfg_.curve_min_vel * 3.6);
 }
 
 PathFollower::~PathFollower() {
@@ -136,6 +164,8 @@ void PathFollower::flushLog() {
             "t","x","y","v_kmh","actual_vel","target_vel","vel_error",
             "cte","hdg_err_deg","near_dist","nearest_idx","cur_gear","gear",
             "path_curvature","max_kappa_ahead","lateral_accel","yaw_rate",
+            "ltv_curve_cap_kmh","ltv_curve_lookahead_m","ltv_max_kappa_cmd",
+            "param_kappa_gain","param_max_steer_rate","param_curve_alpha","param_curve_alat",
             "mode","controller","steer_cmd","steering_rate","solve_ms",
             "in_recov","obs_block_align","ego_aligned","dist_end","solve_failed"
         };
@@ -183,8 +213,26 @@ void PathFollower::avoidWpsCallback(const std_msgs::String::ConstPtr& msg) {
     if (!reader.parse(msg->data, root)) return;
     const Json::Value& wps = root["waypoints"];
     if (wps.size() < 2) return;
+    int keep_idx = 0;
+    bool had_search = search_init_ && !wp_x_.empty();
+    if (had_search) {
+        keep_idx = std::clamp(nearest_idx_, 0, (int)wps.size() - 1);
+    }
     loadWaypoints(wps);
-    search_init_ = false;   // ego 기준 재획득 (경로가 ego 전방서 시작)
+    if (!ego_rcvd_ || !had_search) {
+        nearest_idx_ = 0;
+        search_init_ = false;
+        return;
+    }
+    keep_idx = std::clamp(keep_idx, 0, (int)wp_x_.size() - 1);
+    double keep_dist = std::hypot(wp_x_[keep_idx] - cur_x_, wp_y_[keep_idx] - cur_y_);
+    if (keep_dist > avoid_reacquire_dist_m_) {
+        nearest_idx_ = 0;
+        search_init_ = false;
+    } else {
+        nearest_idx_ = keep_idx;
+        search_init_ = true;
+    }
 }
 
 void PathFollower::avoidVelCallback(const std_msgs::Float32::ConstPtr& msg) {
@@ -465,9 +513,11 @@ PathFollower::NearResult PathFollower::findNearest() {
         // 최초 획득: heading 90° 이내 정렬 wp 중 최근접 (역방향 겹침 leg 제외)
         double best = std::numeric_limits<double>::max();
         int best_idx = allow_lo; bool aligned_found = false;
+        double abs_best = std::numeric_limits<double>::max(); int abs_idx = allow_lo;  // 정렬 무관 최근접
         for (int i = allow_lo; i <= allow_hi; ++i) {
             double dx = wp_x_[i] - cur_x_, dy = wp_y_[i] - cur_y_;
             double dist = std::hypot(dx, dy);
+            if (dist < abs_best) { abs_best = dist; abs_idx = i; }
             int i1 = std::min(i + 1, allow_hi);
             double pyaw = std::atan2(wp_y_[i1] - wp_y_[i], wp_x_[i1] - wp_x_[i]);
             double hderr = (cur_gear_ < 0) ? wrapAngle(cur_yaw_ - pyaw + M_PI)
@@ -479,6 +529,9 @@ PathFollower::NearResult PathFollower::findNearest() {
                 best = dist; best_idx = i;             // 정렬 wp 전무 시 fallback
             }
         }
+        // 차가 경로 위(≤3m)인데 정렬매칭이 멀리(>15m) 잡히면 = 매처 오점프(먼 정렬점 grab) →
+        // 최근접점 사용해 그 자리서 추종(MPC가 heading 복구). 커브서 140m 밖 점 추종→조향포화→ram 방지.
+        if (abs_best < 3.0 && best > 15.0) { best_idx = abs_idx; best = abs_best; }
         nearest_idx_ = best_idx; min_d = best; search_init_ = true;
     } else {
         // 단조 전진: [nearest_idx_, +kSearchWindow] 최근접 (역주행/점프 금지)
@@ -525,12 +578,94 @@ double PathFollower::velocitySigmoid(double v_tgt, double dt) {
     return std::max(0.0, v_sig_);
 }
 
+void PathFollower::reloadRuntimeParams(bool force) {
+    ros::Time now = ros::Time::now();
+    if (!force && last_param_reload_time_.toSec() > 0.0 &&
+        (now - last_param_reload_time_).toSec() < std::max(0.05, param_reload_period_s_)) {
+        return;
+    }
+    last_param_reload_time_ = now;
+
+    bool changed = false;
+    bool ltv_cfg_changed = false;
+
+    auto readBool = [&](const std::string& key, bool& var) {
+        bool v = var;
+        if (nh_.getParam(key, v) && v != var) { var = v; changed = true; }
+    };
+    auto readDouble = [&](const std::string& key, double& var) {
+        double v = var;
+        if (nh_.getParam(key, v) && std::abs(v - var) > 1e-9) { var = v; changed = true; }
+    };
+    auto readCfgDouble = [&](const std::string& key, double& var) {
+        double v = var;
+        if (nh_.getParam(key, v) && std::abs(v - var) > 1e-9) {
+            var = v; changed = true; ltv_cfg_changed = true;
+        }
+    };
+
+    readBool("live_tuning", live_tuning_);
+    readDouble("param_reload_period_s", param_reload_period_s_);
+    if (!force && !live_tuning_) return;
+
+    double target_kmh = cfg_.target_vel * 3.6;
+    readDouble("target_vel", target_kmh);
+    cfg_.target_vel = std::max(0.0, target_kmh) / 3.6;
+
+    readBool("ltv_only", ltv_only_);
+    readBool("force_nmpc", force_nmpc_);
+    readBool("stop_at_path_end", stop_at_path_end_);
+    readBool("avoid_vel_as_cap", avoid_vel_as_cap_);
+    readDouble("avoid_reacquire_dist_m", avoid_reacquire_dist_m_);
+
+    readBool("curve_decel_enable", curve_decel_enable_);
+    readDouble("curve_speed_alpha", curve_speed_alpha_);
+    readDouble("curve_alat_max", curve_alat_max_);
+    readDouble("curve_lookahead_min_m", curve_lookahead_min_m_);
+    readDouble("curve_lookahead_max_m", curve_lookahead_max_m_);
+    readDouble("curve_lookahead_time_s", curve_lookahead_time_s_);
+    readDouble("curve_brake_decel_mps2", curve_brake_decel_mps2_);
+    readCfgDouble("curve_lookahead_m", cfg_.curve_lookahead_m);
+    double curve_min_vel_kmh = cfg_.curve_min_vel * 3.6;
+    readDouble("curve_min_vel_kmh", curve_min_vel_kmh);
+    cfg_.curve_min_vel = std::max(0.5, curve_min_vel_kmh) / 3.6;
+
+    readDouble("max_steer_rate", max_steer_rate_);
+    readDouble("max_steer_deg", max_steer_deg_);
+    cfg_.max_steer_deg = max_steer_deg_;
+    cfg_.kappa_max = std::tan(max_steer_deg_ * M_PI / 180.0) / cfg_.L;
+    cfg_.kappa_min = -cfg_.kappa_max;
+    readCfgDouble("kappa_gain", cfg_.kappa_gain);
+
+    readCfgDouble("w_dr", cfg_.w_dr);
+    readCfgDouble("w_theta_low_speed", cfg_.w_theta_low_speed);
+    readCfgDouble("w_theta_high_speed", cfg_.w_theta_high_speed);
+    readCfgDouble("w_kappa", cfg_.w_kappa);
+    readCfgDouble("w_u", cfg_.w_u);
+    readCfgDouble("w_u_v_gain", cfg_.w_u_v_gain);
+    readCfgDouble("w_dr_curve_boost", cfg_.w_dr_curve_boost);
+
+    if (ltv_cfg_changed) {
+        model_ = std::make_unique<LTVModel>(cfg_);
+        cost_ = std::make_unique<LTVCost>(cfg_);
+        solver_ = std::make_unique<LTVSolver>(cfg_);
+    }
+
+    if (force || changed || ltv_cfg_changed) {
+        ROS_INFO("[PathFollower] live params target=%.1f ltv_only=%d k_gain=%.2f steer_rate=%.1f curve_alpha=%.1f alat=%.1f lookahead=%.1f~%.1fm w_dr=%.1f w_u=%.1f",
+                 cfg_.target_vel * 3.6, ltv_only_ ? 1 : 0, cfg_.kappa_gain, max_steer_rate_,
+                 curve_speed_alpha_, curve_alat_max_, curve_lookahead_min_m_, curve_lookahead_max_m_,
+                 cfg_.w_dr, cfg_.w_u);
+    }
+}
+
 void PathFollower::controlLoop(const ros::TimerEvent&) {
     if (!ego_rcvd_ || wp_x_.empty()) return;
     ros::Time now = ros::Time::now();
     double dt = (now - prev_cmd_time_).toSec();
     if (!std::isfinite(dt) || dt <= 1e-4) dt = cfg_.Ts;
     prev_cmd_time_ = now;
+    reloadRuntimeParams(false);
     auto t_start = ros::WallTime::now();
 
     // 실시간 진단 — 1초마다 핵심 상태 출력 (사용자가 ssh/터미널에서 직접 확인)
@@ -709,21 +844,43 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     }
 
     // ── Compute curvature lookahead (현재 세그먼트 내부로 제한) ──
-    // 세그먼트 경계 넘어 다음 기어 곡률까지 보면 D 추종 중 R 곡선에 끌려가 감속 폭주
+    // 속도에 비례해 커브를 더 멀리 봐야 고속 진입 전에 실제 감속이 시작된다.
+    // 세그먼트 경계 넘어 다음 기어 곡률까지 보면 D 추종 중 R 곡선에 끌려가 감속 폭주.
     int seg_hi_for_la = (int)wp_k_.size() - 1;
     if (!gear_segments_.empty() && cur_segment_ < (int)gear_segments_.size()) {
         seg_hi_for_la = gear_segments_[cur_segment_].second;
     }
-    double max_kappa_ahead = 0.0;
-    {
-        double la_m = cfg_.curve_lookahead_m;
-        int la_steps = std::max(1, (int)std::round(la_m / wp_spacing_));
+    auto curveLookaheadM = [&](double speed_mps) {
+        double base = std::max(cfg_.curve_lookahead_m, curve_lookahead_min_m_);
+        if (!curve_decel_enable_) return base;
+        double v = std::max(0.0, speed_mps);
+        double brake = std::max(0.5, curve_brake_decel_mps2_);
+        double dyn = v * curve_lookahead_time_s_ + (v * v) / (2.0 * brake);
+        return std::clamp(std::max(base, dyn), curve_lookahead_min_m_, curve_lookahead_max_m_);
+    };
+    auto maxKappaAhead = [&](int base_idx, double la_m) {
+        double max_k = 0.0;
+        const double spacing = std::max(0.1, wp_spacing_);
+        int la_steps = std::max(1, (int)std::round(la_m / spacing));
         for (int i = 0; i <= la_steps; ++i) {
-            int ki = std::min(nearest_idx_ + i, seg_hi_for_la);
-            max_kappa_ahead = std::max(max_kappa_ahead, std::abs(wp_k_[ki]));
+            int ki = std::min(base_idx + i, seg_hi_for_la);
+            max_k = std::max(max_k, std::abs(wp_k_[ki]));
             if (ki == seg_hi_for_la) break;
         }
-    }
+        return max_k;
+    };
+    auto curveLimitedSpeed = [&](double v_max_mps, double max_k) {
+        if (!curve_decel_enable_) return v_max_mps;
+        if (max_k <= cfg_.curve_kappa_thresh) return v_max_mps;
+        double v_target = v_max_mps / (1.0 + std::max(0.0, curve_speed_alpha_) * max_k);
+        if (max_k > 1e-3) {
+            double v_alat = std::sqrt(std::max(0.5, curve_alat_max_) / max_k);
+            v_target = std::min(v_target, v_alat);
+        }
+        return std::max(cfg_.curve_min_vel, v_target);
+    };
+    double curve_la_m = curveLookaheadM(std::max(cur_v_, cfg_.target_vel));
+    double max_kappa_ahead = maxKappaAhead(nearest_idx_, curve_la_m);
 
     Json::Value rec(Json::objectValue);
     rec["t"] = (now - log_t0_).toSec();
@@ -736,12 +893,23 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     rec["vel_error"] = (cfg_.target_vel - cur_v_) * 3.6;
     rec["path_curvature"] = wp_k_[nearest_idx_];
     rec["max_kappa_ahead"] = max_kappa_ahead;
+    rec["curve_lookahead_m"] = curve_la_m;
+    rec["param_kappa_gain"] = cfg_.kappa_gain;
+    rec["param_max_steer_rate"] = max_steer_rate_;
+    rec["param_max_steer_deg"] = max_steer_deg_;
+    rec["param_curve_alpha"] = curve_speed_alpha_;
+    rec["param_curve_alat"] = curve_alat_max_;
+    rec["param_curve_min_vel_kmh"] = cfg_.curve_min_vel * 3.6;
+    rec["param_w_dr"] = cfg_.w_dr;
+    rec["param_w_theta_low"] = cfg_.w_theta_low_speed;
+    rec["param_w_theta_high"] = cfg_.w_theta_high_speed;
+    rec["param_w_u"] = cfg_.w_u;
     rec["near_dist"]    = near.dist;
     rec["nearest_idx"]  = near.idx;
     rec["cur_gear"]     = cur_gear_;
     rec["gear"]         = (cur_gear_ < 0) ? "R" : "D";
 
-    if (nearest_idx_ >= n - 2) {
+    if (stop_at_path_end_ && nearest_idx_ >= n - 2) {
         if (std::hypot(wp_x_.back() - cur_x_, wp_y_.back() - cur_y_) < 2.0) {
             publishCmd(0.0, 0.0); return;
         }
@@ -782,7 +950,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 
     // ── path 끝 도달 시 정지 (헬리콥터 발산 방지) ────────────────
     // 마지막 세그먼트 + nearest_idx_가 끝 근처 + 끝점에 충분히 가까움
-    if (!gear_segments_.empty() && cur_segment_ == (int)gear_segments_.size() - 1) {
+    if (stop_at_path_end_ && !gear_segments_.empty() && cur_segment_ == (int)gear_segments_.size() - 1) {
         int seg_end = gear_segments_[cur_segment_].second;
         double dx = cur_x_ - wp_x_[seg_end];
         double dy = cur_y_ - wp_y_[seg_end];
@@ -841,15 +1009,19 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     }
 
     // 컨트롤러 분기:
-    //   1) R 모드: 무조건 RTI-NMPC
-    //   2) D + parking_mode + sharp curve (max_κ > 0.10): RTI-NMPC
-    //      → D2 같은 저속 sharp curve 영역에서 LTV 인커브 컷 회피
-    //   3) 그 외 D 모드: LTV
+    //   ltv_only=true면 전진 D 구간은 저속/커브/회피 cooldown이어도 LTV만 사용한다.
+    //   후진 R 경로가 섞인 경우만 안전 fallback으로 RTI-NMPC를 남긴다.
     bool d_parking_sharp = (cur_gear_ > 0) && parking_mode_ && (max_kappa_ahead > 0.10);
     // 회피 종료 cooldown — 큰 cte/yaw 비선형 영역. LTV mismatch → NMPC로 정확한 운동학 적용
     bool obs_corridor_on = avoidance_enabled_ && (cur_gear_ > 0) && (last_obs_dist_s_ > 0);
     bool obs_cooldown = avoidance_enabled_ && obs_block_until_align_ && !obs_corridor_on;
-    bool use_nmpc_now = (cur_gear_ < 0) || d_parking_sharp || in_low_speed_ || obs_cooldown || force_nmpc_;
+    bool nmpc_candidate = (cur_gear_ < 0) || d_parking_sharp || in_low_speed_ || obs_cooldown || force_nmpc_;
+    bool use_nmpc_now = nmpc_candidate && !(ltv_only_ && cur_gear_ > 0);
+    rec["ltv_only"] = ltv_only_ ? 1 : 0;
+    rec["nmpc_candidate"] = nmpc_candidate ? 1 : 0;
+    if (ltv_only_ && nmpc_candidate && cur_gear_ > 0) {
+        ROS_INFO_THROTTLE(2.0, "[PathFollower] LTV-only: forward D NMPC fallback skipped");
+    }
 
     // LTV→NMPC 전환 감지: 직전 LTV의 steering을 RTI에 인계 (warm-start)
     // 이렇게 안 하면 전환 첫 tick에 RTI kappa=0에서 시작해 갑작스런 명령 점프 발생
@@ -975,8 +1147,8 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             //   alpha 6   : κ=0.05 → 38.5km/h, κ=0.1 → 31.3km/h
             //   a_lat 6.0: κ=0.05 → 39.5km/h, κ=0.1 → 27.9km/h
             //   v_floor 28: 완만 곡선까지 최소 28km/h (sharp만 자동 감속)
-            constexpr double alpha     = 6.0;
-            constexpr double a_lat_max = 4.5;  // 그립한계 (커브 목표속도 결정)
+            const double alpha     = std::max(1.0, curve_speed_alpha_);
+            const double a_lat_max = std::max(0.5, curve_alat_max_);  // 그립한계 (커브 목표속도 결정)
             constexpr double max_dec   = 6.0;  // 4→6: 급커브 앞 사전감속 제시간 확보
             constexpr double max_acc   = 3.5;
             constexpr double dt_tick   = 0.05;   // 제어 주기 [s] (RTI Ts와 매칭)
@@ -1026,12 +1198,14 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             prev_v_target_kmh_ = v_kmh;
             v_mag_kmh = v_kmh;
         }
-        // hdmap_lane_avoid IDM 목표속도 = 추종속도로 신뢰 (상한 아닌 SET).
-        // planner가 corner cap(곡률 안전속도)·근접제동·급가속을 모두 계산하므로, follower의 자체
-        // 곡률감속(swerve 경로 코너서 16km/h로 급감)이 급가속 통과를 죽이는 것을 방지. planner 권위.
+        // hdmap_lane_avoid 속도는 기본적으로 상한(cap)으로만 사용한다.
+        // follower의 곡률/횡가속도 감속을 마지막에 덮어쓰면 커브에서 경로 이탈이 발생한다.
         if (use_avoid_path_ && avoid_vel_rcvd_ &&
             (ros::Time::now() - avoid_vel_time_).toSec() < 0.5) {
-            v_mag_kmh = avoid_target_vel_mps_ * 3.6;
+            double avoid_kmh = avoid_target_vel_mps_ * 3.6;
+            v_mag_kmh = avoid_vel_as_cap_ ? std::min(v_mag_kmh, avoid_kmh) : avoid_kmh;
+            rec["avoid_target_vel_kmh"] = avoid_kmh;
+            rec["avoid_vel_as_cap"] = avoid_vel_as_cap_ ? 1 : 0;
         }
         double v_target_mps = (cur_gear_ < 0 ? -1.0 : 1.0) * (v_mag_kmh / 3.6);
 
@@ -1315,18 +1489,17 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
     double v_ref_calc = std::max(2.0 / 3.6, cur_v_);
     int idx_per_step_v = std::max(1, (int)std::round(v_ref_calc * cfg_.Ts / wp_spacing_));
     std::vector<double> v_profile(cfg_.N);
+    double ltv_stage0_max_k = 0.0;
+    double ltv_stage0_la_m = 0.0;
     for (int i = 0; i < cfg_.N; ++i) {
         // 예측 구간 내 최대 곡률 (lookahead 윈도우, segment 내부로 제한)
-        int la_steps = std::max(1, (int)std::round(cfg_.curve_lookahead_m / wp_spacing_));
         int base_idx = nearest_idx_ + (i + 1) * idx_per_step_v;
-        double max_k = 0.0;
-        for (int j = 0; j <= la_steps; ++j) {
-            int ki = std::min(base_idx + j, seg_hi_for_la);
-            max_k = std::max(max_k, std::abs(wp_k_[ki]));
-            if (ki == seg_hi_for_la) break;
+        double la_m = curveLookaheadM(std::max(v_ref_calc, cfg_.target_vel));
+        double max_k = maxKappaAhead(base_idx, la_m);
+        if (i == 0) {
+            ltv_stage0_max_k = max_k;
+            ltv_stage0_la_m = la_m;
         }
-        // 곡률 비례 연속 감속
-        double alpha = 20.0;
         double v_max_for_seg = cfg_.target_vel;  // 기본 60 km/h
         if (parking_mode_) {
             // 주차 모드 — 곡률 인지 cap (D2 출렁임 fix)
@@ -1342,8 +1515,7 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
             }
             v_max_for_seg = parking_cap_kmh / 3.6;
         }
-        double v_target = v_max_for_seg / (1.0 + alpha * max_k);
-        v_target = std::max(cfg_.curve_min_vel, v_target);
+        double v_target = curveLimitedSpeed(v_max_for_seg, max_k);
         // D 끝 사전감속 (정밀 정렬 — 끝점에서 yaw 안정 도달)
         if (cur_gear_ > 0 && cur_segment_ + 1 < (int)gear_segments_.size()) {
             int next_g = wp_gear_[gear_segments_[cur_segment_ + 1].first];
@@ -1382,6 +1554,9 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
         }
         v_profile[i] = v_target;
     }
+    rec["ltv_curve_lookahead_m"] = ltv_stage0_la_m;
+    rec["ltv_max_kappa_cmd"] = ltv_stage0_max_k;
+    rec["ltv_curve_cap_kmh"] = v_profile.empty() ? 0.0 : v_profile[0] * 3.6;
     Eigen::MatrixXd A_bar, B_bar, E_bar; model_->buildBatchMatrices(v_profile, A_bar, B_bar, E_bar);
 
     // ── Build z_bar (Future Curvature Changes) ──────────────────
@@ -1569,13 +1744,13 @@ void PathFollower::controlLoop(const ros::TimerEvent&) {
 }
 
 void PathFollower::publishCmd(double vel_kmh, double steer_deg) {
-    // avoid 경로(hdmap_lane_avoid) 추종 중엔 planner 속도를 직접 출력 — follower 자체 속도로직
-    // (곡률감속·NMPC_LO·velocitySigmoid)이 급가속 통과를 죽임(50 지령→17만 출력, 결국 stall).
-    // planner에 corner cap·근접제동·정지대기 다 있어 안전. 조향(steer)은 MPC 그대로 사용.
+    // avoid 경로 속도는 기본적으로 상한(cap)으로만 적용한다.
+    // planner가 낮춘 속도는 따르되, follower가 커브 때문에 낮춘 속도를 다시 올리지는 않는다.
     if (use_avoid_path_ && avoid_vel_rcvd_ &&
         (ros::Time::now() - avoid_vel_time_).toSec() < 0.5) {
         double av = avoid_target_vel_mps_ * 3.6;
-        double dv = av - prev_avoid_cmd_kmh_;
+        double tgt = avoid_vel_as_cap_ ? std::min(std::abs(vel_kmh), av) : av;
+        double dv = tgt - prev_avoid_cmd_kmh_;
         double up = 45.0 * cfg_.Ts;    // 급가속 허용 (~3.5 m/s²)
         double dn = 70.0 * cfg_.Ts;    // 감속은 더 빠르게 (안전)
         dv = std::max(-dn, std::min(up, dv));
