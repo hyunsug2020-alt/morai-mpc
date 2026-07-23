@@ -22,12 +22,12 @@ class PathMaker:
 
         rospy.init_node('path_maker_node')
 
-        # Ego_topic: MORAI ground truth (노이즈 없음)
-        rospy.Subscriber('/Ego_topic', EgoVehicleStatus, self._ego_cb)
+        rospy.Subscriber('/localization/ego_status',
+                         EgoVehicleStatus, self._ego_cb)
 
         signal.signal(signal.SIGINT, self._save_and_exit)
 
-        rospy.loginfo(f"Ego_topic 기반 경로 기록 시작 - 간격: {min_dist}m, 저장: {save_path}")
+        rospy.loginfo(f"ESKF 기반 경로 기록 시작 - 간격: {min_dist}m, 저장: {save_path}")
         rospy.loginfo("차량을 수동으로 주행하세요. Ctrl+C로 저장 종료.")
         rospy.spin()
 
@@ -35,8 +35,7 @@ class PathMaker:
         x = msg.position.x
         y = msg.position.y
 
-        # MORAI heading: 0=North CW [deg] → ROS yaw: 0=East CCW [rad]
-        heading = math.radians(90.0 - msg.heading)
+        heading = math.radians(msg.heading)
         heading = math.atan2(math.sin(heading), math.cos(heading))  # wrap
 
         if self.last_x is None:

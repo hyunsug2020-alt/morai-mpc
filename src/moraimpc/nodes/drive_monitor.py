@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """drive_monitor — 폐루프 주행 실시간 추종품질 진단 (비침습, 관찰전용).
 
-  구독: /Ego_topic, /avoid_waypoints(planner경로), /ctrl_cmd(조향/속도), /avoid_target_vel, /mpc_status
+  구독: /localization/ego_status, /avoid_waypoints(planner경로), /ctrl_cmd(조향/속도), /avoid_target_vel, /mpc_status
   계산: CTE(ego→경로 최근접), heading오차(ego vs 경로접선), 조향지령/조향반전율(진동),
         전방곡률, 실제vs지령속도, solve모드
   출력: 1초마다 롤링 통계 + 불안정 플래그. /drive_diag(String)로도 발행(rqt/foxglove).
@@ -32,7 +32,8 @@ class Mon:
         self.vs = collections.deque(maxlen=W)
         self.steer_signs = collections.deque(maxlen=W)
         self.reversals = 0
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego, queue_size=1)
         rospy.Subscriber("/avoid_waypoints", String, self._wp, queue_size=1)
         rospy.Subscriber("/ctrl_cmd", CtrlCmd, self._cc, queue_size=1)
         rospy.Subscriber("/avoid_target_vel", Float32, lambda m: setattr(self, 'tgtvel', m.data), queue_size=1)

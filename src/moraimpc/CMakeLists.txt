@@ -7,8 +7,13 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   sensor_msgs
+  geometry_msgs
+  visualization_msgs
   morai_msgs
   tf
+  tf2_ros
+  pcl_ros
+  pcl_conversions
 )
 
 find_package(Eigen3 REQUIRED)
@@ -22,7 +27,8 @@ include_directories(/usr/include/jsoncpp)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES moraimpc
-  CATKIN_DEPENDS roscpp rospy std_msgs sensor_msgs morai_msgs tf
+  CATKIN_DEPENDS roscpp rospy std_msgs sensor_msgs geometry_msgs
+                 visualization_msgs morai_msgs tf tf2_ros pcl_ros pcl_conversions
 )
 
 include_directories(
@@ -40,18 +46,27 @@ add_library(moraimpc_core
   src/nmpc_controller.cpp
   src/rti_nmpc_controller.cpp
 )
+add_dependencies(moraimpc_core ${catkin_EXPORTED_TARGETS})
 target_link_libraries(moraimpc_core ${catkin_LIBRARIES} ${OSQP_LIBRARY} ${JSONCPP_LIBRARY})
 
 # Path Follower Node (C++)
 add_executable(path_follower_node src/path_follower.cpp)
+add_dependencies(path_follower_node ${catkin_EXPORTED_TARGETS})
 target_link_libraries(path_follower_node moraimpc_core ${catkin_LIBRARIES})
 
 # MPC Dashboard Node (C++ / OpenCV)
 find_package(OpenCV REQUIRED)
 add_executable(mpc_dashboard_node src/mpc_dashboard_node.cpp)
+add_dependencies(mpc_dashboard_node ${catkin_EXPORTED_TARGETS})
 target_include_directories(mpc_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(mpc_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})
 
 add_executable(simple_dashboard_node src/simple_dashboard_node.cpp)
+add_dependencies(simple_dashboard_node ${catkin_EXPORTED_TARGETS})
 target_include_directories(simple_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(simple_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})
+
+# asdf.json-mounted 3D LiDAR cone detector
+add_executable(cone_detector_node src/cone_detector_node.cpp)
+add_dependencies(cone_detector_node ${catkin_EXPORTED_TARGETS})
+target_link_libraries(cone_detector_node ${catkin_LIBRARIES})

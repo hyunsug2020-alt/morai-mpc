@@ -40,7 +40,8 @@ class CurrentLaneLogger:
         self.last_log_time = 0.0
         self.log_period = float(rospy.get_param("~log_period_sec", 2.0))
 
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.loginfo("[LaneLogger] 시작됨 - HD map link %d개 로드", len(self.links))
 
     def _load_links(self, hdmap_zip):

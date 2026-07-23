@@ -1,7 +1,7 @@
 <launch>
     <!-- practic — MORAI SIM 없이 HDMAP 위에서 추월 동작 관찰(foxglove/rviz).
          practice_sim이 ego를 주행시키고 추월가능 구간에 15km/h 가상차 배치, planner가 추월경로 생성.
-         ※ morai.launch와 동시 실행 금지 (/Ego_topic·rosbridge 9090 충돌) -->
+         ※ morai.launch와 동시 실행 금지 (localization·rosbridge 9090 충돌) -->
 
     <arg name="hdmap_zip"     default="/mnt/c/Users/Hyunsug2014/Downloads/drive-download-20260701T154301Z-3-001.zip"/>
     <arg name="cruise_kmh"    default="40.0"/>

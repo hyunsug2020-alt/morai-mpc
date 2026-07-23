@@ -9,6 +9,7 @@
     <!-- 사용자 인자 (혼합 D/R 경로 녹화 파일 바로 지정 가능) -->
     <arg name="recorded_file"        default="$(find moraimpc)/data/waypoints_recorded.json" />
     <arg name="path_file"            default="$(find moraimpc)/data/mixed.json" />
+    <arg name="vehicle_config"       default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
     <arg name="target_vel"           default="40.0" />  <!-- km/h, 직선 순항. 곡선 자동 감속(60→40: 급커브 사전감속 여유) -->
     <arg name="ltv_only"             default="false" />
     <arg name="live_tuning"          default="true" />
@@ -19,7 +20,7 @@
     <arg name="avoidance_enabled"    default="false" />  <!-- LTV corridor 장애물 회피 (/Object_topic) -->
     <arg name="curve_decel_enable"   default="true" />
     <arg name="curve_speed_alpha"    default="12.0" />
-    <arg name="curve_alat_max"       default="2.8" />
+    <arg name="curve_alat_max"       default="2.26" />
     <arg name="curve_lookahead_min_m" default="25.0" />
     <arg name="curve_lookahead_max_m" default="70.0" />
     <arg name="curve_lookahead_time_s" default="2.5" />
@@ -43,6 +44,7 @@
          launch-prefix: 시작 전 smooth_waypoints 자동 적용 (recorded_file 존재 시) -->
     <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen"
           launch-prefix="$(find moraimpc)/scripts/run_with_smoothing.sh $(arg recorded_file) $(arg path_file)">
+        <rosparam command="load" file="$(arg vehicle_config)" />
         <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />   <!-- MORAI는 /ctrl_cmd 구독 -->
         <param name="path_file"             value="$(arg path_file)" />
         <param name="target_vel"            value="$(arg target_vel)" />

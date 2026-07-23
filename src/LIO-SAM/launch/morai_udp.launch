@@ -1,0 +1,34 @@
+<launch>
+    <!-- MORAI UDP LiDAR + raw IMU normalization + LIO-SAM.
+         Default path follows the downloaded manual:
+         1) MORAI LiDAR UDP publishes /velodyne_points with ring/time.
+         2) MORAI raw /imu is normalized as /imu/data for LIO-SAM.
+         3) LIO-SAM runs with config/params_morai.yaml. -->
+
+    <arg name="lidar_port" default="2368" />
+    <arg name="imu_port" default="9091" />
+    <arg name="use_udp_imu" default="false" />
+    <arg name="start_lidar_udp" default="true" />
+    <arg name="start_lio_sam" default="true" />
+    <arg name="params_file" default="$(find lio_sam)/config/params_morai.yaml" />
+
+    <node if="$(arg start_lidar_udp)"
+          pkg="lio_sam" type="morai_lidar_udp.py"
+          name="morai_lidar_udp" output="screen">
+        <param name="lidar_port" value="$(arg lidar_port)" />
+    </node>
+
+    <node unless="$(arg use_udp_imu)"
+          pkg="lio_sam" type="morai_ros1_bridge.py"
+          name="morai_ros1_bridge" output="screen" />
+
+    <node if="$(arg use_udp_imu)"
+          pkg="lio_sam" type="morai_imu_udp.py"
+          name="morai_imu_udp" output="screen">
+        <param name="imu_port" value="$(arg imu_port)" />
+    </node>
+
+    <include if="$(arg start_lio_sam)" file="$(find lio_sam)/launch/run.launch">
+        <arg name="params_file" value="$(arg params_file)" />
+    </include>
+</launch>

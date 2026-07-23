@@ -6,11 +6,12 @@ live_tuning: true
 param_reload_period_s: 0.5
 ltv_only: true
 target_vel: 35.0
+wheelbase: 3.0
 
 # Curve speed cap: larger alpha / smaller alat / longer lookahead = safer/slower curves.
 curve_decel_enable: true
 curve_speed_alpha: 12.0
-curve_alat_max: 2.8
+curve_alat_max: 2.26
 curve_lookahead_m: 18.0
 curve_lookahead_min_m: 25.0
 curve_lookahead_max_m: 70.0

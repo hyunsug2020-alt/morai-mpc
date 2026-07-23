@@ -71,7 +71,8 @@ class HdmapViz:
         self.last_ego_link = None
         self.pub = rospy.Publisher("/viz/markers", MarkerArray, queue_size=1, latch=True)
         self.tfb = tf2_ros.TransformBroadcaster() if self.publish_tf else None
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/Object_topic", ObjectStatusList, self._obj_cb, queue_size=1)
         rospy.Subscriber("/avoid_path", Path, self._path_cb, queue_size=1)
         self._pub_lanes()

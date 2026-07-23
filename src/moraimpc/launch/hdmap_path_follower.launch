@@ -2,6 +2,7 @@
   <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
 
   <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="vehicle_config" default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
   <arg name="cruise_kmh" default="35.0" />
   <arg name="ltv_only" default="true" />
   <arg name="live_tuning" default="true" />
@@ -12,7 +13,7 @@
   <arg name="avoid_reacquire_dist_m" default="3.0" />
   <arg name="curve_decel_enable" default="true" />
   <arg name="curve_speed_alpha" default="12.0" />
-  <arg name="curve_alat_max" default="2.8" />
+  <arg name="curve_alat_max" default="2.26" />
   <arg name="curve_lookahead_min_m" default="25.0" />
   <arg name="curve_lookahead_max_m" default="70.0" />
   <arg name="curve_lookahead_time_s" default="2.5" />
@@ -31,6 +32,7 @@
   <arg name="log_file" default="$(find moraimpc)/logs/lane_change_log.json" />
 
   <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
+    <rosparam command="load" file="$(arg vehicle_config)" />
     <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
     <param name="path_file" value="$(arg path_file)" />
     <param name="target_vel" value="$(arg cruise_kmh)" />

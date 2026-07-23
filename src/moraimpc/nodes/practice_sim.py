@@ -6,7 +6,7 @@
   - route를 따라 15km/h로 느리게 가는 가상차(NPC)를 일정간격 배치 → ego가 만나면 추월 시도.
   - ego/NPC/차선/추월가능구간을 MarkerArray + TF로 발행 → foxglove(rosbridge 9090)/rviz서 관찰.
 
-  실행: roslaunch moraimpc practic.launch   (morai.launch와 동시 실행 금지 — /Ego_topic 충돌)
+  실행: roslaunch moraimpc practic.launch   (morai.launch와 동시 실행 금지 — localization 충돌)
 """
 import json, math, zipfile
 from collections import defaultdict
@@ -44,7 +44,8 @@ class PracticeSim:
         self.ev = 3.0
         self.path = []; self.tgt_v = None
 
-        self.pub_ego = rospy.Publisher("/Ego_topic", EgoVehicleStatus, queue_size=1)
+        self.pub_ego = rospy.Publisher(
+            "/localization/ego_status", EgoVehicleStatus, queue_size=1)
         self.pub_obj = rospy.Publisher("/Object_topic", ObjectStatusList, queue_size=1)
         self.pub_mk  = rospy.Publisher("/practice/markers", MarkerArray, queue_size=1, latch=True)
         self.tfb = tf2_ros.TransformBroadcaster()

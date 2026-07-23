@@ -28,7 +28,8 @@ try:
     import rospy
     from morai_msgs.msg import EgoVehicleStatus
     rospy.init_node('hdmap_html', anonymous=True, disable_signals=True)
-    e = rospy.wait_for_message('/Ego_topic', EgoVehicleStatus, timeout=3.0)
+    e = rospy.wait_for_message(
+        '/localization/ego_status', EgoVehicleStatus, timeout=3.0)
     EGO = {"x": e.position.x, "y": e.position.y, "h": e.heading}
     print("Ego (%.1f, %.1f)" % (e.position.x, e.position.y))
 except Exception as ex:

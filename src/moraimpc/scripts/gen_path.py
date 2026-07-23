@@ -12,7 +12,8 @@ MAXTURN = math.radians(55)
 OUT = "/home/coss/catkin_ws/src/moraimpc/data/hdmap_path.json"
 
 rospy.init_node("gen_path", anonymous=True)
-ego = rospy.wait_for_message("/Ego_topic", EgoVehicleStatus, timeout=5.0)
+ego = rospy.wait_for_message(
+    "/localization/ego_status", EgoVehicleStatus, timeout=5.0)
 START = (ego.position.x, ego.position.y)
 START_HDG = math.radians(ego.heading)
 print("현재 차량: (%.2f, %.2f) heading=%.1f도" % (START[0], START[1], ego.heading))

@@ -34,7 +34,8 @@ class AvoidancePlanner:
         self.ego = None
         self.objs = None
 
-        rospy.Subscriber('/Ego_topic',    EgoVehicleStatus, self._ego_cb,  queue_size=1)
+        rospy.Subscriber('/localization/ego_status',
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber('/Object_topic', ObjectStatusList, self._obj_cb,  queue_size=1)
 
         self.pub_path   = rospy.Publisher('/avoid_path',          Path,        queue_size=1)

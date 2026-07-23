@@ -13,8 +13,8 @@
         <param name="img_size"       value="900" />
 
         <!-- 차량 외곽 (IONIQ 5) -->
-        <param name="vehicle_length" value="4.6" />
-        <param name="vehicle_width"  value="1.9" />
+        <param name="vehicle_length" value="4.635" />
+        <param name="vehicle_width"  value="1.892" />
 
         <!-- LiDAR 마운트 추정 위치 (vehicle frame, m) — 시각화 마커용 -->
         <param name="lidar1_x"       value="1.5" />

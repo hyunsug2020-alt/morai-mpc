@@ -2,7 +2,7 @@
 //   path(mixed) + path_avoid + 차량 trail + NPC 표시 + cte/hdg/v 텍스트
 //   focus: 단순·확실 GUI 표시 (mpc_dashboard_node 안 뜨는 문제 우회)
 //
-// 토픽: /Ego_topic, /Object_topic, /mpc_performance
+// 토픽: /localization/ego_status, /Object_topic, /mpc_performance
 // 파라미터: ~path_file, ~avoid_path_file, ~window_size (default 700px)
 
 #include <ros/ros.h>
@@ -34,7 +34,7 @@ public:
         path_mtime_  = fileMtime(path_file_);
         avoid_mtime_ = fileMtime(avoid_file_);
 
-        ego_sub_ = nh.subscribe("/Ego_topic", 1, &SimpleDashboard::egoCb, this);
+        ego_sub_ = nh.subscribe("/localization/ego_status", 1, &SimpleDashboard::egoCb, this);
         obj_sub_ = nh.subscribe("/Object_topic", 1, &SimpleDashboard::objCb, this);
         perf_sub_ = nh.subscribe("/mpc_performance", 1, &SimpleDashboard::perfCb, this);
 

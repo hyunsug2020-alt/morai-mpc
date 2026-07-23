@@ -1,16 +1,17 @@
 <launch>
-    <!-- 3D LiDAR Cone Detector — 2 LiDAR (앞/뒤) fusion + 자동 z 캘리브 -->
+    <!-- 3D LiDAR Cone Detector — asdf.json 전방 단일 LiDAR + 자동 z 캘리브 -->
 
     <!-- MORAI TF 노이즈 억제 -->
     <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
 
     <!-- LiDAR 토픽 -->
-    <arg name="lidar1_topic" default="/lidar3D_1" />
+    <arg name="lidar1_topic" default="/velodyne_points" />
     <arg name="lidar2_topic" default="/lidar3D_2" />
+    <arg name="use_lidar2" default="false" />
 
     <!-- LiDAR 마운트 (vehicle frame, z는 자동) -->
-    <arg name="lidar1_x"   default="1.5" />
-    <arg name="lidar1_y"   default="0.0" />
+    <arg name="lidar1_x"   default="1.676" />
+    <arg name="lidar1_y"   default="0.005" />
     <arg name="lidar1_yaw" default="0.0" />
     <arg name="lidar2_x"   default="-1.5" />
     <arg name="lidar2_y"   default="0.0" />
@@ -25,6 +26,7 @@
           launch-prefix="$(find moraimpc)/scripts/run_filtered.sh">
         <param name="lidar1_topic" value="$(arg lidar1_topic)" />
         <param name="lidar2_topic" value="$(arg lidar2_topic)" />
+        <param name="use_lidar2"   value="$(arg use_lidar2)" />
         <param name="lidar1_x"     value="$(arg lidar1_x)" />
         <param name="lidar1_y"     value="$(arg lidar1_y)" />
         <param name="lidar1_yaw"   value="$(arg lidar1_yaw)" />
@@ -33,9 +35,10 @@
         <param name="lidar2_yaw"   value="$(arg lidar2_yaw)" />
         <param name="z_calib_n"    value="30" />
 
-        <param name="frame_id"  value="ego_vehicle" />
+        <param name="frame_id"  value="base_link" />
         <param name="map_frame" value="map" />
-        <param name="ego_topic" value="/Ego_topic" />
+        <param name="ego_topic" value="/localization/ego_status" />
+        <param name="publish_tf" value="false" />
 
         <!-- ROI (vehicle frame, fusion 후) -->
         <param name="roi_x_min" value="-30.0" />

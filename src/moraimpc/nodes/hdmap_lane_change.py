@@ -4,7 +4,7 @@
 Lightweight HD map lane-change planner.
 
 Input:
-  - /Ego_topic
+  - /localization/ego_status
   - /Object_topic
   - /lane_change_cmd (std_msgs/Int32): target lane number. 0 clears the target.
 
@@ -120,7 +120,8 @@ class HdmapLaneChange:
         self.change_blend_m = self.transition_m
         self.avoid_hops = 0
 
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/Object_topic", ObjectStatusList, self._obj_cb, queue_size=1)
         rospy.Subscriber("/lane_change_cmd", Int32, self._cmd_cb, queue_size=1)
         self.pub_wps = rospy.Publisher("/avoid_waypoints", String, queue_size=1)

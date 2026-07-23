@@ -24,6 +24,8 @@ PathFollower::PathFollower(ros::NodeHandle& nh) : nh_(nh) {
     double target_vel = 20.0;
     nh.param<std::string>("path_file",   path_file,   "/tmp/waypoints.json");
     nh.param<double>     ("target_vel",  target_vel,  20.0);
+    nh.param<double>     ("wheelbase",   cfg_.L,      3.0);
+    cfg_.L = std::max(0.1, cfg_.L);
 
     cfg_.target_vel = target_vel / 3.6;   // km/h → m/s
     nh.param<double>("reverse_max_vel", reverse_max_vel_kmh_, 2.0);
@@ -31,7 +33,7 @@ PathFollower::PathFollower(ros::NodeHandle& nh) : nh_(nh) {
     nh.param<double>("pre_gear_change_dist_m", pre_gear_change_dist_m_, 5.0);
     nh.param<bool>  ("curve_decel_enable", curve_decel_enable_, true);
     nh.param<double>("curve_speed_alpha", curve_speed_alpha_, 12.0);
-    nh.param<double>("curve_alat_max", curve_alat_max_, 2.8);
+    nh.param<double>("curve_alat_max", curve_alat_max_, 2.26);
     nh.param<double>("curve_lookahead_min_m", curve_lookahead_min_m_, 25.0);
     nh.param<double>("curve_lookahead_max_m", curve_lookahead_max_m_, 70.0);
     nh.param<double>("curve_lookahead_time_s", curve_lookahead_time_s_, 2.5);
@@ -90,7 +92,7 @@ PathFollower::PathFollower(ros::NodeHandle& nh) : nh_(nh) {
                  avoid_vel_as_cap_ ? "true" : "false");
     }
 
-    ego_sub_    = nh.subscribe("/Ego_topic",       1, &PathFollower::egoCallback,  this);
+    ego_sub_    = nh.subscribe("/localization/ego_status", 1, &PathFollower::egoCallback, this);
     // NMPC obs 활성 또는 LTV corridor 활성 시 /Object_topic 구독
     if (avoidance_enabled_ || rti_cfg_.obs_enable) {
         obj_sub_   = nh.subscribe("/Object_topic", 1, &PathFollower::objectCallback,  this);
@@ -106,8 +108,8 @@ PathFollower::PathFollower(ros::NodeHandle& nh) : nh_(nh) {
     timer_ = nh.createTimer(ros::Duration(cfg_.Ts), &PathFollower::controlLoop, this);
     prev_cmd_time_ = ros::Time::now();
 
-    ROS_INFO("[PathFollower] Mobility-Structure MPC 시작 — 목표속도: %.1f km/h, stop_at_path_end=%s",
-             target_vel, stop_at_path_end_ ? "true" : "false");
+    ROS_INFO("[PathFollower] Mobility-Structure MPC 시작 — 목표속도: %.1f km/h, wheelbase=%.3fm, stop_at_path_end=%s",
+             target_vel, cfg_.L, stop_at_path_end_ ? "true" : "false");
     ROS_INFO("[PathFollower] controller mode: %s", ltv_only_ ? "LTV-only for forward D" : "LTV + RTI-NMPC fallback");
     reloadRuntimeParams(true);
     ROS_INFO("[PathFollower] curve decel=%s lookahead %.1f~%.1fm time=%.1fs brake=%.1fm/s2 alpha=%.1f alat=%.1fm/s2 min=%.1fkm/h",

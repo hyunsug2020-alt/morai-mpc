@@ -13,7 +13,7 @@ namespace moraimpc {
 struct NMPCConfig {
     int    N            = 15;     // horizon (15 * 0.05 = 0.75s)
     double Ts           = 0.05;
-    double L            = 2.7;
+    double L            = 3.0;
 
     // 비용 가중치
     double w_lat        = 350.0;  // 측방오차 (저속 정확도 우선)

@@ -198,7 +198,7 @@ private:
     double curve_spd_min_ratio_  = 0.70;
     bool   curve_decel_enable_   = true;
     double curve_speed_alpha_    = 12.0;
-    double curve_alat_max_       = 2.8;
+    double curve_alat_max_       = 2.26;
     double curve_lookahead_min_m_ = 25.0;
     double curve_lookahead_max_m_ = 70.0;
     double curve_lookahead_time_s_ = 2.5;

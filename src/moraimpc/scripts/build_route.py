@@ -223,7 +223,7 @@ k_after = ctrl_kappa_max(sm)
 print("최소반경 강제(컨트롤러 ref κ): κ_max %.3f(R=%.1fm) → %.3f(R=%.1fm)  [steer %.0f° → %.0f°, 한계35°], 끝단트림 %d점"
       % (k_before, 1/k_before if k_before>0 else 999,
          k_after,  1/k_after  if k_after>0  else 999,
-         math.degrees(math.atan(k_before*2.7)), math.degrees(math.atan(k_after*2.7)), trimmed))
+         math.degrees(math.atan(k_before*3.0)), math.degrees(math.atan(k_after*3.0)), trimmed))
 
 def norm(a): return (a+math.pi) % (2*math.pi) - math.pi
 maxgap = max(math.hypot(b[0]-a[0], b[1]-a[1]) for a, b in zip(sm, sm[1:]))

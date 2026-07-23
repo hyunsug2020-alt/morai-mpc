@@ -14,7 +14,7 @@ struct LTVMPCConfig {
     // --- 구조적 설정 ---
     int N = 30;
     double Ts = 0.05;
-    double L = 2.7;
+    double L = 3.0;
     double kappa_gain = 1.28; // 조향 응답 소폭 상향: 곡선/복귀 구간 추종 강화
 
     // --- MORAI 최적 파라미터 (사용자 지정값 기반) ---

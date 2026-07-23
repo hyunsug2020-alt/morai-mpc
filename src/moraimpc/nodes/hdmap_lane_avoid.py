@@ -90,7 +90,8 @@ class LaneAvoid:
         self.lc_home_lane = None
         self.lc_reason = None
 
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/Object_topic", ObjectStatusList, self._obj_cb, queue_size=1)
         self.pub_wps=rospy.Publisher("/avoid_waypoints", String, queue_size=1)
         self.pub_vel=rospy.Publisher("/avoid_target_vel", Float32, queue_size=1)

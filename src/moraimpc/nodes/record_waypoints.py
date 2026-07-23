@@ -49,7 +49,8 @@ class WaypointRecorder:
         except:
             rospy.logwarn("서비스 연결 실패 — MORAI에서 수동으로 키보드 모드 설정 필요")
 
-        self.ego_sub = rospy.Subscriber('/Ego_topic', EgoVehicleStatus, self.ego_cb)
+        self.ego_sub = rospy.Subscriber(
+            '/localization/ego_status', EgoVehicleStatus, self.ego_cb)
 
         rospy.loginfo("=== 웨이포인트 기록 시작 ===")
         rospy.loginfo("간격: %.2f m | 출력: %s", self.interval, self.output)

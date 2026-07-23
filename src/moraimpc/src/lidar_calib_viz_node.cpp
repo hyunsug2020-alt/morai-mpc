@@ -35,8 +35,8 @@ public:
         pnh.param<std::string>("lidar2_topic", topic2, "/lidar3D_2");
         pnh.param("view_range_m", view_range_m_, 25.0);     // 표시 반경 ±25m
         pnh.param("img_size",     img_size_,     900);       // 창 크기 (px)
-        pnh.param("vehicle_length", veh_L_, 4.6);
-        pnh.param("vehicle_width",  veh_W_, 1.9);
+        pnh.param("vehicle_length", veh_L_, 4.635);
+        pnh.param("vehicle_width",  veh_W_, 1.892);
         pnh.param("lidar1_x", l1_x_,  1.5);
         pnh.param("lidar1_y", l1_y_,  0.0);
         pnh.param("lidar2_x", l2_x_, -1.5);

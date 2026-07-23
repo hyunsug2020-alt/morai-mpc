@@ -3,7 +3,7 @@
 """
 vehicle_sim — MORAI 대체 헤드리스 차량 시뮬 (HITL: 실제 LTV-MPC follower 검증용).
   구독: /ctrl_cmd (CtrlCmd: longlCmdType=2, velocity[km/h], steering[rad 전륜각])
-  발행: /Ego_topic (EgoVehicleStatus), /Object_topic (ObjectStatusList, 차선추종 NPC)
+  발행: /localization/ego_status (EgoVehicleStatus), /Object_topic (ObjectStatusList, 차선추종 NPC)
   모델: Ioniq5 운동학 자전거 + 조향 rate/lag + 종방향 가감속 한계.
   종료: sim_time 경과 or roslaunch shutdown → /tmp/hitl_result.json 기록 후 shutdown.
 
@@ -103,7 +103,8 @@ class VehicleSim:
         self.t=0.0
         rospy.Subscriber("/ctrl_cmd", CtrlCmd, self._ctrl_cb, queue_size=1)
         rospy.Subscriber("/avoid_waypoints", String, self._wps_cb, queue_size=1)
-        self.ego_pub=rospy.Publisher("/Ego_topic", EgoVehicleStatus, queue_size=1)
+        self.ego_pub=rospy.Publisher(
+            "/localization/ego_status", EgoVehicleStatus, queue_size=1)
         self.obj_pub=rospy.Publisher("/Object_topic", ObjectStatusList, queue_size=1)
         rospy.loginfo("[vsim] egoL=%d v_set=%.1f npc=%d Tsim=%.0f", self.ego_lane, self.v_set, len(self.npcs), self.Tsim)
 

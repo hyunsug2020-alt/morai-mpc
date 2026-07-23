@@ -5,7 +5,7 @@
 //  - 각 cloud → vehicle frame transform (x/y/yaw는 launch arg, z는 auto)
 //  - 두 cloud combine → ROI/voxel/ground/cluster → 콘 필터 → map frame publish
 //
-// 입력: ~lidar_1, ~lidar_2 (sensor_msgs/PointCloud2), /Ego_topic
+// 입력: ~lidar_1, ~lidar_2 (sensor_msgs/PointCloud2), /localization/ego_status
 // 출력: ~cones (PoseArray, map frame), ~cone_markers (MarkerArray)
 
 #include <ros/ros.h>
@@ -44,7 +44,7 @@ public:
         // 일반 파라미터
         pnh.param<std::string>("frame_id",  frame_id_,  "ego_vehicle");
         pnh.param<std::string>("map_frame", map_frame_, "map");
-        pnh.param<std::string>("ego_topic", ego_topic_, "/Ego_topic");
+        pnh.param<std::string>("ego_topic", ego_topic_, "/localization/ego_status");
         pnh.param("publish_tf", publish_tf_, true);
         pnh.param("dedup_dist", dedup_dist_, 0.50);
         pnh.param("accumulate", accumulate_, false);
@@ -81,17 +81,19 @@ public:
         pnh.param("debug_clusters", debug_clusters_, false);
         pnh.param("show_all_clusters", show_all_, false);
 
-        // LiDAR 설정 (앞=lidar_1, 뒤=lidar_2)
+        // LiDAR 설정 (asdf.json 기본은 전방 3D LiDAR 한 대)
         // x/y/yaw: launch arg, z: 자동 캘리브 (ground RANSAC running avg)
         std::string topic1, topic2;
-        pnh.param<std::string>("lidar1_topic", topic1, "/lidar3D_1");
+        pnh.param<std::string>("lidar1_topic", topic1, "/velodyne_points");
         pnh.param<std::string>("lidar2_topic", topic2, "/lidar3D_2");
+        bool use_lidar2 = false;
+        pnh.param("use_lidar2", use_lidar2, false);
 
         LidarSrc s1, s2;
         s1.topic = topic1;
         s2.topic = topic2;
-        pnh.param("lidar1_x",   s1.x,    1.5);
-        pnh.param("lidar1_y",   s1.y,    0.0);
+        pnh.param("lidar1_x",   s1.x,    1.676);
+        pnh.param("lidar1_y",   s1.y,    0.005);
         pnh.param("lidar1_yaw", s1.yaw,  0.0);
         pnh.param("lidar2_x",   s2.x,   -1.5);
         pnh.param("lidar2_y",   s2.y,    0.0);
@@ -100,13 +102,16 @@ public:
 
         s1.idx = 0; s2.idx = 1;
         srcs_.push_back(s1);
-        srcs_.push_back(s2);
+        if (use_lidar2) srcs_.push_back(s2);
 
         // Subscribers
         sub_l1_ = nh.subscribe<sensor_msgs::PointCloud2>(
             srcs_[0].topic, 1, boost::bind(&ConeDetector::cloudCb, this, _1, 0));
-        sub_l2_ = nh.subscribe<sensor_msgs::PointCloud2>(
-            srcs_[1].topic, 1, boost::bind(&ConeDetector::cloudCb, this, _1, 1));
+        if (use_lidar2) {
+            sub_l2_ = nh.subscribe<sensor_msgs::PointCloud2>(
+                srcs_[1].topic, 1,
+                boost::bind(&ConeDetector::cloudCb, this, _1, 1));
+        }
         sub_ego_ = nh.subscribe(ego_topic_, 5, &ConeDetector::egoCb, this);
 
         pub_pose_ = pnh.advertise<geometry_msgs::PoseArray>("cones", 1);
@@ -114,10 +119,16 @@ public:
         pub_comb_ = pnh.advertise<sensor_msgs::PointCloud2>("combined_cloud", 1);
         pub_proc_ = pnh.advertise<sensor_msgs::PointCloud2>("processed_cloud", 1);
 
-        ROS_INFO("[ConeDetector] L1=%s (x=%.1f,y=%.1f,yaw=%.1f°)  L2=%s (x=%.1f,y=%.1f,yaw=%.1f°)  z=auto(N=%d)",
-                 srcs_[0].topic.c_str(), srcs_[0].x, srcs_[0].y, srcs_[0].yaw*180.0/M_PI,
-                 srcs_[1].topic.c_str(), srcs_[1].x, srcs_[1].y, srcs_[1].yaw*180.0/M_PI,
-                 z_calib_n_);
+        if (use_lidar2) {
+            ROS_INFO("[ConeDetector] L1=%s (x=%.3f,y=%.3f) L2=%s (x=%.3f,y=%.3f) z=auto(N=%d)",
+                     srcs_[0].topic.c_str(), srcs_[0].x, srcs_[0].y,
+                     srcs_[1].topic.c_str(), srcs_[1].x, srcs_[1].y,
+                     z_calib_n_);
+        } else {
+            ROS_INFO("[ConeDetector] single LiDAR=%s (x=%.3f,y=%.3f,yaw=%.1f deg) z=auto(N=%d)",
+                     srcs_[0].topic.c_str(), srcs_[0].x, srcs_[0].y,
+                     srcs_[0].yaw*180.0/M_PI, z_calib_n_);
+        }
     }
 
 private:
@@ -217,14 +228,14 @@ private:
         // 3. master (idx=0)이면 fusion + detection
         if (idx != 0) return;
 
-        // L1, L2 모두 준비됐는지
-        if (!srcs_[1].latest) return;
-        // L2 stale (>0.5s) 무시
-        bool l2_fresh = (ros::Time::now() - srcs_[1].last_t).toSec() < 0.5;
-
         CloudT::Ptr combined(new CloudT);
         *combined += *srcs_[0].latest;
-        if (l2_fresh) *combined += *srcs_[1].latest;
+        if (srcs_.size() > 1 && srcs_[1].latest) {
+            // L2 stale (>0.5s)면 현재 프레임에서 제외한다.
+            bool l2_fresh =
+                (ros::Time::now() - srcs_[1].last_t).toSec() < 0.5;
+            if (l2_fresh) *combined += *srcs_[1].latest;
+        }
 
         // 합쳐진 cloud publish (vehicle frame, RViz 시각화용)
         sensor_msgs::PointCloud2 comb_msg;

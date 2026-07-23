@@ -40,7 +40,8 @@ class LaneChangeTestDriver:
         self.arrive_lat_m = float(rospy.get_param("~arrive_lat_m", 1.1))
 
         self.pub_cmd = rospy.Publisher("/lane_change_cmd", Int32, queue_size=1, latch=True)
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/lane_change_status", String, self._status_cb, queue_size=5)
 
         self.ego = None

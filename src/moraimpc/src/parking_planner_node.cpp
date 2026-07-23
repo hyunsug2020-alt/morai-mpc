@@ -1,7 +1,7 @@
 // Parking Planner — 콘 → 주차 박스 추론 + Hybrid A* 경로 생성
 //
 // 입력: /cone_detector/cones (PoseArray, map frame)
-//       /Ego_topic (현재 위치)
+//       /localization/ego_status (GPS/IMU ESKF 현재 위치)
 // 출력: /parking_planner/goal           (PoseStamped)
 //       /parking_planner/path           (nav_msgs/Path)
 //       /parking_planner/obstacle_grid  (nav_msgs/OccupancyGrid)
@@ -57,7 +57,7 @@ public:
 
         // Sub/Pub
         sub_cones_ = nh.subscribe("/cone_detector/cones",      1, &ParkingPlanner::conesCb, this);
-        sub_ego_   = nh.subscribe("/Ego_topic",                 5, &ParkingPlanner::egoCb,   this);
+        sub_ego_   = nh.subscribe("/localization/ego_status",   5, &ParkingPlanner::egoCb,   this);
         // RViz "2D Goal Pose" 클릭 → /move_base_simple/goal publish
         sub_manual_goal_ = nh.subscribe("/move_base_simple/goal", 1,
                                         &ParkingPlanner::manualGoalCb, this);

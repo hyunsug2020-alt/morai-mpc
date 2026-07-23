@@ -11,7 +11,7 @@ MPC 경로 추종 RViz 시각화 노드 — 실시간 경로일치율 표시
   /mpc_viz/stats_text     - 화면 고정 누적 통계 텍스트
 
 서브스크라이브:
-  /Ego_topic              - 실시간 차량 상태
+  /localization/ego_status - GPS/IMU ESKF 차량 상태
   /mpc_performance        - [dist, solve_ms, cte, hdg_deg, v_kmh, max_kappa, target_vel]
   /mpc_status             - 현재 모드 문자열
 """
@@ -99,7 +99,8 @@ class MpcVizNode:
         self.recov_ticks  = 0
         self.start_time   = None
 
-        rospy.Subscriber("/Ego_topic",       EgoVehicleStatus,   self._ego_cb)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb)
         rospy.Subscriber("/mpc_performance", Float32MultiArray,  self._perf_cb)
         rospy.Subscriber("/mpc_status",      String,             self._status_cb)
 

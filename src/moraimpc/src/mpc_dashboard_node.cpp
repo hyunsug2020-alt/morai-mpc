@@ -6,7 +6,7 @@
 // 토픽:
 //   /mpc_performance (std_msgs/Float32MultiArray, [near_dist, solve_ms, cte, hdg_deg, v_kmh, max_kappa, tgt_kmh])
 //   /mpc_status      (std_msgs/String)
-//   /Ego_topic       (morai_msgs/EgoVehicleStatus)
+//   /localization/ego_status (morai_msgs/EgoVehicleStatus)
 //
 // 파라미터:
 //   ~path_file  (string, default="")
@@ -87,7 +87,7 @@ public:
 
         sub_perf_   = nh_.subscribe("/mpc_performance", 1, &Dashboard::cbPerf, this);
         sub_status_ = nh_.subscribe("/mpc_status",      1, &Dashboard::cbStatus, this);
-        sub_ego_    = nh_.subscribe("/Ego_topic",       1, &Dashboard::cbEgo, this);
+        sub_ego_    = nh_.subscribe("/localization/ego_status", 1, &Dashboard::cbEgo, this);
         sub_obj_    = nh_.subscribe("/Object_topic",    1, &Dashboard::cbObj, this);
         sub_avoid_  = nh_.subscribe("/avoidance_offset", 1, &Dashboard::cbAvoid, this);
         sub_livepath_ = nh_.subscribe("/avoid_path",     1, &Dashboard::cbLivePath, this);  // planner live 경로(차가 실제 추종)
@@ -317,7 +317,7 @@ private:
             cx = ego_x_; cy = ego_y_;
             scale = std::min(kMapW, kMapH) / (2.0 * window_m_);
         } else {
-            putText(img, "(waiting for /Ego_topic)",
+            putText(img, "(waiting for /localization/ego_status)",
                     kMapX0 + 8, kMapY0 + kMapH - 12, 0.5, kFgDim);
             return;
         }

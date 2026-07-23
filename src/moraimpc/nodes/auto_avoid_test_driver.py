@@ -43,7 +43,8 @@ class AutoAvoidTestDriver:
         self.progress = 0
         self.start_time = rospy.get_time()
 
-        rospy.Subscriber("/Ego_topic", EgoVehicleStatus, self._ego_cb, queue_size=1)
+        rospy.Subscriber("/localization/ego_status",
+                         EgoVehicleStatus, self._ego_cb, queue_size=1)
         rospy.Subscriber("/lane_change_status", String, self._status_cb, queue_size=5)
         rospy.loginfo("[AutoAvoidTest] expected=%s", self.expected)
 

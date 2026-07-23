@@ -141,7 +141,7 @@ def ego_cb(msg):
 
 rospy.Subscriber("/mpc_performance", Float32MultiArray, perf_cb)
 rospy.Subscriber("/mpc_status",      String,            status_cb)
-rospy.Subscriber("/Ego_topic",       EgoVehicleStatus,  ego_cb)
+rospy.Subscriber("/localization/ego_status", EgoVehicleStatus, ego_cb)
 
 # ── 대시보드 레이아웃 ─────────────────────────────────────────────────
 fig = plt.figure(figsize=(13, 11), facecolor="#1a1a2e")
