@@ -1402,11 +1402,8 @@ public:
         // wait for system initialized and settles down
         if (cloudKeyPoses3D->points.empty())
             return;
-        else
-        {
-            if (pointDistance(cloudKeyPoses3D->front(), cloudKeyPoses3D->back()) < 5.0)
-                return;
-        }
+        else if (pointDistance(cloudKeyPoses3D->front(), cloudKeyPoses3D->back()) < gpsInitDistance)
+            return;
 
         // pose covariance small, no need to correct
         if (poseCovariance(3,3) < poseCovThreshold && poseCovariance(4,4) < poseCovThreshold)
@@ -1414,6 +1411,7 @@ public:
 
         // last gps position
         static PointType lastGPSPoint;
+        static bool hasLastGPSPoint = false;
 
         while (!gpsQueue.empty())
         {
@@ -1448,19 +1446,18 @@ public:
                     noise_z = 0.01;
                 }
 
-                // GPS not properly initialized (0,0,0)
-                if (abs(gps_x) < 1e-6 && abs(gps_y) < 1e-6)
-                    continue;
-
                 // Add GPS every a few meters
                 PointType curGPSPoint;
                 curGPSPoint.x = gps_x;
                 curGPSPoint.y = gps_y;
                 curGPSPoint.z = gps_z;
-                if (pointDistance(curGPSPoint, lastGPSPoint) < 5.0)
+                if (hasLastGPSPoint && pointDistance(curGPSPoint, lastGPSPoint) < gpsFactorDistance)
                     continue;
                 else
+                {
                     lastGPSPoint = curGPSPoint;
+                    hasLastGPSPoint = true;
+                }
 
                 gtsam::Vector Vector3(3);
                 Vector3 << max(noise_x, 1.0f), max(noise_y, 1.0f), max(noise_z, 1.0f);

@@ -125,6 +125,8 @@ public:
     bool useGpsElevation;
     float gpsCovThreshold;
     float poseCovThreshold;
+    float gpsInitDistance;
+    float gpsFactorDistance;
 
     // Save pcd
     bool savePCD;
@@ -209,6 +211,8 @@ public:
         nh.param<bool>("lio_sam/useGpsElevation", useGpsElevation, false);
         nh.param<float>("lio_sam/gpsCovThreshold", gpsCovThreshold, 2.0);
         nh.param<float>("lio_sam/poseCovThreshold", poseCovThreshold, 25.0);
+        nh.param<float>("lio_sam/gpsInitDistance", gpsInitDistance, 5.0);
+        nh.param<float>("lio_sam/gpsFactorDistance", gpsFactorDistance, 5.0);
 
         nh.param<bool>("lio_sam/savePCD", savePCD, false);
         nh.param<std::string>("lio_sam/savePCDDirectory", savePCDDirectory, "/Downloads/LOAM/");

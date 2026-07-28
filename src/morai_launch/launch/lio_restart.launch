@@ -1,0 +1,14 @@
+<launch>
+  <!-- Restartable LIO-SAM only.
+       Keep morai.launch running so rosbridge and /Ego_topic stay connected. -->
+  <arg name="start_rviz" default="false" />
+  <arg name="params_file"
+       default="$(find lio_sam)/config/params_morai.yaml" />
+
+  <include file="$(find lio_sam)/launch/run.launch">
+    <arg name="params_file" value="$(arg params_file)" />
+    <arg name="start_navsat" value="false" />
+    <arg name="start_rviz" value="$(arg start_rviz)" />
+    <arg name="start_robot_state_publisher" value="true" />
+  </include>
+</launch>

@@ -1,0 +1,27 @@
+{
+  "alignment": {
+    "samples": 20,
+    "x": 24.974457797528128,
+    "y": -238.8470346227591,
+    "yaw": 1.116862895033377
+  },
+  "cross_track_rmse_m": 489.03977719200196,
+  "csv_file": "/home/coss/catkin_ws/src/morai_control/logs/lio_odometry_experiment_20260729_000356.csv",
+  "ground_truth_topic": "/Ego_topic",
+  "incremental_topic": "/lio_sam/mapping/odometry_incremental",
+  "lio_distance_m": 2637.722184747047,
+  "odometry_topic": "/lio_sam/mapping/odometry",
+  "position_max_m": 1914.9610488385947,
+  "position_rmse_m": 1149.201202269283,
+  "purpose": "validation_only_not_used_for_control",
+  "sample_count": 159,
+  "skipped_sync_samples": 0,
+  "status_counts": {
+    "LIO_DEGENERATE": 7,
+    "LIO_DEGENERATE|POSITION_DRIFT": 6,
+    "LIO_DEGENERATE|POSITION_DRIFT|YAW_DRIFT": 143,
+    "POSITION_DRIFT|YAW_DRIFT": 3
+  },
+  "truth_distance_m": 381.1059991311667,
+  "yaw_rmse_deg": 37.710419499891564
+}

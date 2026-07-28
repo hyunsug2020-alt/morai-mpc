@@ -2,14 +2,17 @@
     <arg name="publish_tf" default="false" />
     <arg name="publish_sensor_tf" default="false" />
     <arg name="sensor_config_file"
-         default="/mnt/c/Users/Hyunsug2014/Desktop/과제/모라이/MoraiLauncher_Win/MoraiLauncher_Win_Data/SaveFile/Sensor/25.S4.MolitComp03/asdf.json" />
+         default="/mnt/c/Users/Hyunsug2014/Desktop/과제/모라이/MoraiLauncher_Win/MoraiLauncher_Win_Data/SaveFile/Sensor/25.S4.MolitComp03/morai_sensor.json" />
     <arg name="vehicle_config"
          default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+    <arg name="eskf_config"
+         default="$(find morai_control)/config/eskf_robust.yaml" />
 
     <!-- Canonical localization: MORAI GPS + IMU -> /eskf/odom -->
     <node pkg="morai_control" type="eskf_node.py" name="eskf_node"
           output="screen">
         <rosparam command="load" file="$(arg vehicle_config)" />
+        <rosparam command="load" file="$(arg eskf_config)" />
         <param name="publish_tf" value="$(arg publish_tf)" />
         <param name="sensor_config_file" value="$(arg sensor_config_file)" />
     </node>

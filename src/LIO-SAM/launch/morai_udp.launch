@@ -7,16 +7,39 @@
 
     <arg name="lidar_port" default="2368" />
     <arg name="imu_port" default="9091" />
-    <arg name="use_udp_imu" default="false" />
+    <arg name="gps_port" default="9090" />
+    <arg name="use_udp_imu" default="true" />
+    <arg name="use_official_velodyne" default="true" />
+    <arg name="start_gps_udp" default="true" />
+    <arg name="start_gps_odometry" default="true" />
     <arg name="start_lidar_udp" default="true" />
     <arg name="start_lio_sam" default="true" />
+    <arg name="start_navsat" default="false" />
+    <arg name="start_rviz" default="false" />
+    <arg name="start_robot_state_publisher" default="true" />
     <arg name="params_file" default="$(find lio_sam)/config/params_morai.yaml" />
+    <arg name="gps_east_offset" default="302595.0" />
+    <arg name="gps_north_offset" default="4124145.0" />
 
-    <node if="$(arg start_lidar_udp)"
-          pkg="lio_sam" type="morai_lidar_udp.py"
-          name="morai_lidar_udp" output="screen">
-        <param name="lidar_port" value="$(arg lidar_port)" />
-    </node>
+    <group if="$(arg start_lidar_udp)">
+        <!-- MORAI transmits native VLP-16 packets. The official driver
+             preserves calibrated rings and per-point firing time. -->
+        <include if="$(arg use_official_velodyne)"
+                 file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+            <arg name="port" value="$(arg lidar_port)" />
+            <arg name="frame_id" value="velodyne" />
+            <arg name="rpm" value="600.0" />
+            <arg name="min_range" value="1.0" />
+            <arg name="max_range" value="100.0" />
+            <arg name="organize_cloud" value="false" />
+        </include>
+
+        <node unless="$(arg use_official_velodyne)"
+              pkg="lio_sam" type="morai_lidar_udp.py"
+              name="morai_lidar_udp" output="screen">
+            <param name="lidar_port" value="$(arg lidar_port)" />
+        </node>
+    </group>
 
     <node unless="$(arg use_udp_imu)"
           pkg="lio_sam" type="morai_ros1_bridge.py"
@@ -28,7 +51,26 @@
         <param name="imu_port" value="$(arg imu_port)" />
     </node>
 
+    <node if="$(arg start_gps_udp)"
+          pkg="lio_sam" type="morai_gps_udp.py"
+          name="morai_gps_udp" output="screen">
+        <param name="gps_port" value="$(arg gps_port)" />
+        <param name="east_offset" value="$(arg gps_east_offset)" />
+        <param name="north_offset" value="$(arg gps_north_offset)" />
+    </node>
+
+    <node if="$(arg start_gps_odometry)"
+          pkg="lio_sam" type="morai_gps_odometry.py"
+          name="morai_gps_odometry" output="screen">
+        <param name="utm_zone" value="52" />
+        <param name="variance" value="1.0" />
+    </node>
+
     <include if="$(arg start_lio_sam)" file="$(find lio_sam)/launch/run.launch">
         <arg name="params_file" value="$(arg params_file)" />
+        <arg name="start_navsat" value="$(arg start_navsat)" />
+        <arg name="start_rviz" value="$(arg start_rviz)" />
+        <arg name="start_robot_state_publisher"
+             value="$(arg start_robot_state_publisher)" />
     </include>
 </launch>

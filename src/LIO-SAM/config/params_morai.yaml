@@ -2,9 +2,11 @@ lio_sam:
 
   # Topics
   pointCloudTopic: "/velodyne_points"               # Point cloud data
-  imuTopic: "/imu/data"                         # IMU data
-  odomTopic: "odometry/imu_none"                   # IMU pre-preintegration odometry, same frequency as IMU
-  gpsTopic: "odometry/gpsz"                   # GPS odometry topic from navsat, see module_navsat.launch file
+  imuTopic: "/imu/data"                             # normalized MORAI IMU
+  odomTopic: "/lio_sam/odometry/imu"                # high-rate LIO-SAM odometry
+  # MORAI /gps is morai_msgs/GPSMessage, not sensor_msgs/NavSatFix.
+  # This remains inactive until an explicit GPS adapter is enabled.
+  gpsTopic: "/lio_sam/gps/odometry"
 
   # Frames
   lidarFrame: "velodyne"
@@ -16,7 +18,9 @@ lio_sam:
   useImuHeadingInitialization: false           # if using GPS data, set to "true"
   useGpsElevation: false                      # if GPS elevation is bad, set to "false"
   gpsCovThreshold: 2.0                        # m^2, threshold for using GPS data
-  poseCovThreshold: 25.0                      # m^2, threshold for using GPS data
+  poseCovThreshold: 0.0                       # always permit valid GPS factors
+  gpsInitDistance: 0.0                        # accept GPS as soon as the first keyframe exists
+  gpsFactorDistance: 1.0                      # add a GPS factor after each 1 m movement
   
   # Export settings
   savePCD: false                              # https://github.com/TixiaoShan/LIO-SAM/issues/3
@@ -28,7 +32,7 @@ lio_sam:
   Horizon_SCAN: 1800                          # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
   downsampleRate: 1                           # default: 1. Downsample your data if too many points. i.e., 16 = 64 / 4, 16 = 16 / 1
   lidarMinRange: 1.0                          # default: 1.0, minimum lidar range to be used
-  lidarMaxRange: 1000.0                       # default: 1000.0, maximum lidar range to be used
+  lidarMaxRange: 100.0                        # MORAI morai_sensor.json fireDistance
 
   # IMU Settings
   imuAccNoise: 3.9939570888238808e-03
@@ -36,12 +40,15 @@ lio_sam:
   imuAccBiasN: 6.4356659353532566e-05
   imuGyrBiasN: 3.5640318696367613e-05
   imuGravity: 9.80511
-  imuRPYWeight: 0.01
+  # MORAI provides a normalized 9-axis orientation. On flat, feature-poor
+  # roads, keep roll/pitch tied to the IMU instead of allowing planar scan
+  # matching degeneracy to rotate the map.
+  imuRPYWeight: 1.0
 
   # Extrinsics: T_lb (lidar -> imu)
-  # MORAI asdf.json: lidar=(1.676,0.005,1.201), imu=(3.423,0.012,0.614)
+  # MORAI morai_sensor.json: lidar=(3.320,0.000,0.660), imu=(3.390,0.000,0.624)
   # Translation from lidar origin to IMU origin in the aligned lidar frame.
-  extrinsicTrans: [1.747, 0.007, -0.587]
+  extrinsicTrans: [0.070, 0.000, -0.036]
   extrinsicRot: [1, 0, 0,
                  0, 1, 0,
                  0, 0, 1]
@@ -67,8 +74,8 @@ lio_sam:
   mappingSurfLeafSize: 0.4                      # default: 0.4 - outdoor, 0.2 - indoor
 
   # robot motion constraint (in case you are using a 2D robot)
-  z_tollerance: 1000                            # meters
-  rotation_tollerance: 1000                     # radians
+  z_tollerance: 0.2                             # meters, flat-road vehicle
+  rotation_tollerance: 0.35                     # radians, roll/pitch only
 
   # CPU Params
   numberOfCores: 4                              # number of cores for mapping optimization

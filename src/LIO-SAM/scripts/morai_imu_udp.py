@@ -11,6 +11,7 @@ class MoraiImuUDP:
         rospy.init_node('morai_imu_udp')
         self.UDP_PORT = rospy.get_param('~imu_port', 9091)
         self.pub = rospy.Publisher('/imu/data', Imu, queue_size=10)
+        self.last_sensor_stamp_ns = None
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -32,34 +33,80 @@ class MoraiImuUDP:
 
     def parse_and_publish(self, data):
         if not data.startswith(b'#IMUData$'):
+            rospy.logwarn_throttle(
+                1.0, "IMU UDP 헤더 불일치: len=%d header=%r"
+                % (len(data), data[:16]))
             return
 
-        payload = data[9:]
-        if len(payload) < 96:
+        if len(data) < 95:
+            rospy.logwarn_throttle(
+                1.0, "IMU UDP 패킷이 너무 짧음: len=%d" % len(data))
             return
 
         try:
-            vals = struct.unpack_from('<12d', payload)
-            # [0],[1]: 패딩
-            # [2~5]: 쿼터니언 w,x,y,z
-            # [6~8]: 각속도 x,y,z
-            # [9~11]: 가속도 x,y,z
-            wx = vals[6]
-            wy = vals[7]
-            wz = vals[8]
-            ax = vals[9]
-            ay = vals[10]
-            az = vals[11]
+            data_length = struct.unpack_from('<I', data, 9)[0]
+            if data_length < 80:
+                rospy.logwarn_throttle(
+                    1.0, "IMU UDP data_length 오류: %d" % data_length)
+                return
+
+            # MORAI 24.R2.2 packet:
+            #   header(9) + size(4) + aux(12) + imu(80) + CRLF(2) = 107
+            # Current MORAI versions prepend a ROS timestamp to the IMU block:
+            #   header(9) + size(4) + aux(12) + stamp(8) + imu(80)
+            #   + CRLF(2) = 115, and report size=88.
+            # In both variants the actual IMU block is the final 80 bytes
+            # immediately before the packet tail.
+            tail_size = 2 if data.endswith(b'\r\n') else 0
+            data_start = len(data) - tail_size - 80
+            if data_start < 13 or data_start + 80 > len(data) - tail_size:
+                rospy.logwarn_throttle(
+                    1.0, "IMU UDP 구조 오류: len=%d data_length=%d"
+                    % (len(data), data_length))
+                return
+
+            vals = struct.unpack_from('<10d', data, data_start)
+            # MORAI order: quaternion w,x,y,z; angular velocity x,y,z;
+            # linear acceleration x,y,z.
+            qw, qx, qy, qz = vals[0:4]
+            wx, wy, wz = vals[4:7]
+            ax, ay, az = vals[7:10]
 
             msg = Imu()
-            msg.header.stamp = rospy.Time.now()
+            # The 115-byte packet stores uint32 seconds and nanoseconds
+            # directly before the IMU block. Preserve sensor time for LiDAR
+            # deskew and IMU preintegration; fall back for the 107-byte format.
+            stamp_start = data_start - 8
+            if data_length >= 88 and stamp_start >= 25:
+                stamp_sec, stamp_nsec = struct.unpack_from(
+                    '<II', data, stamp_start)
+                if stamp_sec > 0 and stamp_nsec < 1000000000:
+                    msg.header.stamp = rospy.Time(stamp_sec, stamp_nsec)
+                else:
+                    msg.header.stamp = rospy.Time.now()
+            else:
+                msg.header.stamp = rospy.Time.now()
             msg.header.frame_id = "imu_link"
 
-            # orientation 무시 (단위 쿼터니언)
-            msg.orientation.x = 0.0
-            msg.orientation.y = 0.0
-            msg.orientation.z = 0.0
-            msg.orientation.w = 1.0
+            stamp_ns = msg.header.stamp.to_nsec()
+            if (self.last_sensor_stamp_ns is not None
+                    and stamp_ns <= self.last_sensor_stamp_ns):
+                rospy.logwarn_throttle(
+                    2.0, "IMU 중복/역행 timestamp 제거: current=%d last=%d"
+                    % (stamp_ns, self.last_sensor_stamp_ns))
+                return
+            self.last_sensor_stamp_ns = stamp_ns
+
+            quaternion_norm = math.sqrt(
+                qw * qw + qx * qx + qy * qy + qz * qz)
+            if quaternion_norm > 1e-8:
+                msg.orientation.w = qw / quaternion_norm
+                msg.orientation.x = qx / quaternion_norm
+                msg.orientation.y = qy / quaternion_norm
+                msg.orientation.z = qz / quaternion_norm
+            else:
+                msg.orientation.w = 1.0
+                msg.orientation_covariance[0] = -1.0
 
             msg.angular_velocity.x = wx
             msg.angular_velocity.y = wy
@@ -69,9 +116,10 @@ class MoraiImuUDP:
             msg.linear_acceleration.y = ay
             msg.linear_acceleration.z = az
 
-            msg.orientation_covariance[0] = 0.01
-            msg.orientation_covariance[4] = 0.01
-            msg.orientation_covariance[8] = 0.01
+            if msg.orientation_covariance[0] >= 0.0:
+                msg.orientation_covariance[0] = 0.01
+                msg.orientation_covariance[4] = 0.01
+                msg.orientation_covariance[8] = 0.01
             msg.angular_velocity_covariance[0] = 0.01
             msg.angular_velocity_covariance[4] = 0.01
             msg.angular_velocity_covariance[8] = 0.01
@@ -81,7 +129,8 @@ class MoraiImuUDP:
 
             self.pub.publish(msg)
             rospy.loginfo_throttle(1.0,
-                "IMU: az=%.2f wz=%.4f" % (az, wz))
+                "IMU: |a|=%.3f az=%.3f wz=%.5f"
+                % (math.sqrt(ax * ax + ay * ay + az * az), az, wz))
 
         except Exception as e:
             rospy.logwarn_throttle(1.0, "파싱 에러: %s" % str(e))

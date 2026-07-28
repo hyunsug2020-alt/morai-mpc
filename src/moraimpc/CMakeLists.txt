@@ -66,7 +66,7 @@ add_dependencies(simple_dashboard_node ${catkin_EXPORTED_TARGETS})
 target_include_directories(simple_dashboard_node PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(simple_dashboard_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${JSONCPP_LIBRARY})
 
-# asdf.json-mounted 3D LiDAR cone detector
+# morai_sensor.json-mounted 3D LiDAR cone detector
 add_executable(cone_detector_node src/cone_detector_node.cpp)
 add_dependencies(cone_detector_node ${catkin_EXPORTED_TARGETS})
 target_link_libraries(cone_detector_node ${catkin_LIBRARIES})

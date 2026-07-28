@@ -7,24 +7,40 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
 )
 
-file(GLOB MSG_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/msg msg/*.msg)
-add_message_files(FILES ${MSG_FILES})
+file(GLOB MSG_FILES msg/*.msg)
 
-add_service_files(FILES
-  MoraiEventCmdSrv.srv
-  MoraiMapSpecSrv.srv
-  MoraiScenarioLoadSrv.srv
-  MoraiSimProcSrv.srv
-  MoraiSyncModeAddObjectSrv.srv
-  MoraiSyncModeCmdSrv.srv
-  MoraiSyncModeCtrlCmdSrv.srv
-  MoraiSyncModeRemoveObjectSrv.srv
-  MoraiSyncModeSetGearSrv.srv
-  MoraiSyncModeSLSrv.srv
-  MoraiTLInfoSrv.srv
-  MoraiVehicleSpecSrv.srv
-  MoraiWaitForTickSrv.srv
-  PREventSrv.srv
+add_message_files(FILES
+  CollisionData.msg
+  CtrlCmd.msg
+  EgoVehicleStatus.msg
+  EventInfo.msg
+  GPSMessage.msg
+  GhostCmd.msg
+  GetTrafficLightStatus.msg
+  IntersectionControl.msg
+  IntersectionStatus.msg
+  Lamps.msg
+  MapSpec.msg
+  MoraiSimProcHandle.msg
+  MoraiSimProcStatus.msg
+  MoraiSrvResponse.msg
+  MultiEgoSetting.msg
+  NpcGhostCmd.msg
+  NpcGhostInfo.msg
+  ObjectStatus.msg
+  ObjectStatusList.msg
+  RadarDetection.msg
+  RadarDetections.msg
+  ReplayInfo.msg
+  SaveSensorData.msg
+  ScenarioLoad.msg
+  SensorPosControl.msg
+  SetTrafficLight.msg
+  TrafficLightIndex.msg
+  TrafficLightInfo.msg
+  VehicleCollisionData.msg
+  VehicleSpec.msg
+  VehicleSpecIndex.msg
 )
 
 generate_messages(DEPENDENCIES std_msgs geometry_msgs)

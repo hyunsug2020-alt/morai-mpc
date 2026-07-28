@@ -1,0 +1,17 @@
+{
+  "alignment": null,
+  "cross_track_rmse_m": null,
+  "csv_file": "/home/coss/catkin_ws/src/morai_control/logs/lio_odometry_experiment_20260728_225256.csv",
+  "ground_truth_topic": "/Ego_topic",
+  "incremental_topic": "/lio_sam/mapping/odometry_incremental",
+  "lio_distance_m": 0.0,
+  "odometry_topic": "/lio_sam/mapping/odometry",
+  "position_max_m": null,
+  "position_rmse_m": null,
+  "purpose": "validation_only_not_used_for_control",
+  "sample_count": 0,
+  "skipped_sync_samples": 3550,
+  "status_counts": {},
+  "truth_distance_m": 0.0,
+  "yaw_rmse_deg": null
+}

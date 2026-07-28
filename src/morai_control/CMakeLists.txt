@@ -48,12 +48,23 @@ catkin_install_python(PROGRAMS
   scripts/ego_drive.py
   scripts/eskf_node.py
   scripts/ego_status_from_eskf.py
+  scripts/odometry_accuracy_validator.py
+  scripts/validate_eskf_noise.py
+  scripts/validate_eskf_slam.py
+  scripts/stress_eskf_slam.py
+  scripts/build_eskf_validation_report.py
   scripts/sensor_tf_from_config.py
   scripts/heading_gui.py
+  scripts/lio_odometry_experiment.py
   scripts/ltv_mpc_follower_v2.py
   scripts/path_follower.py
   scripts/path_maker.py
   scripts/unified_gui.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(PROGRAMS
+  scripts/run_eskf_validation.sh
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

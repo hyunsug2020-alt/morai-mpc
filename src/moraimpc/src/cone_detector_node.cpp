@@ -81,7 +81,7 @@ public:
         pnh.param("debug_clusters", debug_clusters_, false);
         pnh.param("show_all_clusters", show_all_, false);
 
-        // LiDAR 설정 (asdf.json 기본은 전방 3D LiDAR 한 대)
+        // LiDAR 설정 (morai_sensor.json 기본은 전방 3D LiDAR 한 대)
         // x/y/yaw: launch arg, z: 자동 캘리브 (ground RANSAC running avg)
         std::string topic1, topic2;
         pnh.param<std::string>("lidar1_topic", topic1, "/velodyne_points");
@@ -92,8 +92,8 @@ public:
         LidarSrc s1, s2;
         s1.topic = topic1;
         s2.topic = topic2;
-        pnh.param("lidar1_x",   s1.x,    1.676);
-        pnh.param("lidar1_y",   s1.y,    0.005);
+        pnh.param("lidar1_x",   s1.x,    3.320);
+        pnh.param("lidar1_y",   s1.y,    0.000);
         pnh.param("lidar1_yaw", s1.yaw,  0.0);
         pnh.param("lidar2_x",   s2.x,   -1.5);
         pnh.param("lidar2_y",   s2.y,    0.0);

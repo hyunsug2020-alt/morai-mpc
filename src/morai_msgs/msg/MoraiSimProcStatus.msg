@@ -1,4 +1,4 @@
-Header header
+std_msgs/Header header
 
 time latest_command_time
 uint8 command_result

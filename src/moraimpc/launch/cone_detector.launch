@@ -1,5 +1,5 @@
 <launch>
-    <!-- 3D LiDAR Cone Detector — asdf.json 전방 단일 LiDAR + 자동 z 캘리브 -->
+    <!-- 3D LiDAR Cone Detector — morai_sensor.json 전방 단일 LiDAR + 자동 z 캘리브 -->
 
     <!-- MORAI TF 노이즈 억제 -->
     <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
@@ -10,8 +10,8 @@
     <arg name="use_lidar2" default="false" />
 
     <!-- LiDAR 마운트 (vehicle frame, z는 자동) -->
-    <arg name="lidar1_x"   default="1.676" />
-    <arg name="lidar1_y"   default="0.005" />
+    <arg name="lidar1_x"   default="3.320" />
+    <arg name="lidar1_y"   default="0.000" />
     <arg name="lidar1_yaw" default="0.0" />
     <arg name="lidar2_x"   default="-1.5" />
     <arg name="lidar2_y"   default="0.0" />

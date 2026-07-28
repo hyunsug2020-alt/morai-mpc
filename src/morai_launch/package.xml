@@ -9,4 +9,6 @@
   <exec_depend>rospy</exec_depend>
   <exec_depend>rosbridge_server</exec_depend>
   <exec_depend>morai_msgs</exec_depend>
+  <exec_depend>lio_sam</exec_depend>
+  <exec_depend>morai_control</exec_depend>
 </package>

@@ -2,6 +2,9 @@
 
     <arg name="project" default="lio_sam"/>
     <arg name="params_file" default="$(find lio_sam)/config/params.yaml"/>
+    <arg name="start_robot_state_publisher" default="true"/>
+    <arg name="start_navsat" default="true"/>
+    <arg name="start_rviz" default="true"/>
     
     <!-- Parameters -->
     <rosparam file="$(arg params_file)" command="load" />
@@ -10,12 +13,15 @@
     <include file="$(find lio_sam)/launch/include/module_loam.launch" />
 
     <!--- Robot State TF -->
-    <include file="$(find lio_sam)/launch/include/module_robot_state_publisher.launch" />
+    <include if="$(arg start_robot_state_publisher)"
+             file="$(find lio_sam)/launch/include/module_robot_state_publisher.launch" />
 
     <!--- Run Navsat -->
-    <include file="$(find lio_sam)/launch/include/module_navsat.launch" />
+    <include if="$(arg start_navsat)"
+             file="$(find lio_sam)/launch/include/module_navsat.launch" />
 
     <!--- Run Rviz-->
-    <include file="$(find lio_sam)/launch/include/module_rviz.launch" />
+    <include if="$(arg start_rviz)"
+             file="$(find lio_sam)/launch/include/module_rviz.launch" />
 
 </launch>
