@@ -1,0 +1,20 @@
+<launch>
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="rviz_config" default="$(find moraimpc)/rviz/hdmap_lane_view.rviz" />
+  <arg name="show_lane_labels" default="true" />
+  <arg name="lane_label_min_len_m" default="8.0" />
+  <arg name="show_ego_pose_label" default="true" />
+  <arg name="show_npc_labels" default="true" />
+  <arg name="publish_tf" default="false" />
+
+  <node pkg="moraimpc" type="hdmap_viz.py" name="hdmap_viz" output="screen">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="show_lane_labels" value="$(arg show_lane_labels)" />
+    <param name="lane_label_min_len_m" value="$(arg lane_label_min_len_m)" />
+    <param name="show_ego_pose_label" value="$(arg show_ego_pose_label)" />
+    <param name="show_npc_labels" value="$(arg show_npc_labels)" />
+    <param name="publish_tf" value="$(arg publish_tf)" />
+  </node>
+
+  <node pkg="rviz" type="rviz" name="hdmap_lane_rviz" args="-d $(arg rviz_config)" output="screen" />
+</launch>

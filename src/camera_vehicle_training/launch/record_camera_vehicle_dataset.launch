@@ -1,0 +1,27 @@
+<launch>
+  <arg name="config"
+       default="$(find camera_vehicle_training)/config/camera_vehicle_dataset.yaml"/>
+  <arg name="camera_config"
+       default="$(find camera_vehicle_training)/config/front_camera_udp.yaml"/>
+  <arg name="output_dir"
+       default="$(find camera_vehicle_training)/../../datasets/morai_camera_vehicle"/>
+  <arg name="session_id" default="$(anon camera_vehicle_session)"/>
+  <arg name="start_camera_receiver" default="true"/>
+  <arg name="show_camera_windows" default="false"/>
+
+  <include if="$(arg start_camera_receiver)"
+           file="$(find around_view)/launch/camera_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)"/>
+    <arg name="show_windows" value="$(arg show_camera_windows)"/>
+  </include>
+
+  <node pkg="camera_vehicle_training"
+        type="camera_vehicle_dataset_recorder.py"
+        name="camera_vehicle_dataset_recorder"
+        output="screen"
+        required="true">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="output_dir" value="$(arg output_dir)"/>
+    <param name="session_id" value="$(arg session_id)"/>
+  </node>
+</launch>

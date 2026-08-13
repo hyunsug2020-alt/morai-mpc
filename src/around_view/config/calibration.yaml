@@ -1,0 +1,131 @@
+canvas:
+  width: 800
+  height: 500
+
+# udp_avm_auto.py에서 사용하던 물리 기반 자동 투영을 기본으로 사용함.
+projection_mode: "auto_geometry"
+
+camera_geometry:
+  front:
+    position: [1.9, 0.0, 1.2]
+    rotation: [0.0, 2.0, 0.0]
+    fov: 90.0
+  left:
+    position: [1.15, 0.65, 1.2]
+    rotation: [0.0, 10.0, 70.0]
+    fov: 130.0
+  right:
+    position: [1.15, -0.65, 1.2]
+    rotation: [0.0, 10.0, 290.0]
+    fov: 130.0
+
+auto_offsets:
+  front_pitch_tenths: 0
+  left_yaw_tenths: 0
+  right_yaw_tenths: 0
+  left_pitch_tenths: 0
+  right_pitch_tenths: 0
+  global_height_cm: 0
+
+ground_projection:
+  pixels_per_meter: 40.0
+  ego_center: [400, 450]
+
+# manual 모드로 전환할 때 사용하는 사다리꼴 입력 영역임.
+calibration:
+  front:
+    y_top: 400
+    x_top: 150
+    y_bottom: 680
+    x_bottom: 580
+  left:
+    y_top: 400
+    x_top: 150
+    y_bottom: 680
+    x_bottom: 580
+  right:
+    y_top: 400
+    x_top: 150
+    y_bottom: 680
+    x_bottom: 580
+
+destinations:
+  front:
+    - [280, 50]
+    - [520, 50]
+    - [520, 290]
+    - [280, 290]
+  left:
+    - [160, 50]
+    - [340, 50]
+    - [340, 490]
+    - [160, 490]
+  right:
+    - [460, 50]
+    - [640, 50]
+    - [640, 490]
+    - [460, 490]
+
+seam_polygons:
+  # 전방 90도 FOV와 40 px/m 축척에서 계산한 실제 전방 가시 부채꼴임.
+  # 먼 전방은 전방 카메라가 전체 폭을 담당하고 차량 근처에서 좌우 카메라로
+  # 전환하여 직진 차선이 중앙에서 끊기거나 측면 영상으로 늘어나지 않게 함.
+  front:
+    - [-50, 0]
+    - [850, 0]
+    - [500, 350]
+    - [436, 358]
+    - [364, 358]
+    - [300, 350]
+  left:
+    - [0, 0]
+    - [400, 0]
+    - [400, 500]
+    - [0, 500]
+  right:
+    - [400, 0]
+    - [800, 0]
+    - [800, 500]
+    - [400, 500]
+
+# 고정된 MORAI 카메라 영상을 잘라내지 않고 근접 영역까지 모두 투영함.
+# 좌표는 해상도에 대한 0~1 정규화 값임.
+source_ground_masks:
+  front:
+    include:
+      - [0.0, 0.0]
+      - [1.0, 0.0]
+      - [1.0, 1.0]
+      - [0.0, 1.0]
+    exclude: []
+    erosion_px: 0
+  left:
+    include:
+      - [0.0, 0.0]
+      - [1.0, 0.0]
+      - [1.0, 1.0]
+      - [0.0, 1.0]
+    exclude: []
+    erosion_px: 0
+  right:
+    include:
+      - [0.0, 0.0]
+      - [1.0, 0.0]
+      - [1.0, 1.0]
+      - [0.0, 1.0]
+    exclude: []
+    erosion_px: 0
+
+# 0이면 카메라 경계를 블러 없이 원본 픽셀로 합성함.
+seam_feather_pixels: 0.0
+
+vehicle:
+  body: [364, 358, 436, 500]
+  windshield: [374, 375, 426, 395]
+  label_position: [385, 450]
+  label_scale: 0.45
+  line_thickness: 1
+
+output_topic: "/around_view/image"
+output_frame_id: "around_view"
+publish_rate: 30.0

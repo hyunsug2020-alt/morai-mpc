@@ -1,0 +1,19 @@
+<launch>
+  <!-- Read-only validator UI. /Ego_topic is used only as display ground truth. -->
+  <arg name="ego_topic" default="/Ego_topic" />
+  <arg name="eskf_topic" default="/eskf/odom" />
+  <arg name="diagnostics_topic" default="/eskf/diagnostics" />
+  <arg name="max_pair_age_sec" default="0.25" />
+  <arg name="ui_refresh_hz" default="20.0" />
+  <arg name="plot_refresh_hz" default="2.0" />
+
+  <node pkg="eskf" type="eskf_monitor_gui.py" name="eskf_monitor_gui"
+        output="screen" required="false">
+    <param name="ego_topic" value="$(arg ego_topic)" />
+    <param name="eskf_topic" value="$(arg eskf_topic)" />
+    <param name="diagnostics_topic" value="$(arg diagnostics_topic)" />
+    <param name="max_pair_age_sec" value="$(arg max_pair_age_sec)" />
+    <param name="ui_refresh_hz" value="$(arg ui_refresh_hz)" />
+    <param name="plot_refresh_hz" value="$(arg plot_refresh_hz)" />
+  </node>
+</launch>

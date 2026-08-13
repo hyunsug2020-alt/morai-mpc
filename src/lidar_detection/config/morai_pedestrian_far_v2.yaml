@@ -1,0 +1,23 @@
+topics:
+  point_cloud: "/velodyne_points"
+  diagnostics: "/lidar_detection/ground_truth_diagnostics"
+  status: "/lidar_detection/far_v2_dataset_status"
+
+recording:
+  # Roughly 2 Hz at the current MORAI LiDAR rate.  This limits adjacent-frame
+  # duplication while the ego vehicle is continuously moving.
+  record_every_n: 2
+  empty_frame_every_n: 8
+  match_buffer_seconds: 2.0
+  writer_queue_size: 50
+  min_free_disk_gb: 20.0
+  require_interpolated: true
+
+filtering:
+  # Preserve sparse far-range pedestrians.  Zero-return boxes are negatives,
+  # not learnable positive labels.
+  min_points_per_box: 1
+  max_label_range_m: 45.0
+
+class_names:
+  pedestrian: "Pedestrian"

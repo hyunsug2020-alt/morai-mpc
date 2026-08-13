@@ -1,0 +1,37 @@
+<launch>
+    <!-- 무제한 폐루프 자체주행: 진짜 planner + 진짜 follower(LTV-MPC) + vehicle_sim(자전거) + 실시간 모니터.
+         MORAI 불필요. 커브추종/조향/속도/회피 실시간 진단·튜닝용.
+         별도 roscore 권장:  ROS_MASTER_URI=http://localhost:11312 roslaunch moraimpc autodrive.launch -->
+    <arg name="ego_lane"   default="1" />
+    <arg name="cruise_kmh" default="40" />
+    <arg name="npc_specs"  default="[]" />       <!-- [[laneN,frac,sp_mps],...] -->
+    <arg name="sim_time"   default="999999" />   <!-- 무제한 -->
+
+    <node pkg="moraimpc" type="hdmap_lane_avoid.py" name="hdmap_lane_avoid" output="log">
+        <param name="cruise_mps"          value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="lane_change_trans_m" value="20.0" />
+        <param name="change_cooldown_s"   value="2.0" />
+        <param name="route_len_m"         value="300.0" />
+        <param name="rate_hz"             value="10.0" />
+        <param name="enable_overtake"     value="false" />
+    </node>
+
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">
+        <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+        <param name="path_file"      value="$(find moraimpc)/data/hdmap_path.json" />
+        <param name="target_vel"     value="$(arg cruise_kmh)" />
+        <param name="force_nmpc"     value="false" />
+        <param name="use_avoid_path" value="true" />
+        <param name="log_file"       value="/tmp/autodrive_follower.json" />
+    </node>
+
+    <node pkg="moraimpc" type="vehicle_sim.py" name="vehicle_sim" output="log" required="true">
+        <param name="ego_lane"    value="$(arg ego_lane)" />
+        <param name="cruise_mps"  value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="sim_time"    value="$(arg sim_time)" />
+        <param name="npc_specs"   value="$(arg npc_specs)" />
+        <param name="result_file" value="/tmp/autodrive_result.json" />
+    </node>
+
+    <node pkg="moraimpc" type="drive_monitor.py" name="drive_monitor" output="screen" />
+</launch>

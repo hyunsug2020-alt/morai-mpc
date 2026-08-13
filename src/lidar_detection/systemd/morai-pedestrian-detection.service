@@ -1,0 +1,23 @@
+[Unit]
+Description=MORAI pedestrian PointPillars detector and RViz
+After=graphical.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bisa
+Group=bisa
+WorkingDirectory=/home/david/morai-mpc-agent-morai-lio-gps-integration
+Environment=DISPLAY=:20
+Environment=XAUTHORITY=/home/david/.Xauthority
+Environment=ROS_MASTER_URI=http://localhost:11311
+ExecStart=/bin/bash -lc 'source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch lidar_detection pedestrian_detection.launch'
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

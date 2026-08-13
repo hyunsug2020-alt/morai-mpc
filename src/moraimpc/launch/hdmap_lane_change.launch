@@ -1,0 +1,142 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="vehicle_config" default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+  <arg name="log_file" default="$(find moraimpc)/logs/lane_change_log.json" />
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="ltv_only" default="true" />
+  <arg name="live_tuning" default="true" />
+  <arg name="param_reload_period_s" default="0.5" />
+  <arg name="target_lane" default="0" />
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="route_len_m" default="220.0" />
+  <arg name="use_base_route" default="false" />
+  <arg name="loop_hdmap_route" default="true" />
+  <arg name="stop_at_path_end" default="false" />
+  <arg name="anchor_current_pose" default="false" />
+  <arg name="avoid_reacquire_dist_m" default="3.0" />
+  <arg name="detect_dist_m" default="70.0" />
+  <arg name="block_lat_m" default="1.8" />
+  <arg name="target_front_gap_m" default="10.0" />
+  <arg name="target_rear_gap_m" default="7.0" />
+  <arg name="gap_front_min_m" default="7.0" />
+  <arg name="gap_rear_min_m" default="5.0" />
+  <arg name="gap_front_time_s" default="0.55" />
+  <arg name="gap_rear_time_s" default="0.45" />
+  <arg name="gap_rel_speed_time_s" default="0.7" />
+  <arg name="gap_predict_time_s" default="1.4" />
+  <arg name="arrive_lane_lat_m" default="1.5" />
+  <arg name="arrive_forced_lane_lat_m" default="0.8" />
+  <arg name="max_avoid_hops" default="4" />
+  <arg name="require_rejoin_path" default="true" />
+  <arg name="rejoin_check_m" default="140.0" />
+  <arg name="urgent_transition_min_m" default="10.0" />
+  <arg name="urgent_transition_margin_m" default="4.0" />
+  <arg name="avoid_change_min_kmh" default="10.0" />
+  <arg name="avoid_hard_stop_m" default="4.0" />
+  <arg name="avoid_vel_as_cap" default="true" />
+  <arg name="curve_decel_enable" default="true" />
+  <arg name="curve_speed_alpha" default="12.0" />
+  <arg name="curve_alat_max" default="2.26" />
+  <arg name="curve_lookahead_min_m" default="25.0" />
+  <arg name="curve_lookahead_max_m" default="70.0" />
+  <arg name="curve_lookahead_time_s" default="2.5" />
+  <arg name="curve_brake_decel_mps2" default="2.0" />
+  <arg name="curve_min_vel_kmh" default="6.0" />
+  <arg name="kappa_gain" default="1.28" />
+  <arg name="max_steer_rate" default="50.0" />
+  <arg name="max_steer_deg" default="35.0" />
+  <arg name="w_dr" default="220.0" />
+  <arg name="w_theta_low_speed" default="250.0" />
+  <arg name="w_theta_high_speed" default="220.0" />
+  <arg name="w_kappa" default="120.0" />
+  <arg name="w_u" default="5200.0" />
+  <arg name="w_u_v_gain" default="350.0" />
+  <arg name="w_dr_curve_boost" default="2.8" />
+  <arg name="mode_init" default="false" />
+  <arg name="follower" default="false" />
+  <arg name="rviz" default="true" />
+  <arg name="rviz_config" default="$(find moraimpc)/rviz/hdmap_lane_view.rviz" />
+  <arg name="show_lane_labels" default="true" />
+  <arg name="show_ego_pose_label" default="true" />
+  <arg name="show_npc_labels" default="true" />
+
+  <node if="$(arg mode_init)" pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
+
+  <node pkg="moraimpc" type="hdmap_lane_change.py" name="hdmap_lane_change" output="screen">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="target_lane" value="$(arg target_lane)" />
+    <param name="use_base_route" value="$(arg use_base_route)" />
+    <param name="loop_hdmap_route" value="$(arg loop_hdmap_route)" />
+    <param name="anchor_current_pose" value="$(arg anchor_current_pose)" />
+    <param name="auto_avoid" value="true" />
+    <param name="lane_change_trans_m" value="28.0" />
+    <param name="route_len_m" value="$(arg route_len_m)" />
+    <param name="rate_hz" value="10.0" />
+    <param name="detect_dist_m" value="$(arg detect_dist_m)" />
+    <param name="block_lat_m" value="$(arg block_lat_m)" />
+    <param name="target_front_gap_m" value="$(arg target_front_gap_m)" />
+    <param name="target_rear_gap_m" value="$(arg target_rear_gap_m)" />
+    <param name="gap_front_min_m" value="$(arg gap_front_min_m)" />
+    <param name="gap_rear_min_m" value="$(arg gap_rear_min_m)" />
+    <param name="gap_front_time_s" value="$(arg gap_front_time_s)" />
+    <param name="gap_rear_time_s" value="$(arg gap_rear_time_s)" />
+    <param name="gap_rel_speed_time_s" value="$(arg gap_rel_speed_time_s)" />
+    <param name="gap_predict_time_s" value="$(arg gap_predict_time_s)" />
+    <param name="arrive_lane_lat_m" value="$(arg arrive_lane_lat_m)" />
+    <param name="arrive_forced_lane_lat_m" value="$(arg arrive_forced_lane_lat_m)" />
+    <param name="max_avoid_hops" value="$(arg max_avoid_hops)" />
+    <param name="require_rejoin_path" value="$(arg require_rejoin_path)" />
+    <param name="rejoin_check_m" value="$(arg rejoin_check_m)" />
+    <param name="urgent_transition_min_m" value="$(arg urgent_transition_min_m)" />
+    <param name="urgent_transition_margin_m" value="$(arg urgent_transition_margin_m)" />
+    <param name="avoid_change_min_kmh" value="$(arg avoid_change_min_kmh)" />
+    <param name="avoid_hard_stop_m" value="$(arg avoid_hard_stop_m)" />
+  </node>
+
+  <include if="$(arg follower)" file="$(find moraimpc)/launch/hdmap_path_follower.launch">
+    <arg name="path_file" value="$(arg path_file)" />
+    <arg name="vehicle_config" value="$(arg vehicle_config)" />
+    <arg name="log_file" value="$(arg log_file)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="ltv_only" value="$(arg ltv_only)" />
+    <arg name="live_tuning" value="$(arg live_tuning)" />
+    <arg name="param_reload_period_s" value="$(arg param_reload_period_s)" />
+    <arg name="use_avoid_path" value="true" />
+    <arg name="avoid_vel_as_cap" value="$(arg avoid_vel_as_cap)" />
+    <arg name="stop_at_path_end" value="$(arg stop_at_path_end)" />
+    <arg name="avoid_reacquire_dist_m" value="$(arg avoid_reacquire_dist_m)" />
+    <arg name="curve_decel_enable" value="$(arg curve_decel_enable)" />
+    <arg name="curve_speed_alpha" value="$(arg curve_speed_alpha)" />
+    <arg name="curve_alat_max" value="$(arg curve_alat_max)" />
+    <arg name="curve_lookahead_min_m" value="$(arg curve_lookahead_min_m)" />
+    <arg name="curve_lookahead_max_m" value="$(arg curve_lookahead_max_m)" />
+    <arg name="curve_lookahead_time_s" value="$(arg curve_lookahead_time_s)" />
+    <arg name="curve_brake_decel_mps2" value="$(arg curve_brake_decel_mps2)" />
+    <arg name="curve_min_vel_kmh" value="$(arg curve_min_vel_kmh)" />
+    <arg name="kappa_gain" value="$(arg kappa_gain)" />
+    <arg name="max_steer_rate" value="$(arg max_steer_rate)" />
+    <arg name="max_steer_deg" value="$(arg max_steer_deg)" />
+    <arg name="w_dr" value="$(arg w_dr)" />
+    <arg name="w_theta_low_speed" value="$(arg w_theta_low_speed)" />
+    <arg name="w_theta_high_speed" value="$(arg w_theta_high_speed)" />
+    <arg name="w_kappa" value="$(arg w_kappa)" />
+    <arg name="w_u" value="$(arg w_u)" />
+    <arg name="w_u_v_gain" value="$(arg w_u_v_gain)" />
+    <arg name="w_dr_curve_boost" value="$(arg w_dr_curve_boost)" />
+  </include>
+
+  <node if="$(arg rviz)" pkg="moraimpc" type="hdmap_viz.py" name="hdmap_viz" output="screen">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="show_lane_labels" value="$(arg show_lane_labels)" />
+    <param name="show_ego_pose_label" value="$(arg show_ego_pose_label)" />
+    <param name="show_npc_labels" value="$(arg show_npc_labels)" />
+    <param name="publish_tf" value="false" />
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="hdmap_lane_rviz"
+        args="-d $(arg rviz_config)" output="screen" />
+</launch>

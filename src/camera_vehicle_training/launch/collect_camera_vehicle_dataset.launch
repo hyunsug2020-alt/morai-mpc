@@ -1,0 +1,38 @@
+<launch>
+  <arg name="data_split" default="train"/>
+  <arg name="session_id" default="$(anon camera_vehicle_session)"/>
+  <arg name="dataset_root"
+       default="$(find camera_vehicle_training)/../../datasets/morai_camera_vehicle"/>
+  <arg name="websocket_port" default="9090"/>
+  <arg name="show_label_viewer" default="true"/>
+  <arg name="start_rosbridge" default="true"/>
+  <arg name="start_topic_init" default="true"/>
+  <arg name="start_camera_receiver" default="true"/>
+
+  <!-- Start only the MORAI WebSocket/status connection. Avoid including the
+       normal bringup because camera collection needs no LiDAR/IMU/GPS nodes. -->
+  <param name="/use_sim_time" value="false"/>
+  <include if="$(arg start_rosbridge)"
+           file="$(find rosbridge_server)/launch/rosbridge_websocket.launch">
+    <arg name="port" value="$(arg websocket_port)"/>
+  </include>
+  <node if="$(arg start_topic_init)"
+        pkg="morai_launch" type="morai_topic_init.py"
+        name="morai_topic_init" output="screen"/>
+
+  <include file="$(find camera_vehicle_training)/launch/record_camera_vehicle_dataset.launch">
+    <arg name="output_dir" value="$(arg dataset_root)/$(arg data_split)"/>
+    <arg name="session_id" value="$(arg session_id)"/>
+    <arg name="start_camera_receiver" value="$(arg start_camera_receiver)"/>
+    <arg name="show_camera_windows" value="false"/>
+  </include>
+
+  <node if="$(arg show_label_viewer)"
+        pkg="image_view"
+        type="image_view"
+        name="camera_vehicle_label_viewer"
+        output="screen">
+    <remap from="image" to="/camera_vehicle_training/label_overlay"/>
+    <param name="autosize" value="true"/>
+  </node>
+</launch>

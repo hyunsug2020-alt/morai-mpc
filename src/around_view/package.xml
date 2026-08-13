@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>around_view</name>
+  <version>0.1.0</version>
+  <description>MORAI UDP camera receiver and three-camera around-view monitor.</description>
+
+  <maintainer email="bisa@example.com">bisa</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>cv_bridge</depend>
+  <depend>rospy</depend>
+  <depend>sensor_msgs</depend>
+
+  <exec_depend>velodyne_pointcloud</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export/>
+</package>

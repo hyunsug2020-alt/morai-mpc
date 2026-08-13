@@ -1,0 +1,85 @@
+<launch>
+    <!-- 3D LiDAR Cone Detector — morai_sensor.json 전방 단일 LiDAR + 자동 z 캘리브 -->
+
+    <!-- MORAI TF 노이즈 억제 -->
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+    <!-- LiDAR 토픽 -->
+    <arg name="lidar1_topic" default="/velodyne_points" />
+    <arg name="lidar2_topic" default="/lidar3D_2" />
+    <arg name="use_lidar2" default="false" />
+
+    <!-- LiDAR 마운트 (vehicle frame, z는 자동) -->
+    <arg name="lidar1_x"   default="1.045" />
+    <arg name="lidar1_y"   default="0.000" />
+    <arg name="lidar1_yaw" default="0.0" />
+    <arg name="lidar2_x"   default="-1.5" />
+    <arg name="lidar2_y"   default="0.0" />
+    <arg name="lidar2_yaw" default="3.14159" />   <!-- 후방은 반대 방향 -->
+
+    <!-- 디버그 모드 -->
+    <arg name="debug_clusters"    default="false" />
+    <arg name="show_all_clusters" default="false" />
+    <arg name="accumulate"        default="false" />
+
+    <node pkg="moraimpc" type="cone_detector_node" name="cone_detector" output="screen"
+          launch-prefix="$(find moraimpc)/scripts/run_filtered.sh">
+        <param name="lidar1_topic" value="$(arg lidar1_topic)" />
+        <param name="lidar2_topic" value="$(arg lidar2_topic)" />
+        <param name="use_lidar2"   value="$(arg use_lidar2)" />
+        <param name="lidar1_x"     value="$(arg lidar1_x)" />
+        <param name="lidar1_y"     value="$(arg lidar1_y)" />
+        <param name="lidar1_yaw"   value="$(arg lidar1_yaw)" />
+        <param name="lidar2_x"     value="$(arg lidar2_x)" />
+        <param name="lidar2_y"     value="$(arg lidar2_y)" />
+        <param name="lidar2_yaw"   value="$(arg lidar2_yaw)" />
+        <param name="z_calib_n"    value="30" />
+
+        <param name="frame_id"  value="base_link" />
+        <param name="map_frame" value="map" />
+        <param name="ego_topic" value="/localization/ego_status" />
+        <param name="publish_tf" value="false" />
+
+        <!-- ROI (vehicle frame, fusion 후) -->
+        <param name="roi_x_min" value="-30.0" />
+        <param name="roi_x_max" value="30.0" />
+        <param name="roi_y_min" value="-30.0" />
+        <param name="roi_y_max" value="30.0" />
+        <param name="roi_z_min" value="-2.5" />
+        <param name="roi_z_max" value="1.0" />
+        <param name="voxel_leaf" value="0.05" />
+
+        <!-- 차량 자체 footprint 제외 -->
+        <param name="ego_box_x_min" value="-2.5" />
+        <param name="ego_box_x_max" value="2.5" />
+        <param name="ego_box_y_min" value="-1.1" />
+        <param name="ego_box_y_max" value="1.1" />
+
+        <!-- 지면 RANSAC -->
+        <param name="ground_dist_thresh"   value="0.05" />
+        <param name="ground_max_iter"      value="200" />
+        <param name="ground_angle_eps_deg" value="15.0" />
+
+        <!-- 클러스터링 (먼 콘 잡기 위해 min 2로) -->
+        <param name="cluster_tolerance" value="0.30" />
+        <param name="cluster_min_size"  value="2" />
+        <param name="cluster_max_size"  value="300" />
+
+        <!-- 콘 필터 -->
+        <param name="cone_height_min" value="0.20" />
+        <param name="cone_height_max" value="0.90" />
+        <param name="cone_radius_min" value="0.05" />
+        <param name="cone_radius_max" value="0.40" />
+
+        <!-- 모드 -->
+        <param name="debug_clusters"    value="$(arg debug_clusters)" />
+        <param name="show_all_clusters" value="$(arg show_all_clusters)" />
+        <param name="accumulate"        value="$(arg accumulate)" />
+    </node>
+
+    <!-- RViz -->
+    <arg name="rviz" default="true" />
+    <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz_cone_detector"
+          args="-d $(find moraimpc)/rviz/cone_detector.rviz" required="false" output="screen"
+          launch-prefix="$(find moraimpc)/scripts/run_filtered.sh" />
+</launch>

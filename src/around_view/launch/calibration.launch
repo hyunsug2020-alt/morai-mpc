@@ -1,0 +1,18 @@
+<launch>
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml"/>
+  <arg name="calibration_config"
+       default="$(find around_view)/config/calibration.yaml"/>
+  <arg name="calibration_file"
+       default="$(env HOME)/.ros/around_view/calibration.yaml"/>
+  <arg name="packet_format" default="auto"/>
+
+  <include file="$(find around_view)/launch/around_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)"/>
+    <arg name="calibration_config" value="$(arg calibration_config)"/>
+    <arg name="calibration_file" value="$(arg calibration_file)"/>
+    <arg name="packet_format" value="$(arg packet_format)"/>
+    <arg name="show_camera_windows" value="false"/>
+    <arg name="show_avm_window" value="true"/>
+  </include>
+</launch>

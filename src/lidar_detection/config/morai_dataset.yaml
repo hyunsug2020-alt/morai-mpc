@@ -1,0 +1,22 @@
+topics:
+  point_cloud: "/velodyne_points"
+  diagnostics: "/lidar_detection/ground_truth_diagnostics"
+  status: "/lidar_detection/dataset_status"
+
+recording:
+  # Save every LiDAR frame that contains a usable vehicle box.
+  record_every_n: 1
+  # Keep one in ten empty frames as hard negatives for false-positive control.
+  empty_frame_every_n: 10
+  match_buffer_seconds: 2.0
+  writer_queue_size: 50
+  min_free_disk_gb: 5.0
+  require_interpolated: true
+
+filtering:
+  min_points_per_box: 5
+  max_label_range_m: 70.0
+
+# Start with vehicle-only PointPillars training.
+class_names:
+  npc: "Car"

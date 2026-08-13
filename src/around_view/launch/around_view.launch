@@ -1,0 +1,30 @@
+<launch>
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml"/>
+  <arg name="calibration_config"
+       default="$(find around_view)/config/calibration.yaml"/>
+  <arg name="calibration_file"
+       default="$(env HOME)/.ros/around_view/calibration.yaml"/>
+  <arg name="packet_format" default="auto"/>
+  <arg name="show_camera_windows" default="false"/>
+  <arg name="show_avm_window" default="true"/>
+
+  <node pkg="around_view"
+        type="udp_camera_node.py"
+        name="udp_camera"
+        output="screen">
+    <rosparam command="load" file="$(arg camera_config)"/>
+    <param name="show_windows" value="$(arg show_camera_windows)"/>
+    <param name="udp/packet_format" value="$(arg packet_format)"/>
+  </node>
+
+  <node pkg="around_view"
+        type="around_view_node.py"
+        name="around_view"
+        output="screen">
+    <rosparam command="load" file="$(arg camera_config)"/>
+    <rosparam command="load" file="$(arg calibration_config)"/>
+    <param name="show_window" value="$(arg show_avm_window)"/>
+    <param name="calibration_file" value="$(arg calibration_file)"/>
+  </node>
+</launch>

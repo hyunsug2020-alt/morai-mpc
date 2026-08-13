@@ -1,0 +1,29 @@
+<launch>
+    <!-- LiDAR 캘리브 시각화 단독 실행 -->
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+    <arg name="lidar1_topic"  default="/lidar3D_1" />
+    <arg name="lidar2_topic"  default="/lidar3D_2" />
+
+    <node pkg="moraimpc" type="lidar_calib_viz_node" name="lidar_calib_viz" output="screen">
+        <param name="lidar1_topic"   value="$(arg lidar1_topic)" />
+        <param name="lidar2_topic"   value="$(arg lidar2_topic)" />
+
+        <param name="view_range_m"   value="25.0" />
+        <param name="img_size"       value="900" />
+
+        <!-- 차량 외곽 (IONIQ 5) -->
+        <param name="vehicle_length" value="4.635" />
+        <param name="vehicle_width"  value="1.892" />
+
+        <!-- LiDAR 마운트 추정 위치 (vehicle frame, m) — 시각화 마커용 -->
+        <param name="lidar1_x"       value="1.5" />
+        <param name="lidar1_y"       value="0.0" />
+        <param name="lidar2_x"       value="-1.5" />
+        <param name="lidar2_y"       value="0.0" />
+
+        <!-- 점 z 필터 (가까운 평면, 위쪽 노이즈 제외) -->
+        <param name="z_min"          value="-1.5" />
+        <param name="z_max"          value="1.0" />
+    </node>
+</launch>

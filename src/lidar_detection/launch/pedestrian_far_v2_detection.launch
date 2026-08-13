@@ -1,0 +1,58 @@
+<launch>
+  <!-- Sensor drivers are intentionally excluded. This launch consumes an
+       already-published sensor_msgs/PointCloud2 topic and keeps v2 isolated
+       from the existing vehicle and pedestrian-v1 models. -->
+  <arg name="point_cloud_topic" default="/velodyne_points"/>
+  <arg name="marker_topic" default="/lidar_detection/pedestrian_far_v2_markers"/>
+  <arg name="detections_topic" default="/lidar_detection/pedestrian_far_v2_detections"/>
+  <arg name="score_threshold" default="0.35"/>
+  <arg name="max_range" default="45.0"/>
+  <arg name="output_frame" default=""/>
+  <arg name="publish_labels" default="true"/>
+  <arg name="start_rviz" default="true"/>
+  <arg name="model_epoch" default="27"/>
+  <arg name="checkpoint_label" default="best_model_epoch_27.pth"/>
+  <arg name="python_executable"
+       default="$(find lidar_detection)/../../.venv-openpcdet/bin/python"/>
+  <arg name="model_dir"
+       default="$(find lidar_detection)/../../trained_models/morai_pedestrian_far_v2_pointpillar_30k_2026-08-02"/>
+  <arg name="checkpoint" default="$(arg model_dir)/best_model.pth"/>
+  <arg name="model_config" default="$(arg model_dir)/pointpillar_pedestrian_far_v2.yaml"/>
+  <arg name="data_config" default="$(arg model_dir)/morai_pedestrian_far_v2_dataset.yaml"/>
+  <arg name="rviz_config"
+       default="$(find lidar_detection)/config/pedestrian_far_v2_detection.rviz"/>
+
+  <node pkg="lidar_detection"
+        type="pointpillar_detector.py"
+        name="pedestrian_far_v2_pointpillar_detector"
+        output="screen"
+        required="true"
+        launch-prefix="$(arg python_executable)">
+    <env name="CUDA_VISIBLE_DEVICES" value="0"/>
+    <env name="CUDA_MODULE_LOADING" value="LAZY"/>
+    <env name="OMP_NUM_THREADS" value="4"/>
+    <env name="MKL_NUM_THREADS" value="4"/>
+    <env name="OPENBLAS_NUM_THREADS" value="4"/>
+    <env name="PYTORCH_CUDA_ALLOC_CONF" value="max_split_size_mb:128"/>
+    <param name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <param name="marker_topic" value="$(arg marker_topic)"/>
+    <param name="detections_topic" value="$(arg detections_topic)"/>
+    <param name="score_threshold" value="$(arg score_threshold)"/>
+    <param name="max_range" value="$(arg max_range)"/>
+    <param name="output_frame" value="$(arg output_frame)"/>
+    <param name="publish_labels" value="$(arg publish_labels)"/>
+    <param name="checkpoint" value="$(arg checkpoint)"/>
+    <param name="model_config" value="$(arg model_config)"/>
+    <param name="data_config" value="$(arg data_config)"/>
+    <param name="model_epoch" value="$(arg model_epoch)"/>
+    <param name="checkpoint_label" value="$(arg checkpoint_label)"/>
+    <param name="class_filter" value="Pedestrian"/>
+  </node>
+
+  <node if="$(arg start_rviz)"
+        pkg="rviz"
+        type="rviz"
+        name="pedestrian_far_v2_detection_rviz"
+        args="-d $(arg rviz_config)"
+        output="screen"/>
+</launch>

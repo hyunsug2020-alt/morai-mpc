@@ -1,0 +1,49 @@
+<launch>
+  <arg name="ego_lane" default="1" />
+  <arg name="cruise_kmh" default="32.0" />
+  <arg name="sim_time" default="100.0" />
+  <arg name="npc_specs" default="[[1,0.18,2.0]]" />
+  <arg name="expected_sequence" default="1,2,1" />
+  <arg name="result_file" default="/tmp/auto_avoid_test_result.json" />
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+
+  <node pkg="moraimpc" type="hdmap_lane_change.py" name="hdmap_lane_change" output="log">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="target_lane" value="0" />
+    <param name="auto_avoid" value="true" />
+    <param name="lane_change_trans_m" value="30.0" />
+    <param name="route_len_m" value="180.0" />
+    <param name="rate_hz" value="10.0" />
+    <param name="detect_dist_m" value="45.0" />
+    <param name="block_lat_m" value="1.7" />
+    <param name="clear_cycles_needed" value="8" />
+  </node>
+
+  <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">
+    <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="target_vel" value="$(arg cruise_kmh)" />
+    <param name="force_nmpc" value="false" />
+    <param name="use_avoid_path" value="true" />
+    <param name="log_file" value="/tmp/auto_avoid_follower.json" />
+  </node>
+
+  <node pkg="moraimpc" type="vehicle_sim.py" name="vehicle_sim" output="log">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="ego_lane" value="$(arg ego_lane)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="sim_time" value="$(arg sim_time)" />
+    <param name="npc_specs" value="$(arg npc_specs)" />
+    <param name="result_file" value="/tmp/auto_avoid_vehicle_result.json" />
+  </node>
+
+  <node pkg="moraimpc" type="auto_avoid_test_driver.py" name="auto_avoid_test_driver" output="screen" required="true">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="expected_sequence" value="$(arg expected_sequence)" />
+    <param name="result_file" value="$(arg result_file)" />
+    <param name="timeout_sec" value="90.0" />
+  </node>
+</launch>

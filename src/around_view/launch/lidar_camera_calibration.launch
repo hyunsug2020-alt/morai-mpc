@@ -1,0 +1,39 @@
+<launch>
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml"/>
+  <arg name="calibration_config"
+       default="$(find around_view)/config/lidar_camera_calibration.yaml"/>
+  <arg name="calibration_file"
+       default="$(env HOME)/.ros/around_view/lidar_camera_calibration.yaml"/>
+  <arg name="packet_format" default="auto"/>
+  <arg name="lidar_port" default="2368"/>
+  <arg name="start_camera_receiver" default="true"/>
+  <arg name="start_lidar_receiver" default="true"/>
+  <arg name="show_window" default="true"/>
+
+  <include if="$(arg start_camera_receiver)"
+           file="$(find around_view)/launch/camera_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)"/>
+    <arg name="show_windows" value="false"/>
+    <arg name="packet_format" value="$(arg packet_format)"/>
+  </include>
+
+  <include if="$(arg start_lidar_receiver)"
+           file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+    <arg name="port" value="$(arg lidar_port)"/>
+    <arg name="frame_id" value="velodyne"/>
+    <arg name="rpm" value="600.0"/>
+    <arg name="min_range" value="1.0"/>
+    <arg name="max_range" value="100.0"/>
+    <arg name="organize_cloud" value="false"/>
+  </include>
+
+  <node pkg="around_view"
+        type="lidar_camera_calibration_node.py"
+        name="lidar_camera_calibration"
+        output="screen">
+    <rosparam command="load" file="$(arg calibration_config)"/>
+    <param name="calibration_file" value="$(arg calibration_file)"/>
+    <param name="show_window" value="$(arg show_window)"/>
+  </node>
+</launch>

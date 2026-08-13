@@ -1,0 +1,16 @@
+<launch>
+  <arg name="config"
+       default="$(find lidar_detection)/config/morai_dataset.yaml"/>
+  <arg name="output_dir"
+       default="$(find lidar_detection)/../../datasets/morai_lidar"/>
+  <arg name="enabled" default="true"/>
+
+  <node pkg="lidar_detection"
+        type="lidar_dataset_recorder.py"
+        name="lidar_dataset_recorder"
+        output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="output_dir" value="$(arg output_dir)"/>
+    <param name="enabled" value="$(arg enabled)"/>
+  </node>
+</launch>

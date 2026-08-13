@@ -1,0 +1,14 @@
+# 2023 Hyundai IONIQ 5 parameters used by the MORAI competition vehicle.
+vehicle_model: "2023_Hyundai_ioniq5"
+mass: 1905.0
+wheelbase: 3.000
+vehicle_length: 4.635
+vehicle_width: 1.892
+vehicle_height: 1.600
+front_overhang: 0.845
+rear_overhang: 0.790
+min_turn_radius: 5.87
+physical_max_steer_deg: 40.0
+wheel_radius: 0.36
+lateral_accel_limit_mps2: 2.26
+tire_friction_coefficient: 0.95

@@ -1,0 +1,26 @@
+udp:
+  bind_host: "0.0.0.0"
+  # auto supports both MORAI legacy 11-byte and current 19-byte headers.
+  packet_format: "auto"
+  receive_buffer_bytes: 1048576
+  socket_timeout: 0.5
+
+cameras:
+  front:
+    port: 9092
+    topic: "/around_view/camera/front/image_raw"
+    frame_id: "around_view_front_camera"
+  left:
+    port: 9094
+    topic: "/around_view/camera/left/image_raw"
+    frame_id: "around_view_left_camera"
+  right:
+    port: 9093
+    topic: "/around_view/camera/right/image_raw"
+    frame_id: "around_view_right_camera"
+  rear:
+    port: 9095
+    topic: "/around_view/camera/rear/image_raw"
+    frame_id: "around_view_rear_camera"
+
+publish_rate: 30.0

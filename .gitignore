@@ -1,0 +1,27 @@
+build/
+devel/
+osqp/
+*.pyc
+__pycache__/
+*.so
+*.o
+*.a
+
+# Local Python/Conda environments
+.venv-*/
+.conda-*/
+
+# Generated datasets, training outputs, and runtime logs
+/datasets/
+/logs/
+**/logs/
+third_party/OpenPCDet/build/
+third_party/OpenPCDet/output/
+
+# Nested checkout metadata; source files remain part of this repository.
+third_party/OpenPCDet/.git/
+
+# auto cycle 누적 로그 (재현 가능)
+src/moraimpc/logs/run_iter*.json
+src/moraimpc/logs/mpc_analysis.png
+src/moraimpc/logs/_*.png

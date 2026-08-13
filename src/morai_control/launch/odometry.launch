@@ -1,0 +1,73 @@
+<launch>
+  <!-- Standalone GPS-shadow backup odometry.
+       Estimator inputs are strictly vehicle-frame velocity/wheel angle and
+       IMU gyro-z.  No GPS, LiDAR, Ego position, or Ego heading enters it. -->
+  <arg name="vehicle_state_topic" default="/Ego_topic" />
+  <arg name="imu_topic" default="/imu/data" />
+  <arg name="output_topic" default="/odometry/pure" />
+  <arg name="vehicle_config"
+       default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+  <arg name="publish_tf" default="false" />
+  <arg name="require_sim_time" default="false" />
+  <arg name="start_analysis" default="false" />
+  <arg name="analysis_gui" default="true" />
+  <arg name="record_debug_bag" default="false" />
+  <arg name="imu_weight" default="0.95" />
+  <arg name="imu_weight_min" default="0.85" />
+  <arg name="imu_weight_max" default="0.98" />
+  <arg name="motion_rate_scale" default="0.49848" />
+  <arg name="adaptive_time_scale" default="true" />
+  <arg name="model_wheelbase_m" default="3.5006" />
+  <arg name="model_input_delay_source_s" default="0.19" />
+  <arg name="understeer_coefficient_s2pm" default="0.00278" />
+  <arg name="orientation_primary" default="true" />
+  <arg name="analysis_output_csv"
+       default="$(find morai_control)/logs/pure_odometry_accuracy.csv" />
+  <arg name="bag_output_prefix"
+       default="$(find morai_control)/logs/bags/pure_odometry_debug" />
+
+  <node pkg="morai_control" type="pure_odometry_node.py"
+        name="pure_odometry" output="screen" required="true">
+    <rosparam command="load" file="$(arg vehicle_config)" />
+    <param name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+    <param name="imu_topic" value="$(arg imu_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="publish_tf" value="$(arg publish_tf)" />
+    <param name="require_sim_time" value="$(arg require_sim_time)" />
+    <param name="wheel_angle_unit" value="deg" />
+    <!-- Competition MORAI stays in Real Time Mode. Its wall-clock stamps can
+         advance faster than vehicle physics under load, so estimate the
+         physics/wall ratio from IMU quaternion change versus gyro integral. -->
+    <param name="motion_rate_scale" value="$(arg motion_rate_scale)" />
+    <param name="adaptive_time_scale" value="$(arg adaptive_time_scale)" />
+    <param name="time_scale_window_s" value="10.0" />
+    <param name="time_scale_min_rotation_rad" value="0.05" />
+    <param name="time_scale_alpha" value="0.02" />
+    <param name="model_wheelbase_m" value="$(arg model_wheelbase_m)" />
+    <param name="model_input_delay_source_s"
+           value="$(arg model_input_delay_source_s)" />
+    <param name="understeer_coefficient_s2pm"
+           value="$(arg understeer_coefficient_s2pm)" />
+    <param name="orientation_primary" value="$(arg orientation_primary)" />
+    <param name="orientation_timeout_s" value="0.08" />
+    <param name="orientation_gyro_gate_radps" value="0.25" />
+    <param name="imu_weight" value="$(arg imu_weight)" />
+    <param name="imu_weight_min" value="$(arg imu_weight_min)" />
+    <param name="imu_weight_max" value="$(arg imu_weight_max)" />
+    <param name="speed_filter_tau_s" value="0.04" />
+    <param name="yaw_rate_filter_tau_s" value="0.02" />
+    <param name="imu_timeout_s" value="0.08" />
+    <param name="stationary_gyro_radps" value="0.03" />
+    <param name="stationary_bias_hold_s" value="0.8" />
+  </node>
+
+  <include if="$(arg start_analysis)"
+           file="$(find morai_control)/launch/pure_odometry_analysis.launch">
+    <arg name="gui" value="$(arg analysis_gui)" />
+    <arg name="ground_truth_topic" value="/Ego_topic" />
+    <arg name="odom_topic" value="$(arg output_topic)" />
+    <arg name="record_debug_bag" value="$(arg record_debug_bag)" />
+    <arg name="output_csv" value="$(arg analysis_output_csv)" />
+    <arg name="bag_output_prefix" value="$(arg bag_output_prefix)" />
+  </include>
+</launch>

@@ -1,0 +1,21 @@
+<launch>
+    <arg name="ground_truth_topic" default="/Ego_topic" />
+    <arg name="eskf_topic" default="/eskf/odom" />
+    <arg name="lio_sam_topic" default="/lio_sam/mapping/odometry" />
+    <arg name="ground_truth_heading_mode" default="ros_yaw_deg" />
+    <arg name="output_file" default="/tmp/morai_odometry_accuracy.json" />
+    <arg name="vehicle_config"
+         default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+
+    <!-- Ground truth is consumed by this validator only, never by control. -->
+    <node pkg="morai_control" type="odometry_accuracy_validator.py"
+          name="odometry_accuracy_validator" output="screen">
+        <rosparam command="load" file="$(arg vehicle_config)" />
+        <param name="ground_truth_topic" value="$(arg ground_truth_topic)" />
+        <param name="eskf_topic" value="$(arg eskf_topic)" />
+        <param name="lio_sam_topic" value="$(arg lio_sam_topic)" />
+        <param name="ground_truth_heading_mode"
+               value="$(arg ground_truth_heading_mode)" />
+        <param name="output_file" value="$(arg output_file)" />
+    </node>
+</launch>

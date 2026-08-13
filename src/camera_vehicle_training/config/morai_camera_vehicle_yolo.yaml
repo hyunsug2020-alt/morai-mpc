@@ -1,0 +1,6 @@
+path: /home/david/morai-mpc-agent-morai-lio-gps-integration/datasets/morai_camera_vehicle_yolo
+train: images/train
+val: images/val
+
+names:
+  0: Car

@@ -1,0 +1,39 @@
+<launch>
+    <!-- HDMAP IDM+MOBIL 추월/회피 플래너 + LTV 추종 통합 -->
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+    <env name="GDK_BACKEND" value="x11" />
+
+    <arg name="path_file"   default="$(find moraimpc)/data/hdmap_path.json" />  <!-- 초기 경로(즉시 /avoid_waypoints로 대체) -->
+    <arg name="cruise_kmh"  default="40.0" />
+    <arg name="log_file"    default="$(find moraimpc)/logs/mpc_log.json" />
+
+    <!-- 0. 자율주행 모드 -->
+    <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
+
+    <!-- 1. HDMAP 차선변경 추월/회피 플래너 (IDM+MOBIL) -->
+    <node pkg="moraimpc" type="hdmap_lane_avoid.py" name="hdmap_lane_avoid" output="screen">
+        <param name="cruise_mps"            value="$(eval arg('cruise_kmh')/3.6)" />
+        <param name="lane_change_trans_m"   value="20.0" />
+        <param name="change_cooldown_s"     value="2.0" />
+        <param name="route_len_m"           value="300.0" />   <!-- 긴 경로(무한반복 테스트) -->
+        <param name="rate_hz"               value="10.0" />
+        <param name="enable_overtake"       value="false" />
+    </node>
+
+    <!-- 2. LTV 추종기 (동적 경로 /avoid_waypoints + IDM 속도 /avoid_target_vel 사용) -->
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
+        <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+        <param name="path_file"        value="$(arg path_file)" />
+        <param name="target_vel"       value="$(arg cruise_kmh)" />
+        <param name="log_file"         value="$(arg log_file)" />
+        <param name="force_nmpc"       value="false" />    <!-- 고속 LTV -->
+        <param name="use_avoid_path"   value="true" />     <!-- 동적 경로/속도 구독 -->
+    </node>
+
+    <!-- 3. 대시보드 -->
+    <node pkg="moraimpc" type="mpc_dashboard_node" name="mpc_dashboard_cpp" output="screen">
+        <param name="path_file"      value="$(arg path_file)" />
+        <param name="window_m"       value="45.0" />   <!-- 긴 경로 보이게 확대 -->
+        <param name="follow_vehicle" value="true" />
+    </node>
+</launch>

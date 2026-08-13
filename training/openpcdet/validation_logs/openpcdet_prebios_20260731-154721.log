@@ -1,0 +1,20 @@
+Database filter by min points Car: 14698 => 14698
+Loading Custom dataset.
+Total samples for CUSTOM dataset: 8005
+==> Loading parameters from checkpoint /home/bisa/morai-mpc-agent-morai-lio-gps-integration/third_party/OpenPCDet/output/custom_models/pointpillar_morai/morai_10k/ckpt/checkpoint_epoch_4.pth to GPU
+==> Loading optimizer parameters from checkpoint /home/bisa/morai-mpc-agent-morai-lio-gps-integration/third_party/OpenPCDet/output/custom_models/pointpillar_morai/morai_10k/ckpt/checkpoint_epoch_4.pth to GPU
+==> Checkpoint trained from version: pcdet+0.6.0+233f849
+==> Done
+VALIDATION 01/10 PASS loss=0.468525 temp=37C power=106.2W
+VALIDATION 02/10 PASS loss=0.354975 temp=38C power=130.8W
+VALIDATION 03/10 PASS loss=0.404503 temp=40C power=156.2W
+VALIDATION 04/10 PASS loss=0.506574 temp=41C power=173.5W
+VALIDATION 05/10 PASS loss=0.345455 temp=41C power=189.3W
+VALIDATION 06/10 PASS loss=0.303813 temp=43C power=196.8W
+VALIDATION 07/10 PASS loss=0.245146 temp=42C power=213.1W
+VALIDATION 08/10 PASS loss=0.509138 temp=42C power=218.3W
+VALIDATION 09/10 PASS loss=0.441709 temp=43C power=226.7W
+VALIDATION 10/10 PASS loss=0.408536 temp=42C power=234.6W
+VALIDATION PASS: /home/bisa/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet/validation_logs/validation_20260731-154729.json
+/home/bisa/morai-mpc-agent-morai-lio-gps-integration/.venv-openpcdet/lib/python3.8/site-packages/torch/functional.py:504: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3483.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]

@@ -1,0 +1,55 @@
+<launch>
+  <!-- This launch intentionally starts no WebSocket or sensor receiver. -->
+  <arg name="input_topic"
+       default="/around_view/camera/front/image_raw"/>
+  <arg name="mask_topic" default="/lane_detection/mask"/>
+  <arg name="overlay_topic" default="/lane_detection/overlay"/>
+  <arg name="diagnostics_topic" default="/lane_detection/diagnostics"/>
+
+  <arg name="python_executable"
+       default="/home/david/morai-mpc-agent-morai-lio-gps-integration/.conda-lane/bin/python"/>
+  <arg name="model_path"
+       default="$(find lane_detection)/../../trained_models/morai_lane_segformer_2026-08-11/best_model.pth"/>
+  <arg name="device" default="cuda"/>
+  <arg name="max_inference_hz" default="0.0"/>
+  <arg name="show_viewer" default="true"/>
+
+  <node pkg="lane_detection"
+        type="segformer_lane_node.py"
+        name="lane_detection"
+        output="screen"
+        required="true"
+        launch-prefix="$(arg python_executable)">
+    <env name="CUDA_VISIBLE_DEVICES" value="0"/>
+    <env name="CUDA_MODULE_LOADING" value="LAZY"/>
+    <env name="OMP_NUM_THREADS" value="4"/>
+    <env name="MKL_NUM_THREADS" value="4"/>
+    <env name="OPENBLAS_NUM_THREADS" value="4"/>
+    <env name="PYTORCH_CUDA_ALLOC_CONF" value="expandable_segments:True"/>
+
+    <param name="input_topic" value="$(arg input_topic)"/>
+    <param name="mask_topic" value="$(arg mask_topic)"/>
+    <param name="overlay_topic" value="$(arg overlay_topic)"/>
+    <param name="diagnostics_topic" value="$(arg diagnostics_topic)"/>
+    <param name="model_path" value="$(arg model_path)"/>
+    <param name="device" value="$(arg device)"/>
+    <param name="max_inference_hz" value="$(arg max_inference_hz)"/>
+
+    <param name="encoder" value="mit_b1"/>
+    <param name="num_classes" value="4"/>
+    <param name="input_width" value="1280"/>
+    <param name="input_height" value="736"/>
+    <param name="content_width" value="1280"/>
+    <param name="content_height" value="720"/>
+    <param name="overlay_alpha" value="0.62"/>
+  </node>
+
+  <node if="$(arg show_viewer)"
+        pkg="image_view"
+        type="image_view"
+        name="lane_detection_viewer"
+        output="screen">
+    <remap from="image" to="$(arg overlay_topic)"/>
+    <param name="autosize" value="true"/>
+  </node>
+</launch>

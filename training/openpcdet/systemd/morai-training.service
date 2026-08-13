@@ -1,0 +1,21 @@
+[Unit]
+Description=Validate 10 times and resume MORAI PointPillars training
+After=network-online.target graphical.target morai-hardware-guard.service
+Wants=network-online.target
+Requires=morai-hardware-guard.service
+ConditionPathExists=/home/david/morai-mpc-agent-morai-lio-gps-integration/.venv-openpcdet/bin/python
+
+[Service]
+Type=simple
+User=bisa
+Group=bisa
+WorkingDirectory=/home/david/morai-mpc-agent-morai-lio-gps-integration
+ExecStart=/home/david/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet/validate_and_resume.sh
+Restart=no
+TimeoutStopSec=120
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

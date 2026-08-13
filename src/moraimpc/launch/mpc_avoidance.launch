@@ -1,0 +1,59 @@
+<launch>
+    <!--
+      mpc_avoidance.launch — 추종 + Lattice 회피 + NMPC
+      흐름:
+        1. morai_mode_init: MORAI 자율주행 모드 진입
+        2. avoidance_planner_node: /Object_topic 인지 → /avoid_path 발행
+        3. path_follower_node: 기본 추종 (현재는 mixed.json) — 후속에서 /avoid_path 연동 예정
+        4. mpc_dashboard_node: 시각화
+    -->
+
+    <env name="ROSCONSOLE_CONFIG_FILE"
+         value="$(find moraimpc)/config/rosconsole.config" />
+
+    <arg name="recorded_file"        default="$(find moraimpc)/data/waypoints_recorded.json" />
+    <arg name="path_file"            default="$(find moraimpc)/data/mixed.json" />
+    <arg name="target_vel"           default="45.0" />
+    <arg name="reverse_max_vel"      default="2.0" />
+    <arg name="pre_gear_change_dist" default="10.0" />
+    <arg name="log_file"             default="$(find moraimpc)/logs/mpc_log.json" />
+
+    <!-- 회피 lattice 파라미터 -->
+    <arg name="lane_offsets"     default="[-3.0, -1.5, 0.0, 1.5, 3.0]" />
+    <arg name="lookahead_idx"    default="30" />
+    <arg name="safe_distance"    default="2.5" />
+    <arg name="detect_distance"  default="25.0" />
+    <arg name="avoid_rate_hz"    default="10.0" />
+
+    <!-- 1. MORAI 자율주행 모드 활성화 -->
+    <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
+
+    <!-- 2. Lattice 회피 플래너 — /Object_topic → /avoid_path -->
+    <node pkg="moraimpc" type="avoidance_planner_node.py" name="avoidance_planner" output="screen">
+        <param name="path_file"        value="$(arg path_file)" />
+        <rosparam param="lane_offsets" subst_value="True">$(arg lane_offsets)</rosparam>
+        <param name="lookahead_idx"    value="$(arg lookahead_idx)" />
+        <param name="safe_distance"    value="$(arg safe_distance)" />
+        <param name="detect_distance"  value="$(arg detect_distance)" />
+        <param name="rate_hz"          value="$(arg avoid_rate_hz)" />
+    </node>
+
+    <!-- 3. LTV-MPC + RTI-NMPC 경로 추종기 (현재는 mixed.json 직접 추종) -->
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen"
+          launch-prefix="$(find moraimpc)/scripts/run_with_smoothing.sh $(arg recorded_file) $(arg path_file)">
+        <param name="path_file"             value="$(arg path_file)" />
+        <param name="target_vel"            value="$(arg target_vel)" />
+        <param name="reverse_max_vel"       value="$(arg reverse_max_vel)" />
+        <param name="pre_gear_change_dist_m" value="$(arg pre_gear_change_dist)" />
+        <param name="log_file"              value="$(arg log_file)" />
+        <param name="force_nmpc"            value="true" />
+    </node>
+
+    <!-- 4. C++ 실시간 대시보드 -->
+    <node pkg="moraimpc" type="mpc_dashboard_node" name="mpc_dashboard_cpp" output="screen">
+        <param name="path_file"          value="$(arg path_file)" />
+        <param name="window_m"           value="12.0" />
+        <param name="follow_vehicle"     value="true" />
+        <param name="hdg_pct_thresh_deg" value="10.0" />
+    </node>
+</launch>

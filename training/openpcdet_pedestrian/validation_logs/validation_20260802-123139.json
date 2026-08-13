@@ -1,0 +1,157 @@
+{
+  "status": "PASS",
+  "timestamp": "2026-08-02T12:31:39.455375+09:00",
+  "bios_version": "2014",
+  "unsupported_bios_override": true,
+  "cpu_no_turbo": "1",
+  "python": "3.8.10 (default, Mar 18 2025, 20:04:55) \n[GCC 9.4.0]",
+  "torch": "2.0.1+cu118",
+  "torch_cuda": "11.8",
+  "config": "/home/bisa/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet_pedestrian_far_v2/pointpillar_pedestrian_far_v2.yaml",
+  "pretrained_backbone": "/home/bisa/morai-mpc-agent-morai-lio-gps-integration/trained_models/morai_pedestrian_pointpillar_2026-08-01/best_model_epoch_40.pth",
+  "dataset_samples": 30504,
+  "batch_size": 2,
+  "elapsed_seconds": 2.154,
+  "rounds": [
+    {
+      "round": 1,
+      "loss": 2.881373882293701,
+      "grad_norm": 3.8295040130615234,
+      "seconds": 0.613,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 40.0,
+        "power_w": 123.11,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 7640.0
+      }
+    },
+    {
+      "round": 2,
+      "loss": 2.571603536605835,
+      "grad_norm": 2.6605892181396484,
+      "seconds": 0.136,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 41.0,
+        "power_w": 139.63,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 7640.0
+      }
+    },
+    {
+      "round": 3,
+      "loss": 2.6858019828796387,
+      "grad_norm": 3.248840570449829,
+      "seconds": 0.172,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 42.0,
+        "power_w": 161.12,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 7640.0
+      }
+    },
+    {
+      "round": 4,
+      "loss": 2.7076737880706787,
+      "grad_norm": 2.4421775341033936,
+      "seconds": 0.142,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 42.0,
+        "power_w": 176.7,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 7640.0
+      }
+    },
+    {
+      "round": 5,
+      "loss": 2.737664222717285,
+      "grad_norm": 1.9843674898147583,
+      "seconds": 0.155,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 42.0,
+        "power_w": 187.4,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 7640.0
+      }
+    },
+    {
+      "round": 6,
+      "loss": 2.6320698261260986,
+      "grad_norm": 2.6080119609832764,
+      "seconds": 0.109,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 44.0,
+        "power_w": 194.19,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 8120.0
+      }
+    },
+    {
+      "round": 7,
+      "loss": 2.557847261428833,
+      "grad_norm": 2.8513829708099365,
+      "seconds": 0.13,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 43.0,
+        "power_w": 204.13,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 8120.0
+      }
+    },
+    {
+      "round": 8,
+      "loss": 2.4640650749206543,
+      "grad_norm": 2.573718309402466,
+      "seconds": 0.139,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 43.0,
+        "power_w": 209.41,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 8120.0
+      }
+    },
+    {
+      "round": 9,
+      "loss": 2.9759745597839355,
+      "grad_norm": 2.5014569759368896,
+      "seconds": 0.131,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 43.0,
+        "power_w": 214.51,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 8608.0
+      }
+    },
+    {
+      "round": 10,
+      "loss": 2.339761734008789,
+      "grad_norm": 3.500488519668579,
+      "seconds": 0.116,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 45.0,
+        "power_w": 209.92,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 8608.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Archive the best MORAI pedestrian PointPillars checkpoint
+After=morai-hardware-guard.service
+
+[Service]
+Type=simple
+User=bisa
+Group=bisa
+WorkingDirectory=/home/david/morai-mpc-agent-morai-lio-gps-integration
+ExecStart=/home/david/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet_pedestrian/finalize_after_training.sh
+Restart=no
+Nice=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

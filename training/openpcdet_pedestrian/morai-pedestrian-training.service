@@ -1,0 +1,18 @@
+[Unit]
+Description=Protected MORAI Pedestrian and Obstacle PointPillars training
+After=graphical-session.target
+ConditionPathExists=/home/david/morai-mpc-agent-morai-lio-gps-integration/datasets/morai_pedestrian_openpcdet/custom_infos_train.pkl
+
+[Service]
+Type=simple
+WorkingDirectory=/home/david/morai-mpc-agent-morai-lio-gps-integration
+ExecStart=/home/david/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet_pedestrian/validate_and_train.sh
+Restart=no
+TimeoutStopSec=120
+KillSignal=SIGINT
+Nice=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

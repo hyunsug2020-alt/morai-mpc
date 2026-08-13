@@ -1,0 +1,46 @@
+<launch>
+  <arg name="ego_lane" default="1" />
+  <arg name="cruise_kmh" default="32.0" />
+  <arg name="sim_time" default="120.0" />
+  <arg name="sequence" default="2,3,2,1" />
+  <arg name="result_file" default="/tmp/lane_change_test_result.json" />
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+
+  <node pkg="moraimpc" type="hdmap_lane_change.py" name="hdmap_lane_change" output="log">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="target_lane" value="0" />
+    <param name="auto_avoid" value="true" />
+    <param name="lane_change_trans_m" value="30.0" />
+    <param name="route_len_m" value="180.0" />
+    <param name="rate_hz" value="10.0" />
+  </node>
+
+  <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="log">
+    <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+    <param name="path_file" value="$(find moraimpc)/data/hdmap_path.json" />
+    <param name="target_vel" value="$(arg cruise_kmh)" />
+    <param name="force_nmpc" value="false" />
+    <param name="use_avoid_path" value="true" />
+    <param name="log_file" value="/tmp/lane_change_follower.json" />
+  </node>
+
+  <node pkg="moraimpc" type="vehicle_sim.py" name="vehicle_sim" output="log">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="ego_lane" value="$(arg ego_lane)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="sim_time" value="$(arg sim_time)" />
+    <param name="npc_specs" value="[]" />
+    <param name="result_file" value="/tmp/lane_change_vehicle_result.json" />
+  </node>
+
+  <node pkg="moraimpc" type="lane_change_test_driver.py" name="lane_change_test_driver" output="screen" required="true">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="sequence" value="$(arg sequence)" />
+    <param name="result_file" value="$(arg result_file)" />
+    <param name="per_target_timeout_sec" value="18.0" />
+    <param name="overall_timeout_sec" value="100.0" />
+    <param name="arrive_hold_sec" value="0.8" />
+    <param name="arrive_lat_m" value="1.1" />
+  </node>
+</launch>

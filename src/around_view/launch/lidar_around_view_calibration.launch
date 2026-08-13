@@ -1,0 +1,52 @@
+<launch>
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml"/>
+  <arg name="avm_config"
+       default="$(find around_view)/config/calibration.yaml"/>
+  <arg name="avm_calibration_file"
+       default="$(env HOME)/.ros/around_view/calibration.yaml"/>
+  <arg name="lidar_config"
+       default="$(find around_view)/config/lidar_camera_calibration.yaml"/>
+  <arg name="lidar_calibration_file"
+       default="$(env HOME)/.ros/around_view/lidar_camera_calibration.yaml"/>
+  <arg name="packet_format" default="auto"/>
+  <arg name="lidar_port" default="2368"/>
+  <!-- morai.launch already publishes /velodyne_points. Enable this only
+       when running the calibration launch by itself. -->
+  <arg name="start_lidar_driver" default="false"/>
+  <arg name="show_windows" default="true"/>
+
+  <include file="$(find around_view)/launch/camera_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)"/>
+    <arg name="packet_format" value="$(arg packet_format)"/>
+    <arg name="show_windows" value="false"/>
+  </include>
+
+  <include if="$(arg start_lidar_driver)"
+           file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+    <arg name="port" value="$(arg lidar_port)"/>
+    <arg name="frame_id" value="velodyne"/>
+    <arg name="rpm" value="600.0"/>
+    <arg name="min_range" value="1.0"/>
+    <arg name="max_range" value="100.0"/>
+    <arg name="organize_cloud" value="false"/>
+  </include>
+
+  <node pkg="around_view"
+        type="around_view_node.py"
+        name="lidar_around_view"
+        output="screen">
+    <rosparam command="load" file="$(arg camera_config)"/>
+    <rosparam command="load" file="$(arg avm_config)"/>
+    <rosparam command="load"
+              file="$(arg lidar_config)"
+              ns="lidar_overlay"/>
+    <param name="lidar_overlay/enabled" value="true"/>
+    <param name="lidar_overlay/calibration_file"
+           value="$(arg lidar_calibration_file)"/>
+    <param name="output_topic" value="/around_view/lidar_overlay"/>
+    <param name="output_frame_id" value="around_view"/>
+    <param name="show_window" value="$(arg show_windows)"/>
+    <param name="calibration_file" value="$(arg avm_calibration_file)"/>
+  </node>
+</launch>

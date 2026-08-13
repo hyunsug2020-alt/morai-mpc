@@ -1,0 +1,9 @@
+<launch>
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="log_period_sec" default="2.0" />
+
+  <node pkg="moraimpc" type="current_lane_logger.py" name="current_lane_logger" output="screen">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="log_period_sec" value="$(arg log_period_sec)" />
+  </node>
+</launch>

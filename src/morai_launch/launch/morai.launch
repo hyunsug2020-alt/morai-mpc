@@ -1,0 +1,96 @@
+<launch>
+  <!-- Persistent MORAI connection and localization bringup.
+       WebSocket: MORAI status/control topics such as /Ego_topic
+       UDP: 3D LiDAR, IMU, GPS
+       Localization: GPS + IMU ESKF -->
+  <arg name="websocket_port" default="9090" />
+  <arg name="use_sim_time" default="false" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="imu_port" default="9091" />
+  <arg name="gps_port" default="9090" />
+  <arg name="use_udp_imu" default="true" />
+  <arg name="use_official_velodyne" default="true" />
+  <arg name="start_gps_udp" default="true" />
+  <arg name="start_gps_odometry" default="true" />
+  <arg name="start_lidar" default="true" />
+  <arg name="start_localization" default="true" />
+  <arg name="start_lio_sam" default="true" />
+  <arg name="start_lio_navsat" default="false" />
+  <arg name="start_lio_rviz" default="false" />
+  <arg name="start_around_view" default="false" />
+  <arg name="show_around_view_window" default="true" />
+  <arg name="around_view_packet_format" default="auto" />
+  <arg name="start_odometry_validation" default="false" />
+  <arg name="odometry_validation_output"
+       default="/tmp/morai_odometry_accuracy.json" />
+  <arg name="publish_localization_tf" default="false" />
+  <arg name="publish_sensor_tf" default="false" />
+  <arg name="sensor_config_file"
+       default="$(find morai_control)/config/morai_sensor.json" />
+  <arg name="vehicle_config"
+       default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+  <arg name="eskf_config"
+       default="$(find eskf)/config/eskf_robust.yaml" />
+  <arg name="start_pure_odometry" default="true" />
+
+  <!-- MORAI Simulation Time mode publishes simulation stamps on /Ego_topic.
+       morai_clock_bridge converts that header to /clock because this MORAI
+       release does not provide /clock directly. -->
+  <param name="/use_sim_time" value="$(arg use_sim_time)" />
+
+  <!-- rosbridge receives MORAI status/control topics such as /Ego_topic. -->
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch">
+    <arg name="port" value="$(arg websocket_port)" />
+  </include>
+
+  <!-- Keep the MORAI control/status topics initialized. -->
+  <node pkg="morai_launch" type="morai_topic_init.py" name="morai_topic_init"
+        output="screen" />
+
+  <node if="$(arg use_sim_time)" pkg="morai_launch"
+        type="morai_clock_bridge.py" name="morai_clock_bridge"
+        output="screen" required="true" />
+
+  <!-- Persistent UDP receivers for LiDAR, IMU and GPS plus LIO-SAM. -->
+  <include file="$(find lio_sam)/launch/morai_udp.launch">
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="use_official_velodyne"
+         value="$(arg use_official_velodyne)" />
+    <arg name="start_gps_udp" value="$(arg start_gps_udp)" />
+    <arg name="start_gps_odometry" value="$(arg start_gps_odometry)" />
+    <arg name="use_udp_imu" value="$(arg use_udp_imu)" />
+    <arg name="start_lidar_udp" value="$(arg start_lidar)" />
+    <arg name="start_lio_sam" value="$(arg start_lio_sam)" />
+    <arg name="start_navsat" value="$(arg start_lio_navsat)" />
+    <arg name="start_rviz" value="$(arg start_lio_rviz)" />
+  </include>
+
+  <!-- Optional three-camera around view (front, left and right).
+       Disabled by default so MORAI camera UDP ports are only opened on demand. -->
+  <include if="$(arg start_around_view)"
+           file="$(find around_view)/launch/around_view.launch">
+    <arg name="packet_format" value="$(arg around_view_packet_format)" />
+    <arg name="show_camera_windows" value="false" />
+    <arg name="show_avm_window" value="$(arg show_around_view_window)" />
+  </include>
+
+  <!-- Canonical vehicle position: /eskf/odom and /localization/ego_status. -->
+  <include if="$(arg start_localization)"
+           file="$(find morai_control)/launch/sensor_fusion.launch">
+    <arg name="publish_tf" value="$(arg publish_localization_tf)" />
+    <arg name="publish_sensor_tf" value="$(arg publish_sensor_tf)" />
+    <arg name="sensor_config_file" value="$(arg sensor_config_file)" />
+    <arg name="vehicle_config" value="$(arg vehicle_config)" />
+    <arg name="eskf_config" value="$(arg eskf_config)" />
+    <arg name="start_pure_odometry" value="$(arg start_pure_odometry)" />
+  </include>
+
+  <include if="$(arg start_odometry_validation)"
+           file="$(find morai_control)/launch/odometry_validation.launch">
+    <arg name="vehicle_config" value="$(arg vehicle_config)" />
+    <arg name="output_file" value="$(arg odometry_validation_output)" />
+  </include>
+
+</launch>

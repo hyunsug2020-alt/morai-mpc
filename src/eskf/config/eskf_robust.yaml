@@ -1,0 +1,123 @@
+# Robust planar ESKF tuning for the MORAI IONIQ 5.
+accel_noise_std: 0.35
+gyro_noise_std: 0.015
+accel_bias_random_walk_std: 0.02
+gyro_bias_random_walk_std: 0.002
+
+gps_position_variance: 1.0
+gps_velocity_variance_floor: 0.5
+wheel_speed_variance: 0.04
+imu_yaw_variance: 0.02
+nhc_variance: 0.09
+zupt_velocity_variance: 0.01
+slam_position_variance: 0.25
+slam_yaw_variance: 0.0025
+
+# Chi-square innovation gates: 95% soft weighting, 99.9% hard rejection.
+gps_nis_soft: 5.991
+gps_nis_hard: 13.816
+velocity_nis_soft: 5.991
+velocity_nis_hard: 13.816
+wheel_speed_nis_soft: 3.841
+wheel_speed_nis_hard: 10.828
+yaw_nis_soft: 3.841
+yaw_nis_hard: 10.828
+constraint_nis_hard: 10.828
+slam_nis_soft: 7.815
+slam_nis_hard: 16.266
+odometry_nis_soft: 5.991
+odometry_nis_hard: 13.816
+
+adaptive_alpha: 0.04
+adaptive_scale_min: 0.5
+adaptive_scale_max: 16.0
+max_accel_bias: 3.0
+max_gyro_bias: 0.3
+
+max_predict_dt: 0.2
+speed_deadband_mps: 0.15
+# Direct Ego speed aiding remains disabled. The independently validated
+# pure wheel/IMU odometry below owns speed conditioning and timestamp handling.
+wheel_aiding_enabled: false
+# Simulation Time + /clock에서는 1.0이어야 함. Real Time Mode 보정값 금지.
+wheel_speed_scale: 1.0
+wheel_max_message_lag_sec: 0.25
+
+# Validated pure odometry supplies signed forward speed continuously and a
+# conservative aligned relative-position fallback only during GPS shadow.
+odometry_aiding_enabled: true
+odometry_topic: "/odometry/pure"
+odometry_speed_aiding_enabled: true
+odometry_speed_variance: 0.09
+odometry_pose_aiding_enabled: true
+odometry_position_variance: 0.25
+odometry_position_drift_per_meter: 0.03
+odometry_correlation_inflation: 9.0
+odometry_activation_delay_sec: 1.0
+odometry_max_message_lag_sec: 0.25
+odometry_max_alignment_age_sec: 180.0
+odometry_alignment_gps_max_age_sec: 0.75
+odometry_update_rate_hz: 10.0
+odometry_slam_fallback_age_sec: 0.5
+invalid_gps_status: -1
+gps_velocity_window_sec: 0.6
+initialization_window_samples: 7
+initialization_min_inliers: 4
+initialization_radius_m: 6.0
+
+nhc_rate_hz: 10.0
+nhc_min_speed_mps: 0.5
+zupt_speed_threshold_mps: 0.25
+zupt_accel_threshold_mps2: 0.3
+zupt_gyro_threshold_rps: 0.03
+zupt_hold_sec: 0.8
+
+max_abs_accel_mps2: 20.0
+max_abs_gyro_rps: 2.0
+accel_spike_floor_mps2: 4.0
+gyro_spike_floor_rps: 0.35
+spike_sigma: 6.0
+
+# LIO-SAM is aligned while GPS is healthy and aids ESKF only during GPS loss.
+slam_aiding_enabled: true
+slam_topic: "/lio_sam/mapping/odometry"
+slam_degeneracy_topic: "/lio_sam/mapping/odometry_incremental"
+slam_activation_delay_sec: 1.0
+slam_max_alignment_age_sec: 120.0
+slam_max_message_lag_sec: 0.5
+slam_update_rate_hz: 10.0
+slam_alignment_alpha: 0.05
+slam_alignment_gps_max_age_sec: 0.75
+slam_alignment_reset_distance_m: 5.0
+slam_alignment_reset_yaw_deg: 20.0
+slam_alignment_reset_confirm_samples: 3
+# Short straight GPS tracks make point-only heading fits noisy. Use the
+# averaged IMU-LIO heading until this spatial baseline is available.
+slam_alignment_min_baseline_m: 12.0
+slam_continuity_confirm_samples: 10
+slam_continuity_fast_recovery_gap_sec: 1.0
+slam_position_drift_per_meter: 0.02
+slam_yaw_drift_per_meter_rad: 0.001
+slam_correlation_inflation: 4.0
+# Degenerate LIO still contains useful translation. Use it only as a weak
+# GPS-outage position aid; never use it for map alignment or frame recovery.
+slam_degenerate_aiding_enabled: true
+slam_degenerate_variance_scale: 36.0
+slam_motion_window_sec: 1.2
+slam_stationary_speed_threshold_mps: 0.3
+slam_stationary_filter_speed_max_mps: 1.5
+slam_stationary_release_accel_mps2: 0.45
+slam_stationary_reactivation_delay_sec: 2.0
+slam_stationary_hint_max_age_sec: 6.0
+slam_stationary_max_residual_variance: 0.25
+
+max_gps_lag_sec: 0.5
+# morai_man에서 검증한 고정지연 보정 방식. IMU 이력만 되감으며,
+# wheel/SLAM 보정 이후에는 barrier를 세워 해당 보정을 덮어쓰지 않음.
+gps_replay_enabled: true
+gps_replay_max_age_sec: 2.0
+gps_replay_min_delay_sec: 0.02
+
+# 명시적 GPS 상태기계: starting/normal/gps_lost/reacquiring/degraded.
+gps_rejection_limit: 5
+gps_recovery_accepts: 3

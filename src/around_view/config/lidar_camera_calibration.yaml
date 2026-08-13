@@ -1,0 +1,83 @@
+# Fixed MORAI sensor values from:
+# Sensor/25.S4.MolitComp03/SensorInfo_2023_Hyundai_Ioniq5.json
+point_cloud_topic: "/velodyne_points"
+
+lidar:
+  frame_id: "velodyne"
+  position: [1.045, 0.000, 1.234]
+  rotation: [0.000, 0.000, 0.000]
+
+cameras:
+  front:
+    topic: "/around_view/camera/front/image_raw"
+    output_topic: "/around_view/calibration/front/overlay"
+    position: [1.900, 0.000, 1.200]
+    rotation: [0.000, 2.000, 0.000]
+    width: 1280
+    height: 720
+    fov: 90.0
+  left:
+    topic: "/around_view/camera/left/image_raw"
+    output_topic: "/around_view/calibration/left/overlay"
+    position: [1.150, 0.650, 1.200]
+    rotation: [0.000, 10.000, 70.000]
+    width: 640
+    height: 480
+    fov: 130.0
+  right:
+    topic: "/around_view/camera/right/image_raw"
+    output_topic: "/around_view/calibration/right/overlay"
+    position: [1.150, -0.650, 1.200]
+    rotation: [0.000, 10.000, 290.000]
+    width: 640
+    height: 480
+    fov: 130.0
+
+# Residual adjustment only. Fixed MORAI poses above must not be edited.
+lidar_correction:
+  translation: [0.000, 0.000, 0.000]
+  rotation: [0.000, 0.000, 0.000]
+
+projection:
+  minimum_depth: 0.5
+  maximum_depth: 80.0
+  # Keep the full VLP-16 scan. Noise is removed spatially below instead of
+  # dropping every other point without regard to object boundaries.
+  point_stride: 1
+  maximum_points: 30000
+  point_radius: 2
+  publish_rate: 10.0
+  maximum_time_difference: 0.30
+  # Integrated AVM uses independent vehicle-frame obstacle contours.
+  # lidar_camera_calibration_node.py ignores these contour-only settings.
+  render_mode: "contours"
+  minimum_planar_range: 0.8
+  maximum_planar_range: 25.0
+  minimum_object_height: 0.15
+  maximum_object_height: 2.80
+  outlier_radius: 0.20
+  outlier_minimum_neighbors: 3
+  cluster_connection: 0.20
+  cluster_minimum_points: 6
+  contour_minimum_area: 8.0
+  contour_minimum_length: 12.0
+  contour_thickness: 2
+  contour_color_bgr: [0, 165, 255]
+  # 1.0 draws only the newest scan and leaves no temporal afterimage.
+  contour_smoothing_alpha: 1.0
+  contour_opacity: 0.90
+
+  # Complete an oriented vehicle footprint when a LiDAR cluster has enough
+  # points and vertical extent. Other clusters retain their measured outline.
+  fit_vehicle_boxes: true
+  vehicle_minimum_points: 18
+  vehicle_minimum_height_span: 0.45
+  vehicle_observed_minimum_length: 1.2
+  vehicle_observed_maximum_length: 6.5
+  vehicle_maximum_lateral_distance: 2.5
+  vehicle_length: 4.0
+  vehicle_width: 1.7
+  vehicle_radial_alignment_threshold: 0.65
+
+show_window: true
+calibration_file: "~/.ros/around_view/lidar_camera_calibration.yaml"

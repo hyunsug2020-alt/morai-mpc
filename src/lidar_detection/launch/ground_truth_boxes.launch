@@ -1,0 +1,11 @@
+<launch>
+  <arg name="config"
+       default="$(find lidar_detection)/config/morai_ground_truth.yaml"/>
+
+  <node pkg="lidar_detection"
+        type="object_label_visualizer.py"
+        name="lidar_ground_truth_visualizer"
+        output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

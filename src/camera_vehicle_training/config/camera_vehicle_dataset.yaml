@@ -1,0 +1,40 @@
+topics:
+  image: "/around_view/camera/front/image_raw"
+  ego: "/Ego_topic"
+  objects: "/Object_topic"
+  overlay: "/camera_vehicle_training/label_overlay"
+  status: "/camera_vehicle_training/status"
+
+# Fixed front-camera values from the MORAI Ioniq 5 SensorInfo.
+camera:
+  position: [1.900, 0.000, 1.200]
+  rotation: [0.000, 2.000, 0.000]
+  width: 1280
+  height: 720
+  fov: 90.0
+  minimum_depth: 0.5
+
+sync:
+  buffer_seconds: 2.0
+  max_wait_seconds: 0.15
+  max_nearest_seconds: 0.06
+
+recording:
+  # A 30 Hz input becomes about 5 saved candidates per second.
+  record_every_n: 6
+  # Keep all labelled candidates and one in ten empty candidates.
+  empty_frame_every_n: 10
+  jpeg_quality: 95
+  save_overlays: true
+  enabled: true
+
+filtering:
+  class_id: 0
+  class_name: "Car"
+  object_category: "npc"
+  position_is_bottom: true
+  minimum_range_m: 1.0
+  maximum_range_m: 80.0
+  minimum_box_width_px: 12.0
+  minimum_box_height_px: 12.0
+  minimum_inside_ratio: 0.30

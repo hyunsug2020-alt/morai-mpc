@@ -1,0 +1,33 @@
+<launch>
+    <!-- TF 경고 억제 -->
+    <env name="ROSCONSOLE_CONFIG_FILE"
+         value="$(find moraimpc)/config/rosconsole.config" />
+
+    <!-- S자 후진 경로 파라미터 -->
+    <arg name="length"     default="15.0" />
+    <arg name="amplitude"  default="0.5" />
+    <arg name="wavelength" default="18.0" />
+    <arg name="spacing"    default="0.1" />
+
+    <!-- 0. MORAI 자율주행 모드 초기화 -->
+    <node pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
+
+    <!-- 1. 경로 생성 (현재 차량 위치 기준 즉시 생성, 종료 후 그대로) -->
+    <node pkg="moraimpc" type="make_s_reverse_path.py" name="s_path_maker" output="screen">
+        <param name="length"     value="$(arg length)" />
+        <param name="amplitude"  value="$(arg amplitude)" />
+        <param name="wavelength" value="$(arg wavelength)" />
+        <param name="spacing"    value="$(arg spacing)" />
+    </node>
+
+    <!-- 2. path_follower (3초 delay: 그 사이 경로 생성+저장 완료) -->
+    <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen"
+          launch-prefix="bash -c 'sleep 3; exec $0 $@'">
+        <param name="path_file"  value="$(find moraimpc)/data/waypoints.json" />
+        <param name="target_vel" value="60.0" />
+        <param name="log_file"   value="$(find moraimpc)/logs/mpc_log.json" />
+    </node>
+
+    <!-- 3. 대시보드 -->
+    <node pkg="moraimpc" type="mpc_dashboard.py" name="mpc_dashboard" output="screen" />
+</launch>

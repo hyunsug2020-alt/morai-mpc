@@ -1,0 +1,80 @@
+SYSTEM_STRESS 01/10 START 2026-07-31T15:44:38+09:00
+stress-ng: info:  [7386] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7386] successful run completed in 15.33s
+stress-ng: info:  [7386] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7386]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7386] cpu               60319     15.05    453.65      0.16      4006.67       132.92
+stress-ng: info:  [7386] vm                    0     15.33      8.97      4.15         0.00         0.00
+SYSTEM_STRESS 01/10 PASS cpu=+38.0°C 34, 82.04, 280.00
+SYSTEM_STRESS 02/10 START 2026-07-31T15:44:54+09:00
+stress-ng: info:  [7460] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7460] successful run completed in 15.33s
+stress-ng: info:  [7460] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7460]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7460] cpu               61392     15.06    450.73      0.15      4076.91       136.16
+stress-ng: info:  [7460] vm                    0     15.33      9.85      4.31         0.00         0.00
+SYSTEM_STRESS 02/10 PASS cpu=+38.0°C 33, 45.21, 280.00
+SYSTEM_STRESS 03/10 START 2026-07-31T15:45:09+09:00
+stress-ng: info:  [7518] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7518] successful run completed in 15.32s
+stress-ng: info:  [7518] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7518]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7518] cpu               63503     15.06    455.08      0.12      4216.26       139.51
+stress-ng: info:  [7518] vm                    0     15.32     10.19      4.78         0.00         0.00
+SYSTEM_STRESS 03/10 PASS cpu=+38.0°C 33, 47.51, 280.00
+SYSTEM_STRESS 04/10 START 2026-07-31T15:45:25+09:00
+stress-ng: info:  [7559] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7559] successful run completed in 15.33s
+stress-ng: info:  [7559] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7559]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7559] cpu               62313     15.06    454.83      0.15      4138.04       136.96
+stress-ng: info:  [7559] vm                    0     15.33      9.75      4.48         0.00         0.00
+SYSTEM_STRESS 04/10 PASS cpu=+38.0°C 34, 80.57, 280.00
+SYSTEM_STRESS 05/10 START 2026-07-31T15:45:40+09:00
+stress-ng: info:  [7663] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7663] successful run completed in 15.34s
+stress-ng: info:  [7663] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7663]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7663] cpu               59097     15.07    444.21      0.23      3922.70       132.97
+stress-ng: info:  [7663] vm                    0     15.34      9.94      4.42         0.00         0.00
+SYSTEM_STRESS 05/10 PASS cpu=+39.0°C 35, 66.66, 280.00
+SYSTEM_STRESS 06/10 START 2026-07-31T15:45:56+09:00
+stress-ng: info:  [7804] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7804] successful run completed in 15.35s
+stress-ng: info:  [7804] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7804]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7804] cpu               58687     15.07    438.91      0.16      3894.36       133.66
+stress-ng: info:  [7804] vm                    0     15.35      9.22      4.02         0.00         0.00
+SYSTEM_STRESS 06/10 PASS cpu=+39.0°C 33, 50.24, 280.00
+SYSTEM_STRESS 07/10 START 2026-07-31T15:46:11+09:00
+stress-ng: info:  [7849] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7849] successful run completed in 15.32s
+stress-ng: info:  [7849] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7849]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7849] cpu               63623     15.07    454.49      0.16      4221.61       139.94
+stress-ng: info:  [7849] vm                    0     15.32     10.02      4.65         0.00         0.00
+SYSTEM_STRESS 07/10 PASS cpu=+38.0°C 35, 76.29, 280.00
+SYSTEM_STRESS 08/10 START 2026-07-31T15:46:27+09:00
+stress-ng: info:  [7891] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7891] successful run completed in 15.33s
+stress-ng: info:  [7891] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7891]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7891] cpu               59837     15.06    449.51      0.10      3973.85       133.09
+stress-ng: info:  [7891] vm                    0     15.33      9.63      4.53         0.00         0.00
+SYSTEM_STRESS 08/10 PASS cpu=+39.0°C 34, 49.84, 280.00
+SYSTEM_STRESS 09/10 START 2026-07-31T15:46:42+09:00
+stress-ng: info:  [7992] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [7992] successful run completed in 15.33s
+stress-ng: info:  [7992] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [7992]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [7992] cpu               60611     15.06    453.91      0.19      4023.48       133.48
+stress-ng: info:  [7992] vm                    0     15.33     10.04      4.32         0.00         0.00
+SYSTEM_STRESS 09/10 PASS cpu=+39.0°C 35, 82.95, 280.00
+SYSTEM_STRESS 10/10 START 2026-07-31T15:46:57+09:00
+stress-ng: info:  [8104] dispatching hogs: 32 cpu, 1 vm
+stress-ng: info:  [8104] successful run completed in 15.32s
+stress-ng: info:  [8104] stressor       bogo ops real time  usr time  sys time   bogo ops/s   bogo ops/s
+stress-ng: info:  [8104]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)
+stress-ng: info:  [8104] cpu               61308     15.05    460.24      0.11      4074.70       133.18
+stress-ng: info:  [8104] vm                    0     15.32     10.07      4.18         0.00         0.00
+SYSTEM_STRESS 10/10 PASS cpu=+39.0°C 34, 47.11, 280.00

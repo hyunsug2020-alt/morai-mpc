@@ -1,0 +1,157 @@
+{
+  "status": "PASS",
+  "timestamp": "2026-08-10T19:41:39.918022+09:00",
+  "bios_version": "2014",
+  "unsupported_bios_override": true,
+  "python": "3.8.10 (default, Mar 18 2025, 20:04:55) \n[GCC 9.4.0]",
+  "torch": "2.0.1+cu118",
+  "torch_cuda": "11.8",
+  "checkpoint": "/home/bisa/morai-mpc-agent-morai-lio-gps-integration/third_party/OpenPCDet/output/custom_models/pointpillar_morai/morai_10k/ckpt/checkpoint_epoch_40.pth",
+  "checkpoint_epoch": 40,
+  "checkpoint_iter": 148111,
+  "dataset_samples": 8005,
+  "batch_size": 2,
+  "elapsed_seconds": 2.213,
+  "rounds": [
+    {
+      "round": 1,
+      "loss": 0.1105075404047966,
+      "grad_norm": 1.2057318687438965,
+      "seconds": 0.836,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 37.0,
+        "power_w": 121.0,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 2,
+      "loss": 0.07808123528957367,
+      "grad_norm": 1.5938191413879395,
+      "seconds": 0.142,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 38.0,
+        "power_w": 132.59,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 3,
+      "loss": 0.11978994309902191,
+      "grad_norm": 1.1585443019866943,
+      "seconds": 0.141,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 39.0,
+        "power_w": 147.98,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 4,
+      "loss": 0.17609930038452148,
+      "grad_norm": 1.0465432405471802,
+      "seconds": 0.117,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 41.0,
+        "power_w": 154.03,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 5,
+      "loss": 0.10371287912130356,
+      "grad_norm": 2.1837174892425537,
+      "seconds": 0.116,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 40.0,
+        "power_w": 175.1,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 6,
+      "loss": 0.13444125652313232,
+      "grad_norm": 1.6851348876953125,
+      "seconds": 0.12,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 41.0,
+        "power_w": 180.21,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 7,
+      "loss": 0.07096559554338455,
+      "grad_norm": 0.8081831932067871,
+      "seconds": 0.114,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 41.0,
+        "power_w": 199.56,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 8,
+      "loss": 0.09357592463493347,
+      "grad_norm": 0.748365581035614,
+      "seconds": 0.115,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 41.0,
+        "power_w": 201.64,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 9,
+      "loss": 0.18069963157176971,
+      "grad_norm": 1.3277595043182373,
+      "seconds": 0.114,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 42.0,
+        "power_w": 213.31,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    },
+    {
+      "round": 10,
+      "loss": 0.0872233510017395,
+      "grad_norm": 1.0767353773117065,
+      "seconds": 0.115,
+      "gpu": {
+        "driver": "535.261.03",
+        "gpu": "NVIDIA GeForce RTX 3090",
+        "temperature_c": 42.0,
+        "power_w": 220.81,
+        "power_limit_w": 250.0,
+        "memory_used_mib": 6100.0
+      }
+    }
+  ]
+}

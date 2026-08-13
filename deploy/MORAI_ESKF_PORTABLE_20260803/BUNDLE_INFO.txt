@@ -1,0 +1,34 @@
+Bundle: MORAI_ESKF_PORTABLE_20260803
+Created: 2026-08-03 Asia/Seoul
+Target: Ubuntu 20.04 + ROS Noetic + Python 3
+
+Runtime packages:
+- morai_msgs 0.0.1
+- eskf 0.1.0
+- morai_eskf_runtime 0.1.0
+
+Estimator:
+- Robust planar 8-state ESKF
+- State: px, py, vx, vy, yaw, bax, bay, bgz
+- Pure odometry v5 using velocity.x, wheel_angle, IMU orientation and gyro-z
+- GPS fixed-lag rewind/replay
+- GPS health state machine and consensus reacquisition
+- Validated pure-odometry speed and GPS-shadow relative-position aiding
+- Optional LIO-SAM aiding
+
+Validation before packaging:
+- Original-to-bundle source comparison: PASS
+- Python syntax compilation: PASS
+- Clean three-package catkin workspace build: PASS
+- ESKF unit tests: 10/10 PASS
+- roslaunch node graph parsing: PASS
+- Isolated ROS master runtime smoke test: PASS
+- Existing-package backup and automatic reinstall test: PASS
+
+Runtime smoke-test nodes:
+- /pure_odometry
+- /eskf_node
+- /ego_status_from_eskf
+
+The MORAI Network, UDP, Time Manager, vehicle, sensor and ESKF numeric
+settings on the source computer were not modified while creating this bundle.

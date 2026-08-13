@@ -1,0 +1,27 @@
+<launch>
+  <arg name="config"
+       default="$(find lidar_detection)/config/morai_pedestrian_dataset.yaml"/>
+  <arg name="output_dir"
+       default="$(find lidar_detection)/../../datasets/morai_lidar_pedestrian_20260801"/>
+  <arg name="target_total_frames" default="30000"/>
+  <arg name="max_duration_seconds" default="86400"/>
+
+  <include file="$(find lidar_detection)/launch/ground_truth_boxes.launch"/>
+
+  <include file="$(find lidar_detection)/launch/record_dataset.launch">
+    <arg name="config" value="$(arg config)"/>
+    <arg name="output_dir" value="$(arg output_dir)"/>
+    <arg name="enabled" value="true"/>
+  </include>
+
+  <include file="$(find lidar_detection)/launch/guard_collection.launch">
+    <arg name="target_total_frames" value="$(arg target_total_frames)"/>
+    <arg name="max_duration_seconds" value="$(arg max_duration_seconds)"/>
+    <arg name="auto_quality_gate" value="true"/>
+    <arg name="min_points_per_box" value="5"/>
+    <arg name="max_label_range_m" value="70.0"/>
+    <arg name="useful_category" value="pedestrian"/>
+    <arg name="resume_consecutive_samples" value="10"/>
+    <arg name="pause_after_no_useful_seconds" value="10.0"/>
+  </include>
+</launch>

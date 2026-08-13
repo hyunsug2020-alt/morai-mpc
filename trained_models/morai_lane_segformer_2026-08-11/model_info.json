@@ -1,0 +1,49 @@
+{
+  "model": "SegFormer",
+  "encoder": "mit_b1",
+  "num_classes": 4,
+  "class_ids": {
+    "0": "background",
+    "1": "class_1",
+    "2": "class_2",
+    "3": "class_3"
+  },
+  "palette_bgr": {
+    "0": [0, 0, 0],
+    "1": [0, 255, 0],
+    "2": [0, 255, 255],
+    "3": [255, 0, 255]
+  },
+  "dataset": "dataset_multiclass_1280x720",
+  "matched_images": 181,
+  "train_images": 145,
+  "validation_images": 36,
+  "source_resolution": [1280, 720],
+  "model_input_resolution": [1280, 736],
+  "padding": {
+    "top": 8,
+    "bottom": 8,
+    "left": 0,
+    "right": 0
+  },
+  "epochs_completed": 77,
+  "best_epoch": 68,
+  "validation": {
+    "foreground_mean_iou": 0.7481530581951142,
+    "foreground_mean_dice": 0.8455572762263288,
+    "per_class_iou": [
+      0.8402857709863069,
+      0.8817667949288113,
+      0.5224066086702245
+    ],
+    "per_class_dice": [
+      0.9132122676098866,
+      0.9371690448626172,
+      0.6862905162064826
+    ],
+    "loss": 0.08890704262173837
+  },
+  "sha256": "ea2cf315ee8691216ffe8bc5b8b534aba9f9b2360808c50ab245ba4246d4aafa",
+  "trained_at": "2026-08-11",
+  "runtime_environment": "/home/bisa/miniconda3/envs/lane_tool"
+}

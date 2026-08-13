@@ -1,0 +1,60 @@
+<launch>
+  <arg name="input_topic" default="/around_view/camera/front/image_raw"/>
+  <arg name="overlay_topic" default="/camera_vehicle_detection/overlay"/>
+  <arg name="detections_topic" default="/camera_vehicle_detection/detections"/>
+  <arg name="camera_config"
+       default="$(find camera_vehicle_training)/config/front_camera_udp.yaml"/>
+  <arg name="start_camera_receiver" default="true"/>
+  <arg name="show_viewer" default="true"/>
+
+  <arg name="python_executable"
+       default="/home/david/morai-mpc-agent-morai-lio-gps-integration/.venv-camera/bin/python"/>
+  <arg name="model_path"
+       default="$(find camera_vehicle_training)/../../trained_models/morai_camera_vehicle/weights/best.pt"/>
+  <arg name="device" default="0"/>
+  <arg name="confidence" default="0.25"/>
+  <arg name="iou_threshold" default="0.70"/>
+  <arg name="image_size" default="1280"/>
+  <arg name="max_inference_hz" default="0.0"/>
+
+  <include if="$(arg start_camera_receiver)"
+           file="$(find around_view)/launch/camera_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)"/>
+    <arg name="show_windows" value="false"/>
+  </include>
+
+  <node pkg="camera_vehicle_training"
+        type="camera_vehicle_detector_node.py"
+        name="camera_vehicle_detector"
+        output="screen"
+        required="true"
+        launch-prefix="$(arg python_executable)">
+    <env name="CUDA_VISIBLE_DEVICES" value="0"/>
+    <env name="CUDA_MODULE_LOADING" value="LAZY"/>
+    <env name="OMP_NUM_THREADS" value="4"/>
+    <env name="MKL_NUM_THREADS" value="4"/>
+    <env name="OPENBLAS_NUM_THREADS" value="4"/>
+    <env name="PYTORCH_CUDA_ALLOC_CONF" value="expandable_segments:True"/>
+
+    <param name="input_topic" value="$(arg input_topic)"/>
+    <param name="overlay_topic" value="$(arg overlay_topic)"/>
+    <param name="detections_topic" value="$(arg detections_topic)"/>
+    <param name="model_path" value="$(arg model_path)"/>
+    <param name="device" value="$(arg device)"/>
+    <param name="confidence" value="$(arg confidence)"/>
+    <param name="iou_threshold" value="$(arg iou_threshold)"/>
+    <param name="image_size" value="$(arg image_size)"/>
+    <param name="max_inference_hz" value="$(arg max_inference_hz)"/>
+    <param name="max_detections" value="100"/>
+    <param name="line_width" value="2"/>
+  </node>
+
+  <node if="$(arg show_viewer)"
+        pkg="image_view"
+        type="image_view"
+        name="camera_vehicle_detection_viewer"
+        output="screen">
+    <remap from="image" to="$(arg overlay_topic)"/>
+    <param name="autosize" value="true"/>
+  </node>
+</launch>

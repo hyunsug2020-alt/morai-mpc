@@ -1,0 +1,16 @@
+converted 2000/30000
+converted 4000/30000
+converted 6000/30000
+converted 8000/30000
+converted 10000/30000
+converted 12000/30000
+converted 14000/30000
+converted 16000/30000
+converted 18000/30000
+converted 20000/30000
+converted 22000/30000
+converted 24000/30000
+converted 26000/30000
+converted 28000/30000
+converted 30000/30000
+{"status": "complete", "source": "/home/bisa/morai-mpc-agent-morai-lio-gps-integration/datasets/morai_lidar_pedestrian_20260801", "output": "/home/bisa/morai-mpc-agent-morai-lio-gps-integration/datasets/morai_pedestrian_openpcdet", "target_frames": 30000, "train_frames": 24000, "validation_frames": 6000, "train_range": ["000000", "023999"], "validation_range": ["024000", "029999"], "split_method": "final contiguous sequence holdout", "classes": ["Pedestrian", "Obstacle"], "kept_objects": {"Pedestrian": 88019, "Obstacle": 46680}, "source_objects": {"Pedestrian": 89315, "Obstacle": 46680}, "filtered_objects": {"Pedestrian": 1296}, "empty_frames": 10, "min_strict_points_per_box": 5}

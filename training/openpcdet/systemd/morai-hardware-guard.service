@@ -1,0 +1,11 @@
+[Unit]
+Description=Conservative CPU and GPU limits for MORAI training
+After=multi-user.target nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/david/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet/apply_hardware_guard.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+<launch>
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml"/>
+  <arg name="show_windows" default="true"/>
+  <arg name="packet_format" default="auto"/>
+
+  <node pkg="around_view"
+        type="udp_camera_node.py"
+        name="udp_camera"
+        output="screen">
+    <rosparam command="load" file="$(arg camera_config)"/>
+    <param name="show_windows" value="$(arg show_windows)"/>
+    <param name="udp/packet_format" value="$(arg packet_format)"/>
+  </node>
+</launch>

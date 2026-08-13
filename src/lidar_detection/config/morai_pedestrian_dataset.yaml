@@ -1,0 +1,22 @@
+topics:
+  point_cloud: "/velodyne_points"
+  diagnostics: "/lidar_detection/ground_truth_diagnostics"
+  status: "/lidar_detection/dataset_status"
+
+recording:
+  # Stop at 30,000 paired frames; current disk capacity safely permits every
+  # useful LiDAR scan and reduces exposure to a long simulator session.
+  record_every_n: 1
+  empty_frame_every_n: 20
+  match_buffer_seconds: 2.0
+  writer_queue_size: 50
+  min_free_disk_gb: 20.0
+  require_interpolated: true
+
+filtering:
+  min_points_per_box: 5
+  max_label_range_m: 70.0
+
+class_names:
+  pedestrian: "Pedestrian"
+  obstacle: "Obstacle"

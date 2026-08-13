@@ -1,0 +1,35 @@
+topics:
+  point_cloud: "/velodyne_points"
+  ego: "/Ego_topic"
+  objects: "/Object_topic"
+  markers: "/lidar_detection/ground_truth_markers"
+  diagnostics: "/lidar_detection/ground_truth_diagnostics"
+
+# MORAI SensorInfo: Lidar3DList[0], vehicle frame in metres/degrees.
+lidar:
+  x: 1.045
+  y: 0.000
+  z: 1.234
+  yaw_deg: 0.000
+
+# MORAI ObjectStatus.position is treated as the bottom/reference position.
+# The visualization lifts it by half the reported object height.
+object_position_is_bottom: true
+
+sync:
+  # Keep LiDAR frames briefly so samples on both sides of the LiDAR stamp
+  # are available. Positions and shortest-path headings are then interpolated
+  # to the exact LiDAR timestamp.
+  buffer_seconds: 1.0
+  max_wait_seconds: 0.15
+  # Used only when a bracketing sample is unavailable after max_wait_seconds.
+  max_nearest_seconds: 0.06
+
+visualization:
+  marker_lifetime_seconds: 0.30
+  box_alpha: 0.22
+  line_width: 0.08
+  show_text: true
+  count_points: true
+  box_padding_xy: 0.15
+  box_padding_z: 0.15

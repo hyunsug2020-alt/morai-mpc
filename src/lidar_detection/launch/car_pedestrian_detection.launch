@@ -1,0 +1,45 @@
+<launch>
+  <arg name="point_cloud_topic" default="/velodyne_points"/>
+  <arg name="car_score_threshold" default="0.35"/>
+  <arg name="pedestrian_score_threshold" default="0.35"/>
+  <arg name="vehicle_box_padding" default="0.20"/>
+  <arg name="start_rviz" default="true"/>
+  <arg name="rviz_config"
+       default="$(find lidar_detection)/config/car_pedestrian_detection.rviz"/>
+
+  <include file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="marker_topic" value="/lidar_detection/raw_car_markers"/>
+    <arg name="detections_topic" value="/lidar_detection/detections"/>
+    <arg name="score_threshold" value="$(arg car_score_threshold)"/>
+    <arg name="start_rviz" value="false"/>
+  </include>
+
+  <include file="$(find lidar_detection)/launch/pedestrian_far_v2_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="marker_topic" value="/lidar_detection/raw_pedestrian_far_v2_markers"/>
+    <arg name="detections_topic" value="/lidar_detection/pedestrian_far_v2_detections"/>
+    <arg name="score_threshold" value="$(arg pedestrian_score_threshold)"/>
+    <arg name="start_rviz" value="false"/>
+  </include>
+
+  <node pkg="lidar_detection"
+        type="detection_fusion_node.py"
+        name="car_pedestrian_detection_fusion"
+        output="screen"
+        required="true">
+    <param name="car_detections_topic" value="/lidar_detection/detections"/>
+    <param name="pedestrian_detections_topic"
+           value="/lidar_detection/pedestrian_far_v2_detections"/>
+    <param name="markers_topic" value="/lidar_detection/combined_markers"/>
+    <param name="detections_topic" value="/lidar_detection/combined_detections"/>
+    <param name="vehicle_box_padding" value="$(arg vehicle_box_padding)"/>
+  </node>
+
+  <node if="$(arg start_rviz)"
+        pkg="rviz"
+        type="rviz"
+        name="car_pedestrian_detection_rviz"
+        args="-d $(arg rviz_config)"
+        output="screen"/>
+</launch>

@@ -1,0 +1,44 @@
+<launch>
+  <!-- MORAI transport-only bringup.
+       WebSocket: status/control topics such as /Ego_topic
+       UDP: LiDAR, IMU, GPS and four raw cameras
+       LIO-SAM, ESKF, odometry and around-view composition are excluded. -->
+  <arg name="websocket_port" default="9090" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="imu_port" default="9091" />
+  <arg name="gps_port" default="9090" />
+  <arg name="use_official_velodyne" default="true" />
+  <arg name="camera_packet_format" default="auto" />
+  <arg name="show_camera_windows" default="false" />
+
+  <param name="/use_sim_time" value="false" />
+
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch">
+    <arg name="port" value="$(arg websocket_port)" />
+  </include>
+
+  <node pkg="morai_launch" type="morai_topic_init.py"
+        name="morai_topic_init" output="screen" />
+
+  <include file="$(find lio_sam)/launch/morai_udp.launch">
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="use_udp_imu" value="true" />
+    <arg name="use_official_velodyne"
+         value="$(arg use_official_velodyne)" />
+    <arg name="normalize_lidar_time" value="false" />
+    <arg name="start_gps_udp" value="true" />
+    <arg name="start_gps_odometry" value="false" />
+    <arg name="start_lidar_udp" value="true" />
+    <arg name="start_lio_sam" value="false" />
+    <arg name="start_navsat" value="false" />
+    <arg name="start_rviz" value="false" />
+    <arg name="start_robot_state_publisher" value="false" />
+  </include>
+
+  <include file="$(find around_view)/launch/camera_view.launch">
+    <arg name="packet_format" value="$(arg camera_packet_format)" />
+    <arg name="show_windows" value="$(arg show_camera_windows)" />
+  </include>
+</launch>

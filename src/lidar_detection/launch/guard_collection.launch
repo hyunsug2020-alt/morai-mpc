@@ -1,0 +1,28 @@
+<launch>
+  <arg name="target_total_frames" default="10000"/>
+  <arg name="status_topic" default="/lidar_detection/dataset_status"/>
+  <arg name="max_duration_seconds" default="3600"/>
+  <arg name="auto_quality_gate" default="true"/>
+  <arg name="min_points_per_box" default="5"/>
+  <arg name="max_label_range_m" default="70.0"/>
+  <arg name="useful_category" default="npc"/>
+  <arg name="resume_consecutive_samples" default="25"/>
+  <arg name="pause_after_no_useful_seconds" default="5.0"/>
+
+  <node pkg="lidar_detection"
+        type="dataset_recording_guard.py"
+        name="dataset_recording_guard"
+        output="screen">
+    <param name="status_topic" value="$(arg status_topic)"/>
+    <param name="target_total_frames" value="$(arg target_total_frames)"/>
+    <param name="max_duration_seconds" value="$(arg max_duration_seconds)"/>
+    <param name="auto_quality_gate" value="$(arg auto_quality_gate)"/>
+    <param name="min_points_per_box" value="$(arg min_points_per_box)"/>
+    <param name="max_label_range_m" value="$(arg max_label_range_m)"/>
+    <param name="useful_category" value="$(arg useful_category)"/>
+    <param name="resume_consecutive_samples"
+           value="$(arg resume_consecutive_samples)"/>
+    <param name="pause_after_no_useful_seconds"
+           value="$(arg pause_after_no_useful_seconds)"/>
+  </node>
+</launch>

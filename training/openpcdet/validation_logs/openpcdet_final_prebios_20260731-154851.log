@@ -1,0 +1,18 @@
+Database filter by min points Car: 14698 => 14698
+Loading Custom dataset.
+Total samples for CUSTOM dataset: 8005
+==> Loading parameters from checkpoint /home/bisa/morai-mpc-agent-morai-lio-gps-integration/third_party/OpenPCDet/output/custom_models/pointpillar_morai/morai_10k/ckpt/checkpoint_epoch_4.pth to GPU
+==> Loading optimizer parameters from checkpoint /home/bisa/morai-mpc-agent-morai-lio-gps-integration/third_party/OpenPCDet/output/custom_models/pointpillar_morai/morai_10k/ckpt/checkpoint_epoch_4.pth to GPU
+==> Checkpoint trained from version: pcdet+0.6.0+233f849
+==> Done
+VALIDATION 01/10 PASS loss=0.468525 temp=35C power=89.9W
+VALIDATION 02/10 PASS loss=0.354975 temp=37C power=114.7W
+VALIDATION 03/10 PASS loss=0.404503 temp=40C power=135.2W
+VALIDATION 04/10 PASS loss=0.506578 temp=39C power=152.1W
+VALIDATION 05/10 PASS loss=0.345461 temp=39C power=185.5W
+VALIDATION 06/10 PASS loss=0.303805 temp=40C power=203.8W
+VALIDATION 07/10 PASS loss=0.245083 temp=41C power=211.4W
+VALIDATION 08/10 PASS loss=0.509019 temp=40C power=225.0W
+VALIDATION 09/10 PASS loss=0.441709 temp=41C power=229.8W
+VALIDATION 10/10 PASS loss=0.408319 temp=40C power=232.9W
+VALIDATION PASS: /home/bisa/morai-mpc-agent-morai-lio-gps-integration/training/openpcdet/validation_logs/validation_20260731-154858.json
