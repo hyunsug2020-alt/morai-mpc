@@ -151,6 +151,24 @@ roslaunch eskf monitor_gui.launch
 GUI는 `/Ego_topic`을 화면 검증에만 사용하며 ESKF 또는 제어기로 다시 보내지
 않음. 설정 변경 기능이 없으므로 실행 중인 ESKF 수치도 바꾸지 않음.
 
+## 순수 오도메트리 IMU 오차 대응
+
+`/odometry/pure`는 차량 전진 속도·조향각과 IMU만 사용하는 GPS 음영 백업
+오도메트리다. Ego 위치·heading, GPS, LiDAR를 추정 입력으로 사용하지 않는다.
+
+- IMU quaternion으로 gyro 적분 yaw drift를 제한한다.
+- 정지 구간에서 gyro bias와 종가속도 bias를 갱신한다.
+- IMU 종가속도는 중력 투영을 제거하고 Huber gate를 적용한다.
+- 종가속도는 위치로 이중 적분하지 않는다. 직선 구간의 MORAI 물리시간 비율
+  추정에만 사용해 가속도 noise·bias의 위치 발산을 방지한다.
+- 회전 가능한 구간은 quaternion/gyro 시간비율을 우선하며, 회전 관측이 없는
+  직선 구간만 종가속도/속도 변화량으로 보완한다.
+
+10분 실제 기록(`577.2 s`, `2444.6 m` 연속 구간) 재생 결과는 위치 RMSE
+`8.07 m`, yaw RMSE `0.281°`, 종점 drift `0.255%`다. 기존 `10 s` 시간창의
+`8.81 m`, `0.354%`보다 개선됐다. 실시간 UDP 입력에서도 최종 확인이 필요하며,
+Ego 참값은 검증에만 사용한다.
+
 ## 알려진 한계
 
 - 회피 정점 부근 cte ~1.2m, 통과 후 path 복귀 변동 — NMPC kinematic bicycle model이 sim 실제 차량 dynamic(slip + steer servo lag)과 mismatch

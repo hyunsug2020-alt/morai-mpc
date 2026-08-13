@@ -8,6 +8,10 @@
   <arg name="gps_topic" default="/gps" />
   <arg name="vehicle_state_topic" default="/Ego_topic" />
   <arg name="pure_odometry_topic" default="/odometry/pure" />
+  <arg name="slam_topic" default="/lio_sam/mapping/odometry" />
+  <arg name="slam_degeneracy_topic"
+       default="/lio_sam/mapping/odometry_incremental" />
+  <arg name="eskf_output_topic" default="/eskf/odom" />
   <arg name="sensor_config_file"
        default="$(find morai_eskf_runtime)/config/morai_sensor.json" />
   <arg name="vehicle_config"
@@ -32,6 +36,10 @@
     <param name="gps_topic" value="$(arg gps_topic)" />
     <param name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
     <param name="odometry_topic" value="$(arg pure_odometry_topic)" />
+    <param name="slam_topic" value="$(arg slam_topic)" />
+    <param name="slam_degeneracy_topic"
+           value="$(arg slam_degeneracy_topic)" />
+    <param name="odom_topic" value="$(arg eskf_output_topic)" />
     <param name="publish_tf" value="$(arg publish_tf)" />
     <param name="sensor_config_file" value="$(arg sensor_config_file)" />
   </node>
@@ -39,6 +47,7 @@
   <node if="$(arg start_legacy_bridge)"
         pkg="morai_eskf_runtime" type="ego_status_from_eskf.py"
         name="ego_status_from_eskf" output="screen">
+    <param name="odom_topic" value="$(arg eskf_output_topic)" />
     <param name="imu_topic" value="$(arg imu_topic)" />
   </node>
 
@@ -48,4 +57,3 @@
     <param name="sensor_config_file" value="$(arg sensor_config_file)" />
   </node>
 </launch>
-

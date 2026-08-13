@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>morai_eskf_runtime</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>Portable MORAI pure odometry and robust planar ESKF integration</description>
   <maintainer email="coss@todo.todo">coss</maintainer>
   <license>TODO</license>
@@ -18,4 +18,3 @@
   <depend>tf2_ros</depend>
   <exec_depend>python3-numpy</exec_depend>
 </package>
-

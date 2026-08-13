@@ -61,6 +61,19 @@ def main():
     required_fields = {"message.velocity.x", "message.wheel_angle"}
     if not required_fields.issubset(set(accessed)):
         raise RuntimeError("missing wheel-equivalent fields")
+    required_imu_features = {
+        "message.linear_acceleration.x",
+        "gravity_mps2",
+        "accel_time_scale_history",
+        "forward_accel_bias",
+    }
+    missing_imu_features = sorted(
+        feature for feature in required_imu_features
+        if feature not in source)
+    if missing_imu_features:
+        raise RuntimeError(
+            "missing IMU noise/integration protections: {}".format(
+                missing_imu_features))
     for forbidden_type in ("GPSMessage", "PointCloud2"):
         if forbidden_type in source:
             raise RuntimeError("forbidden estimator type: " + forbidden_type)
@@ -100,6 +113,8 @@ def main():
         "status": "PASS",
         "standalone_launch": launch_path,
         "estimator_vehicle_fields": sorted(required_fields),
+        "imu_acceleration_clock_aiding": True,
+        "imu_acceleration_double_integrated": False,
         "gps_input": False,
         "lidar_input": False,
         "eskf_integrated": True,

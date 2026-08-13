@@ -1,14 +1,14 @@
 # MORAI ESKF Portable Bundle
 
-이 압축파일은 다른 Ubuntu 20.04 + ROS Noetic 컴퓨터에 현재 검증된
-MORAI 순수 오도메트리 v5와 robust planar ESKF를 옮기기 위한 최소 배포본임.
+이 압축파일은 다른 Ubuntu 20.04 + ROS Noetic 컴퓨터에 2026-08-13 기준
+MORAI 순수 오도메트리와 robust planar ESKF를 옮기기 위한 최소 배포본임.
 
 ## 포함 패키지
 
 - `src/eskf`: 8-state planar ESKF, GPS 상태기계, fixed-lag replay,
   SE(2) 정렬, GUI, 설정 및 단위시험임.
 - `src/morai_msgs`: `GPSMessage`, `EgoVehicleStatus` 등 MORAI ROS1 메시지임.
-- `src/morai_eskf_runtime`: 순수 오도메트리 v5, 통합 launch,
+- `src/morai_eskf_runtime`: 현재 순수 오도메트리, 통합 launch,
   기존 `/localization/ego_status` 호환 출력 및 sensor TF 노드임.
 
 ## 지원 환경
@@ -59,7 +59,7 @@ cp -a src/morai_msgs ~/catkin_ws/src/
 cp -a src/morai_eskf_runtime ~/catkin_ws/src/
 cd ~/catkin_ws
 source /opt/ros/noetic/setup.bash
-catkin_make
+catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 source devel/setup.bash
 ```
 
@@ -135,11 +135,18 @@ python3 -m unittest discover -s src/eskf/test -p 'test_*.py'
 - 기존 메인 launch와 함께 실행할 때 `/eskf_node` 또는 `/pure_odometry`가 이미
   있으면 중복 실행하지 않아야 함.
 
-## 8. 검증된 결과 요약
+## 8. 현재 배포본 검증
 
-- 577.218초·2.445km 순수 오도메트리: 위치 RMSE 8.87m,
-  yaw RMSE 0.261도, 종점 drift 0.354%였음.
-- ESKF 강제 결함 4개 seed: 전체 위치 RMSE 0.902~1.174m였음.
-- 8~30초 무작위 GPS 음영 6회/seed: 음영 p95 1.794~3.496m,
-  최대 2.078~4.156m였음.
-- ESKF 단위시험 10/10과 catkin 빌드를 통과했음.
+- 메인 source와 portable 순수 오도메트리 파일의 바이트 단위 비교를 통과했음.
+- Python 문법 검사와 launch XML 검사를 통과했음.
+- 메인 workspace와 독립 portable workspace 빌드를 통과했음.
+- ESKF 단위시험 10/10과 launch 노드 그래프 검사를 통과했음.
+
+메인 workspace에서 MORAI 센서 수신부터 ESKF까지 전부 실행할 때는 다음 launch가
+기준임.
+
+```bash
+source /opt/ros/noetic/setup.bash
+source devel/setup.bash
+roslaunch morai_launch morai.launch
+```

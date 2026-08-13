@@ -8,6 +8,7 @@
   <arg name="lidar_port" default="2368" />
   <arg name="imu_port" default="9091" />
   <arg name="gps_port" default="9090" />
+  <arg name="start_imu_input" default="true" />
   <arg name="use_udp_imu" default="true" />
   <arg name="use_official_velodyne" default="true" />
   <arg name="start_gps_udp" default="true" />
@@ -32,6 +33,13 @@
   <arg name="eskf_config"
        default="$(find eskf)/config/eskf_robust.yaml" />
   <arg name="start_pure_odometry" default="true" />
+  <arg name="raw_lidar_topic" default="/velodyne_points" />
+  <arg name="lio_lidar_topic" default="/velodyne_points_lio" />
+  <arg name="pure_odometry_topic" default="/odometry/pure" />
+  <arg name="lio_odometry_topic" default="/lio_sam/mapping/odometry" />
+  <arg name="lio_degeneracy_topic"
+       default="/lio_sam/mapping/odometry_incremental" />
+  <arg name="eskf_output_topic" default="/eskf/odom" />
 
   <!-- MORAI Simulation Time mode publishes simulation stamps on /Ego_topic.
        morai_clock_bridge converts that header to /clock because this MORAI
@@ -56,6 +64,7 @@
     <arg name="lidar_port" value="$(arg lidar_port)" />
     <arg name="imu_port" value="$(arg imu_port)" />
     <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="start_imu_input" value="$(arg start_imu_input)" />
     <arg name="use_official_velodyne"
          value="$(arg use_official_velodyne)" />
     <arg name="start_gps_udp" value="$(arg start_gps_udp)" />
@@ -65,6 +74,8 @@
     <arg name="start_lio_sam" value="$(arg start_lio_sam)" />
     <arg name="start_navsat" value="$(arg start_lio_navsat)" />
     <arg name="start_rviz" value="$(arg start_lio_rviz)" />
+    <arg name="raw_lidar_topic" value="$(arg raw_lidar_topic)" />
+    <arg name="lio_lidar_topic" value="$(arg lio_lidar_topic)" />
   </include>
 
   <!-- Optional three-camera around view (front, left and right).
@@ -85,11 +96,18 @@
     <arg name="vehicle_config" value="$(arg vehicle_config)" />
     <arg name="eskf_config" value="$(arg eskf_config)" />
     <arg name="start_pure_odometry" value="$(arg start_pure_odometry)" />
+    <arg name="pure_odometry_topic" value="$(arg pure_odometry_topic)" />
+    <arg name="slam_topic" value="$(arg lio_odometry_topic)" />
+    <arg name="slam_degeneracy_topic"
+         value="$(arg lio_degeneracy_topic)" />
+    <arg name="eskf_output_topic" value="$(arg eskf_output_topic)" />
   </include>
 
   <include if="$(arg start_odometry_validation)"
            file="$(find morai_control)/launch/odometry_validation.launch">
     <arg name="vehicle_config" value="$(arg vehicle_config)" />
+    <arg name="eskf_topic" value="$(arg eskf_output_topic)" />
+    <arg name="lio_sam_topic" value="$(arg lio_odometry_topic)" />
     <arg name="output_file" value="$(arg odometry_validation_output)" />
   </include>
 

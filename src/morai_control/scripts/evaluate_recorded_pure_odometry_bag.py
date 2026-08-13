@@ -325,7 +325,7 @@ def evaluate(path, max_truth_gap, teleport_distance, odometry_topic):
         "estimator_inputs": [
             "EgoVehicleStatus.velocity.x",
             "EgoVehicleStatus.wheel_angle",
-            "Imu.orientation/angular_velocity.z",
+            "Imu.orientation/angular_velocity.z/linear_acceleration.x",
         ],
         "uses_gps": False,
         "uses_lidar": False,

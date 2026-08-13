@@ -59,6 +59,7 @@ catkin_install_python(PROGRAMS
   scripts/compare_odometry_time_scale_strategies.py
   scripts/evaluate_eskf_bag.py
   scripts/validate_standalone_odometry.py
+  scripts/validate_pure_odometry_imu_faults.py
   scripts/odometry_accuracy_validator.py
   scripts/validate_eskf_noise.py
   scripts/validate_eskf_odometry.py

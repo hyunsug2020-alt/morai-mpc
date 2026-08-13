@@ -47,7 +47,8 @@ source /opt/ros/noetic/setup.bash
 set -u
 
 cd "${target_ws}"
-catkin_make
+# ROS Noetic catkin의 오래된 최상위 CMake 정책을 CMake 4.x에서도 허용함.
+catkin_make -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
 echo "설치와 빌드가 완료됐음"
 echo "다음 명령을 실행하면 됨:"

@@ -76,6 +76,28 @@ class PureVehicleOdometry:
             "~time_scale_min_rotation_rad", 0.001))
         self.time_scale_alpha = float(rospy.get_param(
             "~time_scale_alpha", 0.05))
+        self.accel_time_scale_enabled = bool(rospy.get_param(
+            "~accel_time_scale_enabled", True))
+        self.accel_time_scale_weight = float(rospy.get_param(
+            "~accel_time_scale_weight", 0.75))
+        self.accel_time_scale_fusion_mode = str(rospy.get_param(
+            "~accel_time_scale_fusion_mode", "straight_only")).strip().lower()
+        self.accel_time_scale_window = float(rospy.get_param(
+            "~accel_time_scale_window_s", 2.0))
+        self.accel_time_scale_min_accel = float(rospy.get_param(
+            "~accel_time_scale_min_accel_mps2", 0.3))
+        self.accel_time_scale_min_samples = int(rospy.get_param(
+            "~accel_time_scale_min_samples", 10))
+        self.accel_time_scale_min_energy = float(rospy.get_param(
+            "~accel_time_scale_min_energy", 0.02))
+        self.accel_time_scale_full_weight_energy = float(rospy.get_param(
+            "~accel_time_scale_full_weight_energy", 0.08))
+        self.accel_bias_tau = float(rospy.get_param(
+            "~accel_bias_tau_s", 5.0))
+        self.accel_time_scale_noise = float(rospy.get_param(
+            "~accel_time_scale_noise_std_mps2", 0.35))
+        self.gravity_mps2 = float(rospy.get_param(
+            "~gravity_mps2", 9.80665))
         self.time_scale_min = float(rospy.get_param(
             "~time_scale_min", 0.2))
         self.time_scale_max = float(rospy.get_param(
@@ -145,6 +167,27 @@ class PureVehicleOdometry:
             max(self.time_scale_min, self.motion_rate_scale))
         self.time_scale_alpha = min(
             1.0, max(0.001, self.time_scale_alpha))
+        self.accel_time_scale_weight = min(
+            1.0, max(0.0, self.accel_time_scale_weight))
+        self.accel_time_scale_window = max(
+            0.5, self.accel_time_scale_window)
+        self.accel_time_scale_min_accel = max(
+            0.01, self.accel_time_scale_min_accel)
+        self.accel_time_scale_min_samples = max(
+            5, self.accel_time_scale_min_samples)
+        self.accel_time_scale_min_energy = max(
+            1.0e-6, self.accel_time_scale_min_energy)
+        self.accel_time_scale_full_weight_energy = max(
+            self.accel_time_scale_min_energy,
+            self.accel_time_scale_full_weight_energy)
+        self.accel_bias_tau = max(0.1, self.accel_bias_tau)
+        self.accel_time_scale_noise = max(
+            0.01, self.accel_time_scale_noise)
+        if self.accel_time_scale_fusion_mode not in (
+                "straight_only", "confidence_blend"):
+            raise ValueError(
+                "~accel_time_scale_fusion_mode must be "
+                "'straight_only' or 'confidence_blend'")
         self.time_scale_window = max(2.0, self.time_scale_window)
         self.time_scale_min_rotation = max(
             1.0e-5, self.time_scale_min_rotation)
@@ -178,8 +221,10 @@ class PureVehicleOdometry:
         self.gyro_bias = 0.0
         self.imu_history = deque(maxlen=400)
         self.imu_yaw_history = deque(maxlen=400)
+        self.imu_accel_history = deque(maxlen=400)
         self.vehicle_model_history = deque(maxlen=400)
         self.time_scale_history = deque(maxlen=2000)
+        self.accel_time_scale_history = deque(maxlen=500)
         self.previous_imu_stamp = None
         self.previous_imu_yaw = None
         self.previous_imu_gyro = None
@@ -193,7 +238,16 @@ class PureVehicleOdometry:
         self.orientation_invalid_streak = 0
         self.orientation_reanchor_pending = False
         self.latest_time_scale_candidate = None
+        self.latest_gyro_time_scale_candidate = None
+        self.gyro_time_scale_observable = False
+        self.latest_accel_time_scale_candidate = None
+        self.latest_forward_accel = None
+        self.forward_accel_bias = 0.0
+        self.previous_scale_accel = None
+        self.previous_measured_speed = None
         self.time_scale_updates = 0
+        self.accel_time_scale_updates = 0
+        self.accel_time_scale_rejections = 0
         self.last_imu_arrival = None
         self.last_vehicle_arrival = None
         self.last_stamp_progress_arrival = None
@@ -284,7 +338,18 @@ class PureVehicleOdometry:
                     and message.orientation_covariance[0] != -1.0):
                 normalized = [
                     value / quaternion_norm for value in quaternion_values]
-                imu_yaw = euler_from_quaternion(normalized)[2]
+                _, imu_pitch, imu_yaw = euler_from_quaternion(normalized)
+            else:
+                imu_pitch = None
+            raw_accel_x = float(message.linear_acceleration.x)
+            forward_accel = None
+            if math.isfinite(raw_accel_x) and imu_pitch is not None:
+                # MORAI IMU reports specific force. Remove the longitudinal
+                # gravity projection before using acceleration as a clock
+                # observation. Acceleration is never double-integrated.
+                forward_accel = (
+                    raw_accel_x
+                    + self.gravity_mps2 * math.sin(imu_pitch))
 
             if (
                     self.adaptive_time_scale
@@ -312,10 +377,13 @@ class PureVehicleOdometry:
                         sample[1] for sample in self.time_scale_history)
                     gyro_sum = sum(
                         sample[2] for sample in self.time_scale_history)
+                    self.gyro_time_scale_observable = bool(
+                        gyro_sum >= self.time_scale_min_rotation)
                     if gyro_sum >= self.time_scale_min_rotation:
                         candidate = yaw_sum / gyro_sum
                         if self.time_scale_min <= candidate <= self.time_scale_max:
                             self.latest_time_scale_candidate = candidate
+                            self.latest_gyro_time_scale_candidate = candidate
                             # yaw_sum/gyro_sum is already a robust trailing
                             # window estimate.  A second EMA added several
                             # seconds of avoidable lag when MORAI's physical
@@ -333,7 +401,9 @@ class PureVehicleOdometry:
                 # MORAI resets simulation time when the time mode changes.
                 self.imu_history.clear()
                 self.imu_yaw_history.clear()
+                self.imu_accel_history.clear()
                 self.time_scale_history.clear()
+                self.accel_time_scale_history.clear()
                 self.previous_imu_stamp = None
                 self.previous_imu_yaw = None
                 self.previous_imu_gyro = None
@@ -346,6 +416,8 @@ class PureVehicleOdometry:
                 self.orientation_consistency_count = 0
                 self.orientation_invalid_streak = 0
                 self.orientation_reanchor_pending = False
+                self.previous_scale_accel = None
+                self.previous_measured_speed = None
             if gyro_valid:
                 if not self.imu_history or stamp_sec > self.imu_history[-1][0]:
                     self.imu_history.append((stamp_sec, self.gyro_z))
@@ -365,6 +437,16 @@ class PureVehicleOdometry:
                 elif stamp_sec == self.imu_yaw_history[-1][0]:
                     self.imu_yaw_history[-1] = (
                         stamp_sec, self.unwrapped_imu_yaw)
+            if forward_accel is not None:
+                corrected_accel = forward_accel - self.forward_accel_bias
+                self.latest_forward_accel = corrected_accel
+                if (
+                        not self.imu_accel_history
+                        or stamp_sec > self.imu_accel_history[-1][0]):
+                    self.imu_accel_history.append((stamp_sec, forward_accel))
+                elif stamp_sec == self.imu_accel_history[-1][0]:
+                    self.imu_accel_history[-1] = (
+                        stamp_sec, forward_accel)
             self.last_imu_arrival = arrival
             self.imu_messages += 1
 
@@ -427,6 +509,138 @@ class PureVehicleOdometry:
         age = min(stamp_sec - first_stamp, second_stamp - stamp_sec)
         return yaw, max(0.0, age), True
 
+    def accel_at_stamp(self, stamp_sec):
+        """Interpolate gravity-compensated forward acceleration."""
+        if not self.imu_accel_history:
+            return None, math.inf
+        samples = list(self.imu_accel_history)
+        if stamp_sec <= samples[0][0]:
+            return (
+                samples[0][1] - self.forward_accel_bias,
+                samples[0][0] - stamp_sec)
+        if stamp_sec >= samples[-1][0]:
+            return (
+                samples[-1][1] - self.forward_accel_bias,
+                stamp_sec - samples[-1][0])
+        low = 0
+        high = len(samples) - 1
+        while high - low > 1:
+            middle = (low + high) // 2
+            if samples[middle][0] <= stamp_sec:
+                low = middle
+            else:
+                high = middle
+        first = samples[low]
+        second = samples[high]
+        fraction = (
+            (stamp_sec - first[0])
+            / max(second[0] - first[0], 1.0e-9))
+        value = (
+            first[1] + fraction * (second[1] - first[1])
+            - self.forward_accel_bias)
+        age = min(stamp_sec - first[0], second[0] - stamp_sec)
+        return value, max(0.0, age)
+
+    def update_accel_time_scale(self, stamp_sec, raw_delta_time,
+                                measured_speed):
+        """Observe physics/wall time ratio from dv = integral(a dt)."""
+        accel, accel_age = self.accel_at_stamp(stamp_sec)
+        if (
+                not self.accel_time_scale_enabled
+                or self.use_sim_time
+                or accel is None
+                or accel_age * self.motion_rate_scale > self.imu_timeout):
+            self.previous_scale_accel = accel
+            self.previous_measured_speed = measured_speed
+            return
+        if abs(measured_speed) < self.stationary_speed:
+            if abs(accel) < 1.0:
+                bias_alpha = first_order_alpha(
+                    raw_delta_time * self.motion_rate_scale,
+                    self.accel_bias_tau)
+                self.forward_accel_bias += bias_alpha * accel
+            self.accel_time_scale_history.clear()
+            self.previous_scale_accel = accel
+            self.previous_measured_speed = measured_speed
+            return
+        if (
+                self.previous_scale_accel is not None
+                and self.previous_measured_speed is not None
+                and 0.0 < raw_delta_time <= 0.5):
+            mean_accel = 0.5 * (self.previous_scale_accel + accel)
+            delta_velocity = measured_speed - self.previous_measured_speed
+            accel_impulse = mean_accel * raw_delta_time
+            if (
+                    abs(mean_accel) >= self.accel_time_scale_min_accel
+                    and abs(delta_velocity) <= 3.0):
+                self.accel_time_scale_history.append((
+                    stamp_sec, delta_velocity, accel_impulse))
+            cutoff = stamp_sec - self.accel_time_scale_window
+            while (
+                    self.accel_time_scale_history
+                    and self.accel_time_scale_history[0][0] < cutoff):
+                self.accel_time_scale_history.popleft()
+            if len(self.accel_time_scale_history) >= (
+                    self.accel_time_scale_min_samples):
+                delta_values = np.asarray([
+                    sample[1] for sample in self.accel_time_scale_history])
+                impulse_values = np.asarray([
+                    sample[2] for sample in self.accel_time_scale_history])
+                energy = float(np.dot(impulse_values, impulse_values))
+                if energy >= self.accel_time_scale_min_energy:
+                    candidate = float(
+                        np.dot(delta_values, impulse_values) / energy)
+                    # Huber IRLS limits UDP spikes and acceleration noise.
+                    for _ in range(2):
+                        residual = (
+                            delta_values - candidate * impulse_values)
+                        sigma = max(
+                            self.accel_time_scale_noise * 0.02,
+                            1.4826 * float(np.median(np.abs(
+                                residual - np.median(residual)))))
+                        weights = np.minimum(
+                            1.0,
+                            2.5 * sigma
+                            / np.maximum(np.abs(residual), 1.0e-12))
+                        denominator = float(np.dot(
+                            weights * impulse_values, impulse_values))
+                        if denominator <= 1.0e-12:
+                            break
+                        candidate = float(np.dot(
+                            weights * delta_values, impulse_values)
+                            / denominator)
+                    if self.time_scale_min <= candidate <= self.time_scale_max:
+                        self.latest_accel_time_scale_candidate = candidate
+                        gyro_candidate = self.latest_gyro_time_scale_candidate
+                        if (
+                                self.accel_time_scale_fusion_mode
+                                == "straight_only"):
+                            fused_candidate = (
+                                self.motion_rate_scale
+                                if self.gyro_time_scale_observable
+                                else candidate)
+                        elif gyro_candidate is None:
+                            fused_candidate = candidate
+                        else:
+                            confidence = min(
+                                1.0,
+                                energy
+                                / self.accel_time_scale_full_weight_energy)
+                            weight = (
+                                self.accel_time_scale_weight * confidence)
+                            fused_candidate = (
+                                weight * candidate
+                                + (1.0 - weight) * gyro_candidate)
+                        self.motion_rate_scale = min(
+                            self.time_scale_max,
+                            max(self.time_scale_min, fused_candidate))
+                        self.latest_time_scale_candidate = fused_candidate
+                        self.accel_time_scale_updates += 1
+                    else:
+                        self.accel_time_scale_rejections += 1
+        self.previous_scale_accel = accel
+        self.previous_measured_speed = measured_speed
+
     def model_input_at_stamp(self, stamp_sec):
         """Interpolate delayed speed/steering inputs for the bicycle model."""
         if not self.vehicle_model_history:
@@ -468,6 +682,9 @@ class PureVehicleOdometry:
         self.last_stamp_progress_arrival = arrival
         self.stationary_since_stamp = stamp_sec
         self.vehicle_model_history.clear()
+        self.accel_time_scale_history.clear()
+        self.previous_scale_accel = None
+        self.previous_measured_speed = None
         self.orientation_reference_imu_yaw = None
         self.orientation_reference_odometry_yaw = None
         self.last_orientation_sample_yaw = None
@@ -515,6 +732,8 @@ class PureVehicleOdometry:
                     measured_speed)
                 self.previous_filtered_speed = self.filtered_speed
                 self.latest_steering = steering
+                self.previous_measured_speed = measured_speed
+                self.previous_scale_accel = self.accel_at_stamp(stamp_sec)[0]
                 self.vehicle_model_history.append(
                     (stamp_sec, self.filtered_speed, steering))
                 self.publish_odometry(message.header.stamp, 0.0)
@@ -535,6 +754,8 @@ class PureVehicleOdometry:
             self.last_vehicle_stamp = stamp_sec
             self.last_publish_arrival = arrival
             self.last_stamp_progress_arrival = arrival
+            self.update_accel_time_scale(
+                stamp_sec, raw_delta_time, measured_speed)
             delta_time = raw_delta_time * self.motion_rate_scale
             if delta_time > self.max_recoverable_gap:
                 self.rejected_dt += 1
@@ -899,7 +1120,20 @@ class PureVehicleOdometry:
                     else "imu_adaptive" if self.adaptive_time_scale
                     else "fixed"),
                 "time_scale_candidate": self.latest_time_scale_candidate,
+                "gyro_time_scale_candidate": (
+                    self.latest_gyro_time_scale_candidate),
+                "gyro_time_scale_observable": (
+                    self.gyro_time_scale_observable),
+                "accel_time_scale_candidate": (
+                    self.latest_accel_time_scale_candidate),
+                "accel_time_scale_fusion_mode": (
+                    self.accel_time_scale_fusion_mode),
                 "time_scale_updates": self.time_scale_updates,
+                "accel_time_scale_updates": self.accel_time_scale_updates,
+                "accel_time_scale_rejections": (
+                    self.accel_time_scale_rejections),
+                "forward_accel_mps2": self.latest_forward_accel,
+                "forward_accel_bias_mps2": self.forward_accel_bias,
                 "uses_sim_time": self.use_sim_time,
                 "understeer_coefficient_s2pm": self.understeer_coefficient,
                 "physical_wheelbase_m": self.wheelbase,
