@@ -1,0 +1,53 @@
+<launch>
+  <!-- Localization-positioned LIO-SAM mapping.
+       Position: competition ESKF /localization/ego_status
+       Mapping: LiDAR UDP + IMU UDP
+       Excluded: GPS UDP, ESKF, path following, vehicle control and cameras. -->
+  <arg name="simulator_ip" default="$(optenv MORAI_SIM_IP 127.0.0.1)" />
+  <arg name="bind_ip" default="$(optenv MORAI_LOCAL_IP 127.0.0.1)" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="imu_port" default="9091" />
+  <!-- Set these false when the UDP connection launch already provides them. -->
+  <arg name="start_lidar_udp" default="true" />
+  <arg name="start_imu_input" default="true" />
+  <arg name="start_rviz" default="true" />
+  <arg name="params_file"
+       default="$(find lio_sam)/config/params_morai.yaml" />
+
+  <param name="/use_sim_time" value="false" />
+
+  <!-- Ignore an inherited ROS_NAMESPACE such as /central. Public nodes and
+       topics remain rooted for repeatable command-line inspection. -->
+  <group ns="/">
+  <node pkg="lio_sam" type="ego_lio_gps_odometry.py"
+        name="ego_lio_gps_odometry" output="screen" required="true">
+    <param name="input_topic" value="/localization/ego_status" />
+    <param name="output_topic" value="/lio_sam/gps/odometry" />
+    <param name="xy_variance" value="1.0" />
+    <!-- MORAI base_link -> LiDAR from morai_sensor.json. -->
+    <param name="lidar_forward" value="1.045" />
+    <param name="lidar_left" value="0.0" />
+  </node>
+
+  <include file="$(find lio_sam)/launch/morai_udp.launch">
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="udp_source_ip" value="$(arg simulator_ip)" />
+    <arg name="udp_bind_ip" value="$(arg bind_ip)" />
+    <arg name="start_imu_input" value="$(arg start_imu_input)" />
+    <arg name="resample_imu_for_lio" value="true" />
+    <arg name="start_input_monitor" value="true" />
+    <arg name="use_udp_imu" value="true" />
+    <arg name="use_official_velodyne" value="true" />
+    <arg name="normalize_lidar_time" value="true" />
+    <arg name="start_gps_udp" value="false" />
+    <arg name="start_gps_odometry" value="false" />
+    <arg name="start_lidar_udp" value="$(arg start_lidar_udp)" />
+    <arg name="start_lio_sam" value="true" />
+    <arg name="start_navsat" value="false" />
+    <arg name="start_rviz" value="$(arg start_rviz)" />
+    <arg name="start_robot_state_publisher" value="true" />
+    <arg name="params_file" value="$(arg params_file)" />
+  </include>
+  </group>
+</launch>

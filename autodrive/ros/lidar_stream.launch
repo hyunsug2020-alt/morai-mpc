@@ -1,0 +1,19 @@
+<launch>
+  <!-- Always-on VLP16 stream from MORAI (UDP 2368) for the Student GUI's free-space check: /lidar/points in frame Lidar3D-5.
+       Mount (rgb_cam.json Lidar3D): x=1.05 y=0 z=1.35, rot 0. collect_lidar.launch uses the same port: ctl.sh stops this
+       stream while a LiDAR collection is running. -->
+  <group>
+    <remap from="velodyne_packets" to="/lidar/packets" />
+    <remap from="velodyne_points" to="/lidar/points" />
+    <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+      <arg name="device_ip" value="$(optenv MORAI_SIM_IP '')" />
+      <arg name="port" value="2368" />
+      <arg name="frame_id" value="Lidar3D-5" />
+      <arg name="manager" value="lidar_stream_nodelet_manager" />
+      <arg name="rpm" value="$(optenv MORAI_LIDAR_RPM 900.0)" />
+      <arg name="cut_angle" value="0.0" />
+      <arg name="min_range" value="0.4" />
+      <arg name="max_range" value="100.0" />
+    </include>
+  </group>
+</launch>

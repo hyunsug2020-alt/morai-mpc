@@ -1,0 +1,99 @@
+<launch>
+  <!-- Competition cable transport.  This launch opens only organizer-approved
+       UDP inputs/outputs and never changes MORAI/OS network configuration. -->
+  <arg name="simulator_ip" default="$(optenv MORAI_SIM_IP '')" />
+  <arg name="bind_ip" default="$(optenv MORAI_LOCAL_IP 0.0.0.0)" />
+  <arg name="status_port" default="$(optenv MORAI_STATUS_PORT 0)" />
+  <arg name="collision_port" default="$(optenv MORAI_COLLISION_PORT 0)" />
+  <arg name="control_port" default="$(optenv MORAI_CONTROL_PORT 0)" />
+  <arg name="physical_max_steer_deg" default="40.0" />
+  <!-- Receive-only by default. The integrated competition launch enables
+       command output only when its start_control argument is explicitly true. -->
+  <arg name="enable_control_output" default="false" />
+
+  <arg name="lidar_port" default="2368" />
+  <arg name="imu_port" default="9091" />
+  <arg name="gps_port" default="9090" />
+  <arg name="use_official_velodyne" default="true" />
+  <arg name="start_imu_input" default="true" />
+  <arg name="start_gps_udp" default="true" />
+  <arg name="start_lidar_udp" default="true" />
+  <arg name="start_camera_udp" default="true" />
+  <arg name="resample_imu_for_lio" default="false" />
+  <arg name="start_input_monitor" default="false" />
+  <arg name="normalize_lidar_time" default="false" />
+  <arg name="start_gps_odometry" default="false" />
+  <arg name="start_lio_sam" default="false" />
+  <arg name="start_robot_state_publisher" default="false" />
+  <arg name="camera_config"
+       default="$(find around_view)/config/cameras.yaml" />
+  <arg name="camera_packet_format" default="auto" />
+  <arg name="show_camera_windows" default="false" />
+
+  <param name="/use_sim_time" value="false" />
+  <param name="/morai_active_transport" value="udp" />
+
+  <node pkg="morai_launch" type="competition_udp_bridge.py"
+        name="competition_udp_bridge" output="screen" required="true">
+    <param name="simulator_ip" value="$(arg simulator_ip)" />
+    <param name="bind_ip" value="$(arg bind_ip)" />
+    <param name="status_port" value="$(arg status_port)" />
+    <param name="collision_port" value="$(arg collision_port)" />
+    <param name="control_port" value="$(arg control_port)" />
+    <param name="physical_max_steer_deg"
+           value="$(arg physical_max_steer_deg)" />
+    <param name="enable_control_output"
+           value="$(arg enable_control_output)" />
+    <!-- Competition localization must use GPS/IMU/wheel data, never the
+         ground-truth pose and heading carried by generic Ego Status UDP. -->
+    <param name="publish_udp_pose_fields" value="false" />
+    <param name="max_status_clock_skew_s" value="10.0" />
+    <param name="status_topic" value="/Competition_topic" />
+    <param name="status_topic_alias" value="/competition_topic" />
+    <param name="collision_topic" value="/CollisionData" />
+    <param name="command_topic" value="/ctrl_cmd" />
+    <param name="gear_topic" value="/competition/gear_cmd" />
+    <param name="send_rate_hz" value="50.0" />
+    <param name="command_timeout_s" value="0.25" />
+    <param name="status_timeout_s" value="0.50" />
+    <param name="control_release_timeout_s" value="1.0" />
+  </node>
+
+  <node pkg="morai_launch" type="morai_topic_init.py"
+        name="morai_topic_init" output="screen">
+    <param name="competition_mode" value="true" />
+  </node>
+
+  <include file="$(find lio_sam)/launch/morai_udp.launch">
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="imu_max_wire_clock_skew_s" value="10.0" />
+    <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="udp_source_ip" value="$(arg simulator_ip)" />
+    <arg name="udp_bind_ip" value="$(arg bind_ip)" />
+    <arg name="start_imu_input" value="$(arg start_imu_input)" />
+    <arg name="use_udp_imu" value="true" />
+    <arg name="resample_imu_for_lio" value="$(arg resample_imu_for_lio)" />
+    <arg name="start_input_monitor" value="$(arg start_input_monitor)" />
+    <arg name="use_official_velodyne"
+         value="$(arg use_official_velodyne)" />
+    <arg name="normalize_lidar_time" value="$(arg normalize_lidar_time)" />
+    <arg name="start_gps_udp" value="$(arg start_gps_udp)" />
+    <arg name="start_gps_odometry" value="$(arg start_gps_odometry)" />
+    <arg name="start_lidar_udp" value="$(arg start_lidar_udp)" />
+    <arg name="start_lio_sam" value="$(arg start_lio_sam)" />
+    <arg name="start_navsat" value="false" />
+    <arg name="start_rviz" value="false" />
+    <arg name="start_robot_state_publisher"
+         value="$(arg start_robot_state_publisher)" />
+  </include>
+
+  <include if="$(arg start_camera_udp)"
+           file="$(find around_view)/launch/camera_view.launch">
+    <arg name="camera_config" value="$(arg camera_config)" />
+    <arg name="packet_format" value="$(arg camera_packet_format)" />
+    <arg name="source_ip" value="$(arg simulator_ip)" />
+    <arg name="bind_ip" value="$(arg bind_ip)" />
+    <arg name="show_windows" value="$(arg show_camera_windows)" />
+  </include>
+</launch>

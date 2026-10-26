@@ -1,0 +1,58 @@
+<launch>
+  <!-- Experimental A/B launch. Production follower_avoid.launch is unchanged. -->
+  <arg name="cruise_kmh" default="10.0" />
+  <arg name="object_topic" default="/Object_topic" />
+  <arg name="path_txt" default="/data/autodrive/global_path.txt" />
+  <arg name="path_json" default="/data/autodrive/global_path.json" />
+  <!-- Keep the previously stable controller tuning. The test follows the
+       normal global route and uses B-spline only for obstacle bypasses. -->
+  <arg name="kappa_gain" default="1.28" />
+  <arg name="max_steer_rate" default="50.0" />
+  <arg name="max_steer_deg" default="35.0" />
+  <arg name="w_u" default="5200.0" />
+  <arg name="w_u_v_gain" default="350.0" />
+
+  <remap from="/localization/ego_status" to="/Ego_topic" />
+
+  <include file="$(find moraimpc)/launch/hdmap_lane_change.launch">
+    <arg name="planner_type" value="hdmap_lane_change_bspline_test.py" />
+    <arg name="path_file" value="$(arg path_txt)" />
+    <arg name="global_path_file" value="$(arg path_txt)" />
+    <arg name="hdmap_zip" value="$(find moraimpc)/data/hdmap.zip" />
+    <arg name="directional_map" value="$(find moraimpc)/data/competition_directional_drivable_map.json.gz" />
+    <arg name="vehicle_config" value="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+    <arg name="lane_policy_file" value="$(find moraimpc)/data/lane_policy_overrides.json" />
+    <arg name="local_bypass_corridor_file" value="$(find moraimpc)/data/local_bypass_corridor_overrides.json" />
+    <arg name="object_topic" value="$(arg object_topic)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="use_base_route" value="true" />
+    <arg name="ltv_only" value="true" />
+    <arg name="follower" value="false" />
+    <arg name="mode_init" value="false" />
+    <arg name="rviz" value="false" />
+    <arg name="visualization" value="false" />
+    <arg name="planner_diagnostics_csv" value="/data/autodrive/avoidance_bspline_test_diagnostics.csv" />
+    <arg name="log_file" value="/data/autodrive/avoidance_bspline_test_log.json" />
+  </include>
+
+  <include file="$(find moraimpc)/launch/hdmap_path_follower.launch">
+    <arg name="path_file" value="$(arg path_json)" />
+    <arg name="ego_topic" value="/Ego_topic" />
+    <arg name="object_topic" value="$(arg object_topic)" />
+    <arg name="vehicle_config" value="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="ltv_only" value="true" />
+    <arg name="use_avoid_path" value="true" />
+    <arg name="stop_at_path_end" value="false" />
+    <arg name="log_file" value="/data/autodrive/follower_bspline_test_log.json" />
+    <arg name="kappa_gain" value="$(arg kappa_gain)" />
+    <arg name="max_steer_rate" value="$(arg max_steer_rate)" />
+    <arg name="max_steer_deg" value="$(arg max_steer_deg)" />
+    <arg name="w_u" value="$(arg w_u)" />
+    <arg name="w_u_v_gain" value="$(arg w_u_v_gain)" />
+    <arg name="longitudinal_cmd_type" value="2" />
+    <arg name="gear_control_enabled" value="true" />
+    <arg name="initialize_control_mode" value="true" />
+    <arg name="control_mode" value="3" />
+  </include>
+</launch>

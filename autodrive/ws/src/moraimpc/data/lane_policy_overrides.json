@@ -1,0 +1,137 @@
+{
+  "format": "morai_lane_policy_overrides",
+  "links": {
+    "A2256W000009": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000216"
+    },
+    "A2256W000131": {
+      "lane_no": 1,
+      "policy": "avoidance",
+      "road_id": "4000276"
+    },
+    "A2256W000303": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000193"
+    },
+    "A2256W000307": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000221"
+    },
+    "A2256W000309": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000223"
+    },
+    "A2256W000310": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000183"
+    },
+    "A2256W000319": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000185"
+    },
+    "A2256W000406": {
+      "lane_no": 4,
+      "policy": "last_resort",
+      "road_id": "4000357"
+    },
+    "A2256W000409": {
+      "lane_no": 4,
+      "policy": "normal",
+      "road_id": "4000104"
+    },
+    "A2256W000410": {
+      "lane_no": 3,
+      "policy": "normal",
+      "road_id": "4000104"
+    },
+    "A2256W000418": {
+      "lane_no": 2,
+      "policy": "normal",
+      "road_id": "4000104"
+    },
+    "A2256W000421": {
+      "lane_no": 1,
+      "policy": "normal",
+      "road_id": "4000107"
+    },
+    "A2256W000422": {
+      "lane_no": 3,
+      "policy": "normal",
+      "road_id": "4000112"
+    },
+    "A2256W000423": {
+      "lane_no": 2,
+      "policy": "normal",
+      "road_id": "4000112"
+    },
+    "A2256W000424": {
+      "lane_no": 1,
+      "policy": "normal",
+      "road_id": "4000111"
+    },
+    "A2256W000425": {
+      "lane_no": 1,
+      "policy": "normal",
+      "road_id": "4000112"
+    },
+    "A2256W000429": {
+      "lane_no": 1,
+      "policy": "normal",
+      "road_id": "4000104"
+    },
+    "A2256W000430": {
+      "lane_no": 3,
+      "policy": "normal",
+      "road_id": "4000142"
+    },
+    "A2256W000431": {
+      "lane_no": 2,
+      "policy": "normal",
+      "road_id": "4000142"
+    },
+    "A2256W000432": {
+      "lane_no": 2,
+      "policy": "normal",
+      "road_id": "4000111"
+    },
+    "A2256W000433": {
+      "lane_no": 1,
+      "policy": "normal",
+      "road_id": "4000142"
+    },
+    "A2256W000434": {
+      "lane_no": 3,
+      "policy": "normal",
+      "road_id": "4000107"
+    },
+    "A2256W000435": {
+      "lane_no": 2,
+      "policy": "normal",
+      "road_id": "4000107"
+    },
+    "A2256W000441": {
+      "lane_no": 1,
+      "policy": "avoidance",
+      "road_id": "4000101"
+    },
+    "A2256W000739": {
+      "lane_no": 1,
+      "policy": "forbidden",
+      "road_id": "4000698"
+    },
+    "A2256W000849": {
+      "lane_no": 2,
+      "policy": "avoidance",
+      "road_id": "4000871"
+    }
+  },
+  "updated_at": "2026-08-17T06:35:30.352495+00:00",
+  "version": 1
+}

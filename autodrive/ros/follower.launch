@@ -1,0 +1,28 @@
+<launch>
+  <!-- moraimpc LTV-MPC global path follower wired to MORAI's ROS topics (/Ego_topic in, /ctrl_cmd out). -->
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+  <arg name="path_file" default="/data/autodrive/global_path.json" />
+  <arg name="ego_topic" default="/Ego_topic" />
+  <arg name="cruise_kmh" default="30.0" />
+  <arg name="stop_at_path_end" default="true" />
+  <arg name="log_file" default="/data/autodrive/follower_log.json" />
+
+  <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen" required="true">
+    <rosparam command="load" file="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+    <rosparam command="load" file="$(find moraimpc)/config/ltv_tuning.yaml" />
+    <remap from="/localization/ego_status" to="$(arg ego_topic)" />
+    <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="target_vel" value="$(arg cruise_kmh)" />
+    <param name="ltv_only" value="true" />
+    <param name="force_nmpc" value="false" />
+    <param name="use_avoid_path" value="false" />
+    <param name="avoidance_enabled" value="false" />
+    <param name="stop_at_path_end" value="$(arg stop_at_path_end)" />
+    <param name="log_file" value="$(arg log_file)" />
+    <param name="longitudinal_cmd_type" value="2" />
+    <param name="gear_control_enabled" value="true" />
+    <param name="initialize_control_mode" value="true" />
+    <param name="control_mode" value="3" />
+  </node>
+</launch>

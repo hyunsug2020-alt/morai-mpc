@@ -1,0 +1,463 @@
+{
+  "source_run": "follow-20261011T161435Z-2347191",
+  "source_time": 1791735561.8367772,
+  "limits": "Native paths reconstructed from rounded logged ego; recorded clearances supplied. Raw scans, nudge and historical planner state unavailable.",
+  "ego": {
+    "x": 66.81,
+    "y": 104.83,
+    "heading_deg": -88.0,
+    "speed_kmh": 48.8,
+    "stamp": 1791735560.4313061
+  },
+  "rtf": 0.627,
+  "objects": [
+    [
+      67.06496809723572,
+      93.30178992017063,
+      5.035590171813965,
+      "lidar_car",
+      "npc",
+      8.11816410403511,
+      5.035590171813965,
+      1.9461768865585327,
+      95.59133095364645,
+      0.21257472881034503,
+      -8.115380484285096,
+      500019,
+      0.0,
+      null,
+      true,
+      0.0
+    ],
+    [
+      69.91409721410751,
+      119.46332229091446,
+      4.982946395874023,
+      "lidar_car",
+      "npc",
+      9.616555511730407,
+      4.982946395874023,
+      1.9602704048156738,
+      271.98003736349864,
+      -0.09232009373244965,
+      -9.616112359497766,
+      500014,
+      0.0,
+      null,
+      true,
+      0.0
+    ]
+  ],
+  "sensor_age_s": 0.0722343921661377,
+  "config": {
+    "from_idx": 1842,
+    "to_idx": 3500,
+    "kmh": 120.0,
+    "use_mission_speed": true,
+    "overtake_kmh": 120.0,
+    "start_link": "A2256W000866",
+    "end_link": "A2256W000153",
+    "start_xy": [
+      -80.44610373824828,
+      340.5908071131568
+    ],
+    "end_xy": [
+      70.21414883,
+      -365.748477
+    ],
+    "lane_change_goal": 0,
+    "lane_change_policy": "free_three_lane",
+    "excluded_lane_links": [
+      "A2256W000429"
+    ],
+    "comfort_decel_mps2": 2.5,
+    "comfort_jerk_mps3": 4.0,
+    "emergency_jerk_mps3": 12.0,
+    "lane_gain_kmh": 2.0,
+    "lane_gain_hold_s": 0.3,
+    "lane_cancel_gain_kmh": 3.0,
+    "exit_speed_kmh": 58.0,
+    "rule_speed_limit": {
+      "until_idx": 2255,
+      "kmh": 58.0,
+      "link": "A2256W000411",
+      "note": "60 km/h applies before the start of A2256W000411 (idx 2251); +2 m margin"
+    },
+    "decision_hz": 15,
+    "lidar_hz": 15,
+    "lidar_regions": [
+      {
+        "from_idx": 3500,
+        "to_idx": 4080,
+        "name": "tunnel_approach_and_tunnel"
+      }
+    ],
+    "merge_zones": [
+      [
+        3030,
+        3210,
+        1
+      ]
+    ],
+    "entry_lane_change": {
+      "from_idx": 2251,
+      "to_idx": 2350,
+      "source_link": "A2256W000411",
+      "target_link": "A2256W000409",
+      "start_xy": [
+        62.073913682601415,
+        256.4949275725521
+      ],
+      "start_latlon": [
+        37.24527230103773,
+        126.77505080206126
+      ],
+      "policy": "first_safe_adjacent",
+      "marker": "B2256W000038",
+      "no_initial_deceleration": true
+    }
+  },
+  "checks": [
+    {
+      "lanes": [
+        "A2256W000411"
+      ],
+      "accepted": false,
+      "map_clear_m": 220.0,
+      "static_clear_m": 220.0,
+      "original_map_clear_m": 220.0,
+      "transformed_map_clear_m": 220.0,
+      "path_transform_rejected": false,
+      "transition_m": 200.0,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 108.76371735640389,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 108.76371735640389,
+      "gap_risk": {
+        "when": 2.1,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.5,
+        "physical_collision_when": 3.7,
+        "footprint_margin_m": 0.6,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000411"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 90.0,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 104.10504654742758,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 104.10504654742758,
+      "gap_risk": {
+        "when": 2.1,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.5,
+        "physical_collision_when": 4.5,
+        "footprint_margin_m": 0.6,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000411"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 77.77777777777777,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 102.24140747212535,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 102.24140747212535,
+      "gap_risk": {
+        "when": 2.1,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.5,
+        "physical_collision_when": 5.1000000000000005,
+        "footprint_margin_m": 0.6,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000411"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 48.816750752872345,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 95.31539562482519,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 95.31539562482519,
+      "gap_risk": {
+        "when": 3.5,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.5,
+        "physical_collision_when": 5.2,
+        "footprint_margin_m": 0.6,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410"
+      ],
+      "accepted": false,
+      "map_clear_m": 220.0,
+      "static_clear_m": 220.0,
+      "original_map_clear_m": 220.0,
+      "transformed_map_clear_m": 220.0,
+      "path_transform_rejected": false,
+      "transition_m": 200.0,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 107.6533279288595,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 107.6533279288595,
+      "gap_risk": {
+        "when": 3.4000000000000004,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.4000000000000004,
+        "physical_collision_when": 4.2,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 90.0,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 118.05281469465214,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 118.05281469465214,
+      "gap_risk": {
+        "when": 2.6,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.4000000000000004,
+        "physical_collision_when": 3.7,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 77.77777777777777,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 117.053061809154,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 117.053061809154,
+      "gap_risk": {
+        "when": 2.5,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.3000000000000003,
+        "physical_collision_when": 3.7,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 48.816750752872345,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 88.727694287509,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 88.727694287509,
+      "gap_risk": {
+        "when": 1.9000000000000001,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": null,
+        "physical_collision_when": null,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410",
+        "A2256W000418"
+      ],
+      "accepted": false,
+      "reason": "insufficient distance before common merge"
+    },
+    {
+      "lanes": [
+        "A2256W000410",
+        "A2256W000418"
+      ],
+      "accepted": false,
+      "map_clear_m": 207.0,
+      "static_clear_m": 207.0,
+      "original_map_clear_m": 207.0,
+      "transformed_map_clear_m": 207.0,
+      "path_transform_rejected": false,
+      "transition_m": 186.78010427123226,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 118.05281469465214,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 118.05281469465214,
+      "gap_risk": {
+        "when": 2.6,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.4000000000000004,
+        "physical_collision_when": 3.7,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410",
+        "A2256W000418"
+      ],
+      "accepted": false,
+      "map_clear_m": 182.5,
+      "static_clear_m": 182.5,
+      "original_map_clear_m": 182.5,
+      "transformed_map_clear_m": 182.5,
+      "path_transform_rejected": false,
+      "transition_m": 162.3356598267878,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 117.053061809154,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 117.053061809154,
+      "gap_risk": {
+        "when": 2.5,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": 3.3000000000000003,
+        "physical_collision_when": 3.7,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    },
+    {
+      "lanes": [
+        "A2256W000410",
+        "A2256W000418"
+      ],
+      "accepted": false,
+      "map_clear_m": 170.0,
+      "static_clear_m": 170.0,
+      "original_map_clear_m": 170.0,
+      "transformed_map_clear_m": 170.0,
+      "path_transform_rejected": false,
+      "transition_m": 104.41360577697696,
+      "reason": "lane-change traffic gap occupied",
+      "geometry_cap_kmh": 88.727694287509,
+      "free_goal_kmh": 120.00000000000001,
+      "speed_ceiling_kmh": 120.00000000000001,
+      "side_gap_cap_kmh": null,
+      "goal_kmh": 88.727694287509,
+      "gap_risk": {
+        "when": 1.9000000000000001,
+        "name": "lidar_car",
+        "object_id": 500014,
+        "collision_when": null,
+        "physical_collision_when": null,
+        "footprint_margin_m": 0.8999999999999999,
+        "reason": "predicted lane-change gap occupied",
+        "rear_approach": true
+      },
+      "urgent_current_lane": false,
+      "bounded_static_escape": false
+    }
+  ]
+}

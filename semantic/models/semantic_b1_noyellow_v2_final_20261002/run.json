@@ -1,0 +1,71 @@
+{
+  "backbone": "efficientvit_b1.r256_in1k",
+  "dataset": "/mnt/ssd2/semantic_capture/training/dataset_b1_noyellow_v2",
+  "camera_policy": {
+    "front": {
+      "rgb_id": 1,
+      "semantic_id": 4,
+      "rgb_port": 12002,
+      "semantic_port": 13002,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "left": {
+      "rgb_id": 2,
+      "semantic_id": 8,
+      "rgb_port": 12004,
+      "semantic_port": 13004,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "right": {
+      "rgb_id": 3,
+      "semantic_id": 9,
+      "rgb_port": 12006,
+      "semantic_port": 13006,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "signal": {
+      "rgb_id": 10,
+      "semantic_id": 11,
+      "rgb_port": 12008,
+      "semantic_port": 12010,
+      "supervised_class_ids": [
+        3
+      ],
+      "student_rgb": true
+    }
+  },
+  "animal_verified": false,
+  "input": [
+    640,
+    384
+  ],
+  "smoke": false,
+  "general_only": false,
+  "front_exclusion_mask": "front_exclusion_mask_1280x720.png",
+  "view_exclusion_masks": {
+    "front": "front_exclusion_mask_1280x720.png",
+    "left": "left_exclusion_mask_640x480.png",
+    "right": "right_exclusion_mask_640x480.png"
+  }
+}

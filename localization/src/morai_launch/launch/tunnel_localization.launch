@@ -1,0 +1,116 @@
+<launch>
+  <!-- Localization-only bringup for a running UDP connection launch.
+       This launch never opens MORAI UDP ports, so transport remains
+       persistent while localization can be restarted independently. -->
+  <arg name="start_rviz" default="false" />
+  <arg name="start_eskf" default="true" />
+  <!-- GPS enters ESKF once. Direct LIO GPS factors would count the same fix
+       again after ESKF odometry is selected by the aiding mux. -->
+  <arg name="start_gps_adapter" default="false" />
+  <!-- morai_connections.launch roots the official Velodyne driver, so this
+       topic is stable regardless of the shell's ROS_NAMESPACE value. -->
+  <arg name="raw_lidar_topic" default="/velodyne_points" />
+  <arg name="lio_lidar_topic" default="/velodyne_points_lio" />
+  <arg name="lio_imu_topic" default="/imu/data_lio" />
+  <arg name="lio_imu_rate_hz" default="100.0" />
+  <arg name="lio_aiding_odom_topic" default="/lio/aiding/odometry" />
+  <arg name="lidar_diagnostics_csv"
+       default="$(find lio_sam)/logs/lio_input_diagnostics.csv" />
+  <arg name="max_scan_duration_s" default="0.50" />
+  <arg name="params_file"
+       default="$(find lio_sam)/config/params_morai.yaml" />
+  <arg name="vehicle_config"
+       default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+  <arg name="eskf_config"
+       default="$(find eskf)/config/eskf_robust.yaml" />
+  <arg name="vehicle_state_topic" default="/Competition_topic" />
+
+  <!-- Root all localization names even when ROS_NAMESPACE=central is exported. -->
+  <group ns="/">
+    <node pkg="lio_sam" type="velodyne_time_normalizer.py"
+          name="velodyne_time_normalizer" output="screen" required="true">
+      <param name="input_topic" value="$(arg raw_lidar_topic)" />
+      <param name="output_topic" value="$(arg lio_lidar_topic)" />
+      <param name="max_scan_duration_s" value="$(arg max_scan_duration_s)" />
+    </node>
+
+    <node pkg="lio_sam" type="imu_resampler.py"
+          name="imu_resampler" output="screen" required="true">
+      <param name="input_topic" value="/imu/data" />
+      <param name="output_topic" value="$(arg lio_imu_topic)" />
+      <param name="target_rate_hz" value="$(arg lio_imu_rate_hz)" />
+      <param name="max_gap_s" value="0.30" />
+    </node>
+
+    <node pkg="lio_sam" type="lio_input_monitor.py"
+          name="lio_input_monitor" output="screen">
+      <param name="window_s" value="20.0" />
+      <param name="csv_path" value="$(arg lidar_diagnostics_csv)" />
+      <param name="ego_topic" value="$(arg vehicle_state_topic)" />
+    </node>
+
+    <node if="$(arg start_gps_adapter)"
+          pkg="lio_sam" type="morai_gps_odometry.py"
+          name="morai_gps_odometry" output="screen">
+      <param name="utm_zone" value="52" />
+      <param name="variance" value="1.0" />
+    </node>
+
+    <!-- Independent wheel/IMU odometry is the only external odometry allowed
+         to enter the LIO-SAM graph. It never consumes LIO or ESKF output. -->
+    <include file="$(find morai_control)/launch/odometry.launch">
+      <arg name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+      <arg name="output_topic" value="/odometry/pure" />
+      <arg name="vehicle_config" value="$(arg vehicle_config)" />
+      <arg name="start_analysis" value="false" />
+      <arg name="publish_tf" value="false" />
+    </include>
+
+    <!-- LIO receives one continuous relative-odometry stream. ESKF has
+         priority after GPS initialization; pure odometry remains available
+         before initialization and through an ESKF dropout. -->
+    <node pkg="morai_control" type="lio_odometry_mux.py"
+          name="lio_odometry_mux" output="screen" required="true">
+      <param name="primary_topic" value="/eskf/odom" />
+      <param name="fallback_topic" value="/odometry/pure" />
+      <param name="output_topic" value="$(arg lio_aiding_odom_topic)" />
+      <param name="primary_timeout_s" value="0.30" />
+      <param name="cycle_guard_param"
+             value="/eskf_node/slam_aiding_enabled" />
+      <param name="primary_min_samples" value="3" />
+      <!-- ESKF shares the physical IMU with LIO. Inflate its covariance so
+           the graph does not treat the correlated estimate as independent. -->
+      <param name="primary_covariance_scale" value="4.0" />
+    </node>
+
+    <include file="$(find lio_sam)/launch/run.launch">
+      <arg name="params_file" value="$(arg params_file)" />
+      <arg name="start_navsat" value="false" />
+      <arg name="start_rviz" value="$(arg start_rviz)" />
+      <arg name="start_robot_state_publisher" value="true" />
+      <arg name="override_imu_topic" value="true" />
+      <arg name="imu_topic" value="$(arg lio_imu_topic)" />
+      <arg name="override_aiding_odom_topic" value="true" />
+      <arg name="aiding_odom_topic"
+           value="$(arg lio_aiding_odom_topic)" />
+    </include>
+
+    <!-- Strict one-way chain. ESKF uses raw IMU/GPS plus conservative pure
+         pose fallback; mux selects it only after valid initialization. -->
+    <include if="$(arg start_eskf)"
+             file="$(find morai_control)/launch/sensor_fusion.launch">
+      <arg name="start_pure_odometry" value="false" />
+      <arg name="pure_odometry_topic" value="/odometry/pure" />
+      <arg name="slam_topic" value="/lio_sam/mapping/odometry" />
+      <arg name="eskf_output_topic" value="/eskf/odom" />
+      <arg name="vehicle_config" value="$(arg vehicle_config)" />
+      <arg name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+      <arg name="eskf_config" value="$(arg eskf_config)" />
+      <!-- ESKF must never subscribe to LIO while it is an LIO input. -->
+      <arg name="slam_aiding_enabled" value="false" />
+      <arg name="odometry_speed_aiding_enabled" value="false" />
+      <arg name="publish_tf" value="false" />
+      <arg name="publish_sensor_tf" value="false" />
+    </include>
+  </group>
+</launch>

@@ -1,0 +1,39 @@
+<launch>
+
+    <arg name="project" default="lio_sam"/>
+    <arg name="params_file" default="$(find lio_sam)/config/params.yaml"/>
+    <arg name="start_robot_state_publisher" default="true"/>
+    <arg name="start_navsat" default="true"/>
+    <arg name="start_rviz" default="true"/>
+    <arg name="override_imu_topic" default="false"/>
+    <arg name="imu_topic" default="/imu/data"/>
+    <arg name="override_aiding_odom_topic" default="false"/>
+    <arg name="aiding_odom_topic" default="/odometry/pure"/>
+    
+    <!-- Keep parameters, internal topics, and public outputs rooted even when
+         the caller exports ROS_NAMESPACE. -->
+    <group ns="/">
+    <!-- Parameters -->
+    <rosparam file="$(arg params_file)" command="load" />
+    <param if="$(arg override_imu_topic)"
+           name="lio_sam/imuTopic" value="$(arg imu_topic)" />
+    <param if="$(arg override_aiding_odom_topic)"
+           name="lio_sam/pureOdomTopic" value="$(arg aiding_odom_topic)" />
+
+    <!--- LOAM -->
+    <include file="$(find lio_sam)/launch/include/module_loam.launch" />
+
+    <!--- Robot State TF -->
+    <include if="$(arg start_robot_state_publisher)"
+             file="$(find lio_sam)/launch/include/module_robot_state_publisher.launch" />
+
+    <!--- Run Navsat -->
+    <include if="$(arg start_navsat)"
+             file="$(find lio_sam)/launch/include/module_navsat.launch" />
+
+    <!--- Run Rviz-->
+    <include if="$(arg start_rviz)"
+             file="$(find lio_sam)/launch/include/module_rviz.launch" />
+    </group>
+
+</launch>

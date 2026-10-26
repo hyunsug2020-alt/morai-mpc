@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MORAI Autodrive Lab</title>
+  <style>
+    :root { --ink:#17211c; --muted:#657168; --paper:#f3f0e8; --panel:#fffdf7; --line:#d7d8ce; --green:#156b4b; --green-light:#dff2e8; --orange:#ef6a34; --blue:#246b93; --red:#b9433f; --shadow:0 12px 34px rgba(30,42,34,.08); }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:linear-gradient(rgba(20,55,40,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(20,55,40,.035) 1px,transparent 1px),var(--paper); background-size:28px 28px; font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif; }
+    button, input, select { font:inherit; } button { cursor:pointer; }
+    .shell { max-width:1480px; margin:auto; padding:28px; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:26px 32px; border:1px solid var(--line); border-radius:22px; background:rgba(255,253,247,.92); box-shadow:var(--shadow); }
+    .eyebrow { color:var(--orange); font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:8px 0 7px; font-size:clamp(26px,3.6vw,42px); line-height:1.05; letter-spacing:-.045em; }
+    .lead { margin:0; color:var(--muted); font-size:15px; }
+    .header-side { min-width:270px; display:grid; gap:8px; }
+    .pill { display:flex; align-items:center; gap:9px; padding:9px 13px; border-radius:12px; background:var(--green-light); color:var(--green); font-weight:800; font-size:14px; }
+    .pill.error { color:var(--red); background:#fbe7e5; } .pill.warn { color:#8a5a00; background:#fff3d6; }
+    .dot { width:9px; height:9px; border-radius:99px; background:currentColor; box-shadow:0 0 0 5px rgba(21,107,75,.1); }
+    .facts { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin:18px 0; }
+    .fact { padding:14px 16px; border-radius:15px; border:1px solid var(--line); background:rgba(255,255,255,.65); }
+    .fact b { display:block; font-size:22px; letter-spacing:-.04em; } .fact span { color:var(--muted); font-size:12px; }
+    .layout { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(350px,.7fr); gap:18px; align-items:start; }
+    .stack { display:grid; gap:18px; }
+    .panel { border:1px solid var(--line); border-radius:18px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line); }
+    .panel-head h2 { margin:0; font-size:17px; } .panel-head small { color:var(--muted); }
+    .panel-body { padding:20px; }
+    .step { display:grid; grid-template-columns:42px 1fr; gap:14px; padding:18px 0; border-bottom:1px solid var(--line); }
+    .step:first-child { padding-top:0; } .step:last-child { padding-bottom:0; border-bottom:0; }
+    .step-num { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; background:var(--ink); color:#fff; font-weight:900; }
+    .step h3 { margin:1px 0 4px; font-size:16px; } .step p { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.5; }
+    .fields { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+    .fields label { display:grid; gap:4px; font-size:12px; color:var(--muted); font-weight:700; }
+    .fields input, .fields select { min-width:120px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+    .btn { min-height:38px; padding:8px 14px; border:0; border-radius:9px; color:#fff; background:var(--green); font-weight:800; transition:transform .12s,opacity .12s; }
+    .btn:hover { transform:translateY(-1px); } .btn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+    .btn.secondary { color:var(--ink); background:#e7e9e2; } .btn.orange { background:var(--orange); } .btn.red { background:var(--red); } .btn.blue { background:var(--blue); }
+    .sessions { display:grid; gap:7px; max-height:280px; overflow:auto; margin-bottom:12px; }
+    .session { display:grid; grid-template-columns:24px 1fr auto; gap:10px; align-items:center; padding:9px 11px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:13px; }
+    .session-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; align-items:center; }
+    .session-row .session { min-width:0; }
+    .delete-session { min-height:30px; padding:5px 9px; font-size:11px; }
+    .path-item.mpc-run { grid-template-columns:1fr auto; }
+    .mpc-run > div { min-width:0; }
+    .session small { color:var(--muted); display:block; font-size:11px; }
+    .tag { padding:2px 7px; border-radius:6px; font-size:11px; font-weight:800; background:#e7e9e2; } .tag.ok { background:var(--green-light); color:var(--green); } .tag.bad { background:#fbe7e5; color:var(--red); }
+    .empty { color:var(--muted); font-size:13px; padding:8px 0; }
+    .decision-layout { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr); gap:14px; align-items:start; }
+    .plan-image { display:block; width:100%; border-radius:12px; background:#181d23; }
+    .plan-legend { display:flex; flex-wrap:wrap; gap:8px 14px; margin:10px 0; font-size:12px; }
+    .plan-legend i { display:inline-block; width:20px; height:4px; margin-right:5px; vertical-align:middle; border-radius:3px; }
+    .decision-card { padding:16px; border:1px solid var(--line); border-radius:12px; font-size:13px; line-height:1.6; background:#fff; }
+    .decision-title { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:19px; font-weight:800; }
+    .decision-state { color:var(--green); background:var(--green-light); padding:3px 10px; border-radius:8px; }
+    .decision-state.stop { color:var(--red); background:#fbe7e5; }
+    .decision-state.stale { color:#8a5a00; background:#fff3d6; }
+    .decision-reason { padding:12px; margin:12px 0; background:#f1f4f0; border-left:4px solid var(--green); border-radius:6px; font-weight:700; }
+    .decision-reason.stop { background:#fff1ed; border-color:var(--red); }
+    .decision-section { padding:10px 0; border-top:1px solid var(--line); }
+    .decision-section h3 { font-size:12px; color:var(--muted); margin:0 0 5px; }
+    .decision-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0; }
+    .decision-metrics div { padding:9px; border-radius:8px; background:#f6f6f1; }
+    .decision-metrics b { display:block; font-size:17px; }
+    .decision-metrics small { display:block; color:var(--muted); font-size:11px; }
+    .decision-risk { color:var(--red); font-weight:700; }
+    .decision-mode { font-size:12px; color:var(--muted); text-align:right; }
+    .hud-speed { display:grid; grid-template-columns:1.3fr 1fr; gap:8px; margin:12px 0 6px; }
+    .hud-speed div { padding:8px 10px; border-radius:8px; background:#f6f6f1; }
+    .hud-speed small { display:block; color:var(--muted); font-size:11px; }
+    .hud-speed b { font-size:34px; line-height:1.1; }
+    .hud-speed i { margin-left:5px; font-style:normal; color:var(--muted); font-size:12px; }
+    .hud-bar { position:relative; height:6px; margin:4px 0 10px; border-radius:3px; background:#e6e6df; }
+    .hud-bar-now { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:var(--green); }
+    .hud-bar-target { position:absolute; top:-3px; bottom:-3px; width:3px; background:var(--red); }
+    .decision-muted { color:var(--muted); font-size:12px; }
+    @media(max-width:900px) { .decision-layout { grid-template-columns:1fr; } }
+    .job-box { padding:18px 20px; } .job-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; } .timer { font-variant-numeric:tabular-nums; color:var(--muted); }
+    pre { margin:0; padding:12px; max-height:380px; overflow:auto; border-radius:10px; background:#141a17; color:#dfe7e2; font-size:11.5px; line-height:1.45; white-space:pre-wrap; word-break:break-all; }
+    .camera-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+    .camera { position:relative; min-height:120px; overflow:hidden; border-radius:12px; background:#1b211e; }
+    .camera img { width:100%; display:block; object-fit:contain; } .camera img.missing { opacity:0; }
+    .camera span { position:absolute; top:8px; left:8px; padding:4px 7px; border-radius:6px; color:#fff; background:rgba(12,20,16,.75); font-size:11px; font-weight:800; }
+    .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; padding:14px 20px; } .kv b { color:var(--muted); font-weight:700; } .kv code { font-size:12px; }
+    .summary { font-size:13px; line-height:1.6; margin:8px 0 12px; padding:10px 12px; border-radius:10px; background:#fff; border:1px solid var(--line); }
+    .toast { position:fixed; right:22px; bottom:22px; padding:12px 16px; border-radius:12px; background:var(--ink); color:#fff; opacity:0; transform:translateY(10px); transition:.2s; font-size:14px; max-width:520px; }
+    .toast.show { opacity:1; transform:none; } .toast.error { background:var(--red); }
+    .guide-link { color:var(--blue); font-weight:700; text-decoration:none; }
+    footer { margin-top:22px; color:var(--muted); font-size:12px; text-align:center; }
+    @media (max-width:1100px) { .layout { grid-template-columns:1fr; } .facts { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:640px) { .shell { padding:14px; } .facts { grid-template-columns:repeat(2,1fr); } header { flex-direction:column; } }
+  </style>
+  <link rel="stylesheet" href="/spider-theme.css" id="spiderThemeLink" disabled>
+  <link rel="stylesheet" href="/ironman-theme.css" id="ironmanThemeLink" disabled>
+  <script>
+    (() => {
+      var queryTheme = new URLSearchParams(location.search).get('theme');
+      var theme = queryTheme || localStorage.getItem('morai-theme') || 'spider';
+      document.documentElement.dataset.theme = theme;
+      var spiderLink = document.getElementById('spiderThemeLink');
+      var ironmanLink = document.getElementById('ironmanThemeLink');
+      if (spiderLink) spiderLink.disabled = theme !== 'spider';
+      if (ironmanLink) ironmanLink.disabled = theme !== 'ironman';
+    })();
+  </script>
+  <script src="/spider-intro.js" defer></script>
+  <script src="/ironman-intro.js" defer></script>
+  <script src="/theme-switcher.js" defer></script>
+  <script src="/hud-fx.js" defer></script>
+</head>
+<body>
+  <div id="spiderIntro" class="spider-intro" role="dialog" aria-modal="true" aria-label="스파이더맨 입장 영상" hidden>
+    <video id="spiderIntroVideo" playsinline muted preload="metadata">
+      <source src="/spider-assets/spiderman.webm" type="video/webm">
+      <source src="/spider-assets/spiderman-browser.mp4" type="video/mp4">
+    </video>
+    <div class="spider-intro-shade"></div>
+    <div class="spider-intro-top"><strong>SPIDER / MORAI AUTODRIVE</strong><button id="spiderIntroSkip" type="button">건너뛰기 ↗</button></div>
+    <button id="spiderIntroPlay" class="spider-intro-play" type="button" hidden>▶ 영상 재생</button>
+    <div class="spider-intro-bottom"><div><span>WELCOME TO YOUR</span><h2>SPIDER-SENSE.</h2></div><div class="spider-intro-actions"><button id="spiderIntroSound" type="button">소리 켜기</button><button id="spiderIntroEnter" type="button">관제실 입장 ↗</button></div></div>
+  </div>
+  <div id="ironmanIntro" class="ironman-intro" role="dialog" aria-modal="true" aria-label="아이언맨 입장 영상" hidden>
+    <video id="ironmanIntroVideo" playsinline muted preload="metadata">
+      <source src="/ironman-assets/ironman-intro.mp4" type="video/mp4">
+    </video>
+    <div class="ironman-intro-shade"></div>
+    <div class="ironman-intro-top"><strong>IRON / MORAI AUTODRIVE</strong><button id="ironmanIntroSkip" type="button">건너뛰기 ↗</button></div>
+    <button id="ironmanIntroPlay" class="ironman-intro-play" type="button" hidden>▶ 영상 재생</button>
+    <div class="ironman-intro-bottom"><div><span>SYSTEMS ONLINE.</span><h2>I AM IRON MAN.</h2></div><div class="ironman-intro-actions"><button id="ironmanIntroSound" type="button">소리 켜기</button><button id="ironmanIntroEnter" type="button">관제실 입장 ↗</button></div></div>
+  </div>
+  <main class="shell">
+    <header>
+      <div class="hero-copy">
+        <div class="eyebrow" id="themeEyebrow">SPIDER / MORAI · RGB TEACHER–STUDENT</div>
+        <h1>자율추종<br><span>데이터 관제실.</span></h1>
+        <p class="lead">글로벌 경로 주행으로 카메라 4대 RGB, GPS·IMU 측위, 센서 융합 객체, Route를 수집. 완료한 세션은 Google Drive에 순서대로 백업하고 원격 검증 뒤 로컬 원본을 정리.</p>
+        <div class="hero-actions"><a href="#drive-controls">주행·수집 시작 ↗</a><button id="introReplay" type="button" hidden>입장 영상 다시 보기 ▶</button></div>
+      </div>
+      <div class="header-side">
+        <div id="pillStack" class="pill"><span class="dot"></span>ROS 스택 확인 중</div>
+        <div id="pillMorai" class="pill"><span class="dot"></span>MORAI 연결 확인 중</div>
+        <div id="pillObj" class="pill"><span class="dot"></span>센서 인식 객체 확인 중</div>
+        <div id="pillFollow" class="pill"><span class="dot"></span>추종기 확인 중</div>
+        <div id="pillTeacher" class="pill"><span class="dot"></span>Teacher 확인 중</div>
+      </div>
+    </header>
+
+    <section class="facts">
+      <div class="fact"><b id="fEgo">–</b><span>측위 Hz (GPS·IMU ESKF)</span></div>
+      <div class="fact"><b id="fCam">–</b><span>카메라 Hz (RGB 3대)</span></div>
+      <div class="fact"><b id="fSpeed">–</b><span>차량 속도 km/h</span></div>
+      <div class="fact"><b id="fProg">–</b><span>경로 진행률 / 경로까지 거리</span></div>
+      <div class="fact"><b id="fCtrl">–</b><span>ctrl_cmd Hz · accel/brake/steer</span></div>
+      <div class="fact"><b id="fSource">–</b><span>라벨 완료 샘플 / 세션</span></div>
+    </section>
+
+    <div class="layout">
+      <section class="stack">
+        <article class="panel" id="drive-controls">
+          <div class="panel-head"><h2>파이프라인</h2><small>한 번에 한 작업</small></div>
+          <div class="panel-body">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div>
+                <h3>대회 주행 · PC 2대</h3>
+                <label><input id="signalEnabled" type="checkbox" checked> 신호등 사용</label>
+                <a href="/signals?profile=two_pc" target="_blank" rel="noopener">신호등 · HSV 창 ↗</a>
+                <p>현재 기본 구성은 대회용. MORAI PC 192.168.0.1 → 주행 PC 192.168.0.10. MORAI PC에서 아래 대회용 센서·네트워크 파일을 각각 불러온 뒤 Connect·Play 필요. 카메라 4대·GPS·IMU·VLP16 15Hz 사용.</p>
+                <div class="fields">
+                  <button class="btn red action" data-action="autodrive_follow" data-profile="two_pc">대회용 주행 시작 · PC 2대</button>
+                  <span class="tag ok">기본: 대회용 · 192.168.0.1 → 192.168.0.10</span>
+                </div>
+                <div class="fields" style="margin-top:10px">
+                  <a class="btn secondary" href="/api/preset?profile=two_pc&amp;kind=network">대회용 네트워크 다운로드</a>
+                  <a class="btn secondary" href="/api/preset?profile=two_pc&amp;kind=sensor">대회용 센서 다운로드</a>
+                </div>
+                <div class="fields" style="margin-top:10px">
+                  <span class="tag ok">E2E 주행: v6 모델 판단 + 이식 정적 회피 + 터널 모델 경로 (student_v3_claude) · 시작 지점에서 한 바퀴 돌고 그 자리에 정지 (시간 제한 없음)</span>
+                </div>
+                <details style="margin-top:10px">
+                  <summary>싱글 PC용 · 로컬 테스트·수집</summary>
+                  <p>MORAI와 주행을 이 PC에서 함께 실행. IP 127.0.0.1. 수집 시 카메라 RGB, GPS·IMU 측위, 카메라·LiDAR 융합 객체, Route 기록. 세션 번호는 자동 지정.</p>
+                  <div class="fields">
+                    <button class="btn secondary action" data-action="autodrive_follow" data-profile="single_pc">싱글 PC용 주행 시작</button>
+                    <button class="btn orange action" data-action="autodrive_collect" data-profile="single_pc">싱글 PC 주행 + 센서 수집 시작</button>
+                    <span id="autoSessionNumber" class="tag ok">다음 세션 확인 중</span>
+                  </div>
+                  <div class="fields" style="margin-top:10px">
+                    <a class="btn secondary" href="/api/preset?profile=single_pc&amp;kind=network">싱글 PC용 네트워크 다운로드</a>
+                    <a class="btn secondary" href="/api/preset?profile=single_pc&amp;kind=sensor">싱글 PC용 센서 다운로드</a>
+                  </div>
+                </details>
+                <div class="fields" style="margin-top:10px">
+                  <span id="activeNetworkProfile" class="tag">마지막 실행 구성: 아직 없음</span>
+                  <span class="tag">VLP16·시맨틱·주행 판단 15Hz · 고속주로 최대 90km/h · 인접 차선 이동 후 복귀 2회</span><span class="tag">대회 규정: 위치=GPS·IMU 측위 (Ego_topic 미사용), 장애물=시맨틱+LiDAR 융합 (Object_topic 미사용), 터널구간 GPS 차단 · 수집 없음</span><span class="tag">디버그 기록: data/autodrive/follow_runs/&lt;run&gt;/</span><a class="tag" href="/drivable" target="_blank" rel="noopener">🗺 주행 가능 영역 편집</a>
+                </div>
+                <div class="fields" style="margin-top:10px">
+                  <a class="btn secondary" href="/lidar" target="_blank" rel="noopener">주행 관제 창 (카메라·LiDAR)</a>
+                  <a class="btn secondary" href="/route-picker" target="_blank" rel="noopener">글로벌 경로 구간 찍기</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num">2</div>
+              <div>
+                <h3>Teacher 라벨링</h3>
+                <p>선택 세션에서 10Hz clip을 만들고(Student NPZ + Teacher NPZ) Alpamayo Teacher로 trajectory·action 라벨을 받아 <code>data/student/source.jsonl</code>에 누적. 샘플당 약 2.4초 × 2요청.</p>
+                <div id="sessions" class="sessions"><div class="empty">세션 확인 중</div></div>
+                <div class="fields">
+                  <button id="selectAll" class="btn secondary">전체 선택</button>
+                  <label>라벨링 모드<select id="actionEvery"><option value="1">정밀 (샘플마다 trajectory+action)</option><option value="4">빠름 (action은 4샘플마다 1번, ~1.6배)</option><option value="0">최속 (trajectory만, 2배 · scene 텍스트 없음)</option></select></label>
+                  <button class="btn action" data-action="label">선택 세션 라벨링</button>
+                  <button class="btn blue action" data-action="check">Teacher 검사 (세션 1개)</button>
+                </div>
+                <div id="datasets" class="summary" hidden></div>
+                <div id="checkImg" class="camera" hidden><img alt="teacher check"><span>Teacher 검사: 회색=route · 초록=실제 주행 · 빨강=Teacher 예측</span></div>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num">3</div>
+              <div>
+                <h3>데이터 검증 (prepare)</h3>
+                <p>source.jsonl 전체를 Student 학습 형식으로 변환하며 timestamp 정합·라벨 유효성·세션 단위 train/val 분리를 검사. <code>synthetic 0</code>, 샘플 수와 supervision 개수가 결과에 나온다.</p>
+                <div class="fields">
+                  <label>val 비율<input id="valFraction" type="number" min="0.05" max="0.5" step="0.05" value="0.2"></label>
+                  <button class="btn action" data-action="prepare">검증 실행</button>
+                </div>
+                <div id="prepared" class="summary" hidden></div>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-num">4</div>
+              <div>
+                <h3>학습</h3>
+                <p>시험 학습은 GPU 1에서 몇 step만 돌려 loss가 내려가는지 확인(세션 2개 이상 필요 — val 세션이 있어야 함; Teacher 풀이 GPU 1을 쓰면 먼저 <code>stop-teacher-pool.sh</code>). 전체 학습은 Teacher 전부를 내리고 4×4090 DDP로 실행.</p>
+                <div class="fields">
+                  <label>시험 step<input id="maxSteps" type="number" min="1" max="5000" value="30"></label>
+                  <button class="btn secondary action" data-action="trial">시험 학습</button>
+                  <label>epoch<input id="epochs" type="number" min="1" max="1000" value="60"></label>
+                  <label>batch/GPU<input id="batch" type="number" min="1" max="64" value="8"></label>
+                  <label>모델 이름<input id="modelName" type="text" value="rgb_realtime_max_v1"></label>
+                  <label>MORAI GPU 제외<select id="excludeSim"><option value="1">예 (MORAI 실행 중이면 그 GPU 빼고 3장)</option><option value="0">아니오 (4장 전부)</option></select></label>
+                  <button class="btn orange action" data-action="train">전체 학습</button>
+                </div>
+                <div id="models" class="summary" hidden></div>
+                <p style="margin-top:10px">학습된 Student를 2단계에서 선택한 세션 clip에 돌려 Teacher 라벨·실제 주행과 비교 (action 일치율, ADE/FDE, 지연). <b>best.pt는 val loss 최저 epoch</b>라 val 세션이 작거나 다르면 epoch 0(미학습)이 뽑힐 수 있음 → 보통 last.pt로 확인.</p>
+                <div class="fields">
+                  <label>검사할 모델<select id="checkModel"></select></label>
+                  <label>가중치<select id="weights"><option value="last">last.pt (마지막 epoch)</option><option value="best">best.pt (val 최저 — val이 작으면 epoch 0일 수 있음)</option></select></label>
+                  <button class="btn blue action" data-action="check_student">Student 검사 (선택 세션 1개)</button>
+                </div>
+                <div class="fields" style="margin-top:8px">
+                  <label>영상 범위<select id="videoRange"><option value="0">라벨된 구간만 (빠름)</option><option value="1">세션 전체 (10분 ≈ 4분 렌더, 수백 MB)</option></select></label>
+                  <button class="btn action" data-action="video">판단 영상 만들기 (선택 세션 1개 · 위 모델 사용)</button>
+                </div>
+                <div id="studentCheck" class="summary" hidden></div>
+                <div id="studentImg" class="camera" hidden><img alt="student check"><span>Student 검사: 회색=route · 초록=실제 · 빨강=Teacher · 파랑=Student</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <aside class="stack drive-sidebar">
+        <article class="panel">
+          <div class="panel-head"><h2>Google Drive 백업</h2><a class="guide-link" href="https://drive.google.com/drive/folders/1kmSV1wzLKo0enXD2H9wJiOkpN7SXZApd?hl=ko" target="_blank" rel="noopener">폴더 열기 ↗</a></div>
+          <div class="panel-body"><div id="cloudBackupStatus" class="summary">백업 작업 확인 중</div><div id="cloudBackupItems" class="cloud-backup-items"></div><p class="empty">완료 세션을 번호별로 업로드하고, 크기·MD5 검증 후 외장 디스크 원본을 정리함. 수집 중에는 임시 저장 필요.</p></div>
+        </article>
+        <article class="panel" id="videoPanel" hidden>
+          <div class="panel-head"><h2>판단 영상</h2><select id="videoPick" style="font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:7px"></select></div>
+          <div class="kv" style="padding:6px 20px 0"><b>정보</b><code id="videoMeta"></code><b>다운로드</b><code><a id="videoMp4" class="guide-link" href="#" hidden>MP4 (H.264)</a> <a id="videoWebm" class="guide-link" href="#">WebM</a></code></div>
+          <div class="panel-body"><video id="video" controls style="width:100%;border-radius:10px;background:#000"></video></div>
+        </article>
+      </aside>
+    </div>
+    <section class="operations-grid">
+      <article class="panel operation-card job-panel">
+        <div class="panel-head"><div><span class="section-kicker">01 / RUN STATUS</span><h2>주행 작업</h2></div><span id="jobTimer" class="timer">00:00</span></div>
+        <div class="job-box">
+          <div class="job-title"><span class="status-light" id="jobLight"></span><strong id="jobName">실행 대기</strong></div>
+          <pre id="logs">작업을 선택하면 로그가 여기에 표시됨.</pre>
+          <div class="job-actions"><span>실행 로그 · 최근 기록</span><button id="stopButton" class="btn red" disabled>현재 작업 중지</button></div>
+        </div>
+      </article>
+      <div class="operation-side">
+        <article class="panel operation-card">
+          <div class="panel-head"><div><span class="section-kicker">02 / VEHICLE</span><h2>차량 · 제어 상태</h2></div><small>ROS status</small></div>
+          <div class="vehicle-metrics" id="vehicle"><div class="metric-tile"><b>대기</b><strong>–</strong></div></div>
+        </article>
+        <article class="panel operation-card">
+          <div class="panel-head"><div><span class="section-kicker">03 / FILES</span><h2>저장 경로</h2></div><small>data/</small></div>
+          <div class="path-list" id="paths"></div>
+        </article>
+      </div>
+    </section>
+    <section class="monitor-grid" style="grid-template-columns:1fr">
+      <article class="panel camera-panel">
+        <div class="panel-head"><div><span class="section-kicker">00 / DRIVE OPS</span><h2>주행 관제 창</h2></div></div>
+        <div class="panel-body" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <a class="btn orange" href="/lidar" target="_blank" rel="noopener">카메라 · LiDAR 3D · 경로 · 판단 — 주행 관제 창 열기 ↗</a>
+          <span class="decision-muted">주행 화면은 별도 창으로 옮김: 카메라와 LiDAR 차량·장애물 인지, 경로, 판단을 한 화면에서 확인.</span>
+        </div>
+      </article>
+    </section>
+    <section class="monitor-grid">
+      <article class="panel camera-panel">
+        <div class="panel-head"><div><span class="section-kicker">04 / CAMERAS</span><h2>카메라 화면</h2></div><small>좌 · 전 · 우 / 최근 저장 프레임</small></div>
+        <div class="panel-body camera-grid live-camera-grid" id="cameras"></div>
+      </article>
+      <article class="panel mpc-panel">
+        <div class="panel-head"><div><span class="section-kicker">05 / CONTROLLER</span><h2>주행별 LTV-MPC 기록</h2></div><small>PC에 자동 보관</small></div>
+        <div class="panel-body">
+          <p class="empty">주행마다 속도·조향·곡률·횡오차·제어값을 별도 저장함. 카메라·학습 데이터는 Drive 업로드 검증 후 로컬 원본 정리.</p>
+          <div id="mpcRuns" class="path-list"><span class="empty">기록 확인 중</span></div>
+        </div>
+      </article>
+    </section>
+    <footer>로컬 전용 <code>127.0.0.1:8767</code> · ROS master 11312 · rosbridge 9091 · Teacher 8766</footer>
+  </main>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const labels = {autodrive_collect:"자율추종 + 수집", autodrive_follow:"대회 런치", collect:"수집(수동 주행)", label:"Teacher 라벨링", check:"Teacher 검사", check_student:"Student 검사", video:"판단 영상 렌더", prepare:"데이터 검증", trial:"시험 학습", train:"전체 학습"};
+    let status = null, toastTimer = null;
+    const esc = v => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+    function toast(msg, error=false) { const n=document.getElementById("toast"); n.textContent=msg; n.className="toast show"+(error?" error":""); clearTimeout(toastTimer); toastTimer=setTimeout(()=>n.className="toast", 4500); }
+    async function api(url, body) {
+      const r = await fetch(url, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : {});
+      const j = await r.json().catch(()=>({error:"응답 오류"}));
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      return j;
+    }
+    function pill(id, text, cls="") { const n=document.getElementById(id); n.className="pill "+cls; n.innerHTML='<span class="dot"></span>'+esc(text); }
+    function fmt(v, d=1) { return (v===null||v===undefined) ? "–" : Number(v).toFixed(d); }
+    function selectedSessions() { return [...document.querySelectorAll("#sessions input:checked")].map(i=>i.value); }
+
+    function render(s) {
+      status = s;
+      const np = s.network_profile;
+      const dm = s.drive_mode === "e2e" ? " · E2E (한 바퀴 후 정지)" : "";
+      document.getElementById("activeNetworkProfile").textContent = np ? `마지막 실행 구성: ${np.label} · ${np.simulator_ip} → ${np.local_ip}${dm}` : "마지막 실행 구성: 아직 없음";
+      if (s.mode === "collect" && !document.body.dataset.collectMode) {
+        document.body.dataset.collectMode = "1";
+        document.querySelectorAll(".step").forEach((el, i) => { if (i > 0) el.hidden = true; });
+        document.getElementById("pillTeacher").hidden = true;
+        document.getElementById("fSource").parentElement.innerHTML = '<b id="fSource">수집 전용</b><span>라벨링·학습은 학습 PC에서 (data/raw/&lt;세션&gt; 복사)</span>';
+        document.querySelector(".panel-head small").textContent = "수집 전용 PC — 세션 폴더를 학습 PC로 옮겨 라벨링·학습";
+        document.querySelector("footer").textContent = "수집 전용 · 로컬 127.0.0.1:8767 · ROS master 11312 · rosbridge 9091";
+      }
+      const ros = s.ros || {}, fresh = s.ros_age_s !== null && s.ros_age_s < 5;
+      pill("pillStack", s.stack_running ? (fresh ? "ROS 스택 실행 중" : "ROS 스택: status 갱신 없음") : "ROS 스택 꺼짐 — autodrive/start.sh", s.stack_running && fresh ? "" : "error");
+      const egoOk = fresh && ros.ego_hz > 0;
+      pill("pillMorai", egoOk ? `센서 측위 수신 · ${fmt(ros.ego_hz)}Hz` : "측위 수신 없음 · 센서 설정과 시뮬레이터 Play 확인", egoOk ? "" : "warn");
+      const objOk = fresh && ros.object_hz > 0, oc = ros.objects || {};
+      pill("pillObj", objOk ? `센서 인식 · ${fmt(ros.object_hz)}Hz · 차량 ${oc.npc??0} 보행자 ${oc.pedestrian??0} 장애물 ${oc.obstacle??0}` : (s.job && s.job.running ? "센서 인식 대기 · 실행 로그와 입력 확인" : "센서 인식 정지 · 주행 시작 시 실행"), objOk ? "" : "warn");
+      pill("pillFollow", ros.follower_running ? `추종기 실행 중 · ctrl ${fmt(ros.ctrl_hz)}Hz` : "추종기 정지", ros.follower_running ? "" : "warn");
+      pill("pillTeacher", s.teacher ? `Teacher ${s.teacher.pool_size}대 (포트 ${(s.teacher.pool_ports||[]).join(",")})` : "Teacher 응답 없음 (start-teacher.sh)", s.teacher ? "" : "warn");
+      document.getElementById("fEgo").textContent = fresh ? fmt(ros.ego_hz) : "–";
+      const cams = s.cameras; document.getElementById("fCam").textContent = cams ? `${fmt(cams.front)} / ${fmt(cams.left)} / ${fmt(cams.right)}` : "–";
+      document.querySelectorAll("#cameras .camera").forEach(card => {
+        const view = card.dataset.view, info = (s.previews || {})[view], hz = cams?.[view];
+        card.querySelector(".camera-meta").textContent = `${hz == null ? "수신 Hz 없음" : fmt(hz) + " Hz"} · ${info ? `${info.session}번 저장 ${fmt(info.age_s,0)}초 전` : "저장 프레임 없음"}`;
+        card.classList.toggle("stale", !info || info.age_s > 5);
+      });
+      document.getElementById("fSpeed").textContent = ros.ego ? fmt(ros.ego.speed_kmh) : "–";
+      document.getElementById("fProg").textContent = ros.path ? `${fmt(ros.path.progress_pct)}% · ${fmt(ros.path.distance_m)}m` : "–";
+      document.getElementById("fCtrl").textContent = ros.ctrl ? `${fmt(ros.ctrl_hz)} · ${fmt(ros.ctrl.accel,2)}/${fmt(ros.ctrl.brake,2)}/${fmt(ros.ctrl.steering_rad,2)}rad` : "–";
+      if (s.mode !== "collect") document.getElementById("fSource").textContent = `${s.source.rows} / ${s.source.sessions} (val ${s.source.val_sessions})`;
+      const backup = s.cloud_backup || {};
+      const transferSize = backup.phase === "uploading" && backup.size ? ` · 파일 ${(backup.size/1e9).toFixed(1)}GB` : "";
+      document.getElementById("cloudBackupStatus").textContent = backup.phase ? `${backup.message || backup.phase}${backup.session ? ` · 현재 ${backup.session}번` : ""}${transferSize} · 완료 ${backup.verified ?? 0}/${backup.total ?? 0}` : "백업 서비스 시작 대기";
+      document.getElementById("cloudBackupItems").innerHTML = (backup.items || []).map(x => {
+        const label = x.pruned ? "백업·정리 완료" : x.phase === "queued" ? "대기" : x.phase === "uploading" ? "업로드 중" : x.phase === "packing" ? "ZIP 생성 중" : x.phase === "verifying" ? "Drive 검증 중" : x.phase === "pruning" || x.phase === "cleaning" ? "로컬 정리 중" : x.phase === "paused" ? "수집 중 대기" : x.phase === "error" ? "오류·재시도" : "진행 중";
+        return `<div class="cloud-backup-row"><strong>${esc(String(x.number ?? x.session).padStart(4,"0"))}</strong><span>${esc(label)}</span>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">Drive ↗</a>` : ""}</div>`;
+      }).join("");
+      const numeric = (s.sessions || []).map(x => Number(x.name)).filter(Number.isInteger).filter(x => x > 0);
+      document.getElementById("autoSessionNumber").textContent = `다음 세션 ${Math.max(0, ...numeric) + 1}번`;
+
+      const metric = (label, value, detail="") => `<div class="metric-tile"><b>${esc(label)}</b><strong>${esc(value)}</strong>${detail ? `<small>${esc(detail)}</small>` : ""}</div>`;
+      const veh = document.getElementById("vehicle");
+      veh.innerHTML = ros.ego ? [
+        metric("차량 속도", `${fmt(ros.ego.speed_kmh)} km/h`, `Ego ${fmt(ros.ego.age_s)}초 전`),
+        metric("경로 진행", ros.path ? `${fmt(ros.path.progress_pct)}%` : "–", ros.path ? `idx ${ros.path.nearest_idx}/${ros.path_points} · 경로까지 ${fmt(ros.path.distance_m)}m` : "경로 수신 대기"),
+        metric("차량 위치", `${fmt(ros.ego.x,1)}, ${fmt(ros.ego.y,1)}`, `방향 ${fmt(ros.ego.heading_deg,1)}°`),
+        metric("제어 명령", ros.ctrl ? `${fmt(ros.ctrl_hz)} Hz` : "수신 없음", ros.ctrl ? `가속 ${fmt(ros.ctrl.accel,2)} · 제동 ${fmt(ros.ctrl.brake,2)} · 조향 ${fmt(ros.ctrl.steering_rad,2)} rad` : "추종기 정지")
+      ].join("") : metric("Ego", "수신 없음", `${ros.path_points || "–"}점 경로`);
+
+      const job = s.job, running = job.running;
+      document.getElementById("jobLight").classList.toggle("running", running);
+      document.getElementById("jobName").textContent = running ? `${labels[job.action]||job.action} 실행 중` : (job.action ? `${labels[job.action]||job.action} 종료 (코드 ${job.exit_code})` : "실행 대기");
+      const el = running ? job.elapsed_seconds : (job.finished_at && job.started_at ? job.finished_at - job.started_at : 0);
+      document.getElementById("jobTimer").textContent = `${String(Math.floor(el/60)).padStart(2,"0")}:${String(Math.floor(el%60)).padStart(2,"0")}`;
+      const logs = document.getElementById("logs"); const atBottom = logs.scrollTop + logs.clientHeight >= logs.scrollHeight - 8;
+      logs.textContent = job.logs.length ? job.logs.join("\n").replace(/\x1b\[[0-9;]*m/g, "") : "작업을 선택하면 로그가 여기에 표시됨."; if (atBottom) logs.scrollTop = logs.scrollHeight;
+      document.getElementById("stopButton").disabled = !running;
+      document.querySelectorAll(".action").forEach(b => b.disabled = running);
+
+      const prev = new Set(selectedSessions());
+      const box = document.getElementById("sessions");
+      box.innerHTML = s.sessions.length ? s.sessions.map(x => {
+        const grid = Object.values(x.grid_pct||{}); const g = grid.length ? Math.min(...grid) : null;
+        const tags = [x.backup?.pruned ? `<span class="tag ok">Drive 백업·원본 정리 완료</span>` : x.has_ego ? `<span class="tag ok">ego ${fmt(x.ego_hz,0)}Hz</span>` : `<span class="tag bad">ego 없음</span>`,
+          x.heading ? `<span class="tag ok">${esc(x.heading)}</span>` : `<span class="tag bad">heading 미판정</span>`,
+          g!==null ? `<span class="tag ${g>=90?"ok":""}">10Hz ${fmt(g,0)}%</span>` : "",
+          x.route_dist_m!==null && x.route_dist_m!==undefined ? `<span class="tag ${x.route_dist_m<10?"ok":"bad"}">경로 ${fmt(x.route_dist_m)}m</span>` : "",
+          x.collisions!==null && x.collisions!==undefined ? `<span class="tag ${x.collisions?"bad":"ok"}">충돌 ${x.collisions}건${x.collisions?` ${fmt(x.collision_s,0)}s`:""}</span>` : "",
+          x.objects_kb===null || x.objects_kb===undefined ? "" : `<span class="tag ${x.objects_kb>0?"ok":"bad"}">${x.objects_kb>0?`장애물 ${fmt(x.objects_kb/1024,1)}MB`:"장애물 없음"}</span>`,
+          x.recording ? `<span class="tag ok">수집 중</span>` : "",
+          x.labeled ? `<span class="tag ok">라벨됨</span>` : ""].join(" ");
+        const fr = x.frames.front ?? 0;
+        return `<div class="session-row"><label class="session"><input type="checkbox" value="${esc(x.name)}" ${prev.has(x.name)?"checked":""} ${x.has_ego?"":"disabled"}><div><strong>${esc(x.name)}</strong><small>${esc((x.started_at||"").slice(0,19))} · ${x.duration_s||"?"}s · front ${fr}장 · ${fmt(x.hz.front)}Hz</small></div><div>${tags}</div></label><button class="btn red delete-session" data-delete-session="${esc(x.name)}" ${x.recording?"disabled title='수집 중'":""}>삭제</button></div>`;
+      }).join("") : '<div class="empty">새 형식 세션 없음 — 1단계로 수집</div>';
+
+      const ds = document.getElementById("datasets");
+      ds.hidden = !s.datasets.length;
+      ds.innerHTML = s.datasets.slice(0,8).map(d => `<div><strong>${esc(d.name)}</strong> · clip ${d.clips}/${d.anchors} · Teacher 응답 ${d.teacher_responses}${d.teacher_failures?` (실패 ${d.teacher_failures})`:""} · source ${d.source_rows}행${Object.keys(d.skipped||{}).length?` · 제외: ${esc(Object.entries(d.skipped).map(([k,v])=>`${v}×${k}`).join(", "))}`:""}${d.check?` · <b>검사</b> ${d.check.samples}샘플 ADE ${fmt(d.check.ade_m_mean,2)}m FDE ${fmt(d.check.fde_m_mean,2)}m · ${esc(Object.entries(d.check.actions||{}).map(([k,v])=>`${k} ${v}`).join(", "))}`:""}</div>`).join("");
+      const chk = s.datasets.find(d => d.check);
+      const ci = document.getElementById("checkImg");
+      if (chk) { ci.hidden = false; const img = ci.querySelector("img"); const want = `/api/teacher_check?session=${encodeURIComponent(chk.name)}`; if (img.dataset.src !== want) { img.dataset.src = want; img.src = want + "&t=" + Date.now(); } } else ci.hidden = true;
+      const pr = document.getElementById("prepared");
+      if (s.prepared) { const c = s.prepared.counts||{}; pr.hidden = false; pr.innerHTML = `<strong>prepared</strong> · samples ${s.prepared.samples} (train ${c.train} / val ${c.val}) · sessions ${s.prepared.sessions} · trajectory ${c.trajectory} · action ${c.action} · scene ${c.scene} · synthetic ${c.synthetic} ${c.synthetic?'<span class="tag bad">synthetic 포함!</span>':'<span class="tag ok">실데이터</span>'} ${c.val===0?'<span class="tag bad">val 0 → 시험/전체 학습 불가 (세션 2개 이상 필요)</span>':''}`; } else pr.hidden = true;
+      const md = document.getElementById("models");
+      md.hidden = !s.models.length;
+      md.innerHTML = s.models.map(m => `<div><strong>${esc(m.name)}</strong> ${m.best?'<span class="tag ok">best.pt</span>':""} ${m.last_metrics?`· epoch ${m.last_metrics.epoch??"?"} train ${fmt(m.last_metrics.train_loss,4)} val ${fmt(m.last_metrics.val_loss,4)}`:""}</div>`).join("");
+      const sel = document.getElementById("checkModel"); const cur = sel.value;
+      sel.innerHTML = s.models.filter(m => m.best).map(m => `<option value="${esc(m.name)}" ${m.name===cur?"selected":""}>${esc(m.name)}</option>`).join("");
+      const sc = s.datasets.find(d => d.student_check);
+      const scBox = document.getElementById("studentCheck"), si = document.getElementById("studentImg");
+      if (sc) { const c = sc.student_check; scBox.hidden = false; scBox.innerHTML = `<strong>${esc(sc.name)}</strong> · 모델 ${esc((c.checkpoint||"").split("/").slice(-2,-1)[0]||"")} (${c.training_steps} step) · ${c.samples}샘플 · action 일치 ${fmt(c.action_agreement*100,0)}% · ADE vs Teacher ${fmt(c.ade_vs_teacher_m_mean,2)}m / FDE ${fmt(c.fde_vs_teacher_m_mean,2)}m · ADE vs 실제 ${fmt(c.ade_vs_actual_m_mean,2)}m · 추론 p95 ${fmt(c.latency_ms_p95,1)}ms`;
+        si.hidden = false; const img = si.querySelector("img"); const want = `/api/student_check?session=${encodeURIComponent(sc.name)}`; if (img.dataset.src !== want) { img.dataset.src = want; img.src = want + "&t=" + Date.now(); } } else { scBox.hidden = true; si.hidden = true; }
+      const vids = s.datasets.filter(d => d.video).sort((a, b) => b.video.rendered_at - a.video.rendered_at);
+      const vp = document.getElementById("videoPanel"), pick = document.getElementById("videoPick");
+      if (vids.length) {
+        vp.hidden = false;
+        const chosen = (pick.dataset.user && vids.some(d => d.name === pick.dataset.user)) ? pick.dataset.user : vids[0].name;
+        const opts = vids.map(d => `<option value="${esc(d.name)}" ${d.name===chosen?"selected":""}>${esc(d.name)} · ${fmt(d.video.seconds,0)}s</option>`).join("");
+        if (pick.innerHTML !== opts) pick.innerHTML = opts;
+        const vd = vids.find(d => d.name === chosen);
+        const v = document.getElementById("video"); const want = `/api/video?session=${encodeURIComponent(vd.name)}&r=${Math.round(vd.video.rendered_at)}`;
+        if (v.dataset.src !== want) { v.dataset.src = want; v.src = want; }
+        const mp4 = document.getElementById("videoMp4"); mp4.hidden = !vd.video.mp4; mp4.href = `/api/video?session=${encodeURIComponent(vd.name)}&format=mp4`; document.getElementById("videoWebm").href = `/api/video?session=${encodeURIComponent(vd.name)}`;
+        document.getElementById("videoMeta").textContent = `${fmt(vd.video.seconds,0)}s · ${vd.video.size_mb}MB · ${vd.video.checkpoint ? "Teacher+Student (" + vd.video.checkpoint.split("/").slice(-2).join("/") + ")" : "Teacher만"} · clip ${vd.video.clips_judged}`;
+      } else vp.hidden = true;
+      document.getElementById("mpcRuns").innerHTML = (s.mpc_runs || []).slice(0, 12).map(run => {
+        const links = run.files.filter(f => ["mpc.csv", "mpc_emissions.jsonl", "run.json"].includes(f.name)).map(f => {
+          const url = `/api/mpc-log?session=${encodeURIComponent(run.session_id)}&run=${encodeURIComponent(run.run)}&file=${encodeURIComponent(f.name)}`;
+          return `<a class="guide-link" href="${esc(url)}">${esc(f.name)} · ${(f.size/1048576).toFixed(1)} MB</a>`;
+        }).join(" · ");
+        return `<div class="path-item mpc-run"><div><b>주행 ${esc(run.session_id)} · ${run.ended_wall_ns ? "저장 완료" : "기록 중"}</b><small>${esc(new Date(run.started_wall_ns/1e6).toLocaleString())}</small><div>${links}</div></div><button class="btn red delete-session" data-delete-session="${esc(run.session_id)}" ${run.ended_wall_ns?"":"disabled title='기록 중'"}>삭제</button></div>`;
+      }).join("") || '<span class="empty">주행 시작 시 자동 기록됨.</span>';
+      document.getElementById("paths").innerHTML = Object.entries(s.paths).map(([k,v]) => `<div class="path-item"><b>${esc(k)}</b><code title="${esc(v)}">${esc(v)}</code></div>`).join("");
+    }
+
+    async function refresh() { try { render(await api("/api/status")); } catch (e) { pill("pillStack", "대시보드 서버 응답 없음", "error"); } }
+    function refreshImages() { document.querySelectorAll("#cameras img").forEach(img => { const src = img.dataset.src + "&t=" + Date.now(); const probe = new Image(); probe.onload = () => { img.src = src; img.classList.remove("missing"); }; probe.onerror = () => img.classList.add("missing"); probe.src = src; }); }
+    document.getElementById("cameras").innerHTML = ["left","front","right"].map(v => `<div class="camera" data-view="${v}"><img class="missing" data-src="/api/preview?view=${v}" alt="${v}"><span>${{left:"좌측",front:"전방",right:"우측"}[v]}</span><div class="camera-meta">상태 확인 중</div></div>`).join("");
+    document.addEventListener("click", async event => {
+      const button = event.target.closest("[data-delete-session]");
+      if (!button || button.disabled) return;
+      const session = button.dataset.deleteSession;
+      if (!confirm(`${session}번 로컬 수집 데이터와 MPC 기록을 영구 삭제합니다. Drive 백업 파일은 유지됩니다. 계속할까요?`)) return;
+      button.disabled = true;
+      try { await api("/api/delete-session", {session, confirm:session}); toast(`${session}번 로컬 데이터 삭제 완료`); refresh(); }
+      catch (error) { button.disabled = false; toast(error.message, true); }
+    });
+    // The rule-based mode and its toggle were removed (2026-10-11); drop the stale preference.
+    try { localStorage.removeItem("morai-drive-mode"); } catch (e) {}
+    document.querySelectorAll(".action").forEach(b => b.addEventListener("click", async () => {
+      const action = b.dataset.action;
+      const options = {network_profile: b.dataset.profile, signal_enabled: document.getElementById("signalEnabled").checked,
+        sessions: selectedSessions(), action_every: document.getElementById("actionEvery").value, whole_video: document.getElementById("videoRange").value === "1", weights: document.getElementById("weights").value, val_fraction: document.getElementById("valFraction").value, max_steps: document.getElementById("maxSteps").value,
+        epochs: document.getElementById("epochs").value, batch_size: document.getElementById("batch").value, exclude_simulator_gpu: document.getElementById("excludeSim").value === "1", model_name: (action === "check_student" || action === "video") ? document.getElementById("checkModel").value : document.getElementById("modelName").value, semantic_objects: !!(document.getElementById("semanticObjects")||{}).checked};
+      if (action === "train" && !confirm(`Teacher 컨테이너를 전부 내리고 전체 학습을 시작합니다.${status && status.simulator_gpus && status.simulator_gpus.length ? ` MORAI가 GPU ${status.simulator_gpus.join(",")}를 쓰는 중` : ""} 계속?`)) return;
+      const modeLabel = (action === "autodrive_follow" || action === "autodrive_collect") ? " · E2E · 한 바퀴" : "";
+      try { await api("/api/start", {action, options}); toast(`${labels[action]}${modeLabel} · ${b.dataset.profile === "two_pc" ? "대회용 · PC 2대" : "싱글 PC용"} 시작`); refresh(); } catch (e) { toast(e.message, true); }
+    }));
+    document.getElementById("stopButton").addEventListener("click", async () => { try { await api("/api/stop", {}); toast("중지 요청"); } catch (e) { toast(e.message, true); } });
+    document.getElementById("videoPick").addEventListener("change", e => { e.target.dataset.user = e.target.value; refresh(); });
+    document.getElementById("selectAll").addEventListener("click", () => { const boxes = [...document.querySelectorAll("#sessions input:not(:disabled)")]; const all = boxes.every(b => b.checked); boxes.forEach(b => b.checked = !all); });
+    refresh(); refreshImages(); setInterval(refresh, 1500); setInterval(refreshImages, 2000);
+  </script>
+</body>
+</html>

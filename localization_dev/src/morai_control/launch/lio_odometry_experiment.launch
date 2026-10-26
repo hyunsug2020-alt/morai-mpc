@@ -1,0 +1,40 @@
+<launch>
+  <!-- Validation GUI/CSV only.
+       MORAI connections and LIO-SAM must already be running via
+       `roslaunch morai_launch morai.launch`. -->
+  <arg name="gui" default="true" />
+
+  <arg name="ground_truth_topic" default="/Ego_topic" />
+  <arg name="odom_topic" default="/lio_sam/mapping/odometry" />
+  <arg name="incremental_topic"
+       default="/lio_sam/mapping/odometry_incremental" />
+  <arg name="gps_topic" default="/gps" />
+  <arg name="ground_truth_heading_mode" default="ros_yaw_deg" />
+  <arg name="alignment_samples" default="20" />
+  <arg name="max_sync_delta_s" default="0.25" />
+  <arg name="gps_shadow_timeout_s" default="1.0" />
+  <arg name="lidar_x" default="1.045" />
+  <arg name="lidar_y" default="0.000" />
+  <arg name="output_csv"
+       default="$(find morai_control)/logs/lio_odometry_experiment.csv" />
+  <arg name="unique_output" default="true" />
+
+  <node pkg="morai_control" type="lio_odometry_experiment.py"
+        name="lio_odometry_experiment" output="screen" required="true">
+    <param name="ground_truth_topic" value="$(arg ground_truth_topic)" />
+    <param name="odom_topic" value="$(arg odom_topic)" />
+    <param name="incremental_topic" value="$(arg incremental_topic)" />
+    <param name="gps_topic" value="$(arg gps_topic)" />
+    <param name="ground_truth_heading_mode"
+           value="$(arg ground_truth_heading_mode)" />
+    <param name="alignment_samples" value="$(arg alignment_samples)" />
+    <param name="max_sync_delta_s" value="$(arg max_sync_delta_s)" />
+    <param name="gps_shadow_timeout_s"
+           value="$(arg gps_shadow_timeout_s)" />
+    <param name="lidar_x" value="$(arg lidar_x)" />
+    <param name="lidar_y" value="$(arg lidar_y)" />
+    <param name="enable_gui" value="$(arg gui)" />
+    <param name="output_csv" value="$(arg output_csv)" />
+    <param name="unique_output" value="$(arg unique_output)" />
+  </node>
+</launch>

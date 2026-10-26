@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ko" data-theme="spider">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>주행 관제 · 카메라 · LiDAR</title>
+  <style>
+    :root { --ink:#17211c; --muted:#657168; --paper:#f3f0e8; --panel:#fffdf7; --line:#d7d8ce; --green:#156b4b; --green-light:#dff2e8; --orange:#ef6a34; --blue:#246b93; --red:#b9433f; --shadow:0 12px 34px rgba(30,42,34,.08); }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:linear-gradient(rgba(20,55,40,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(20,55,40,.035) 1px,transparent 1px),var(--paper); background-size:28px 28px; font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif; }
+    button, input, select { font:inherit; } button { cursor:pointer; }
+    .shell { max-width:1480px; margin:auto; padding:28px; }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding:26px 32px; border:1px solid var(--line); border-radius:22px; background:rgba(255,253,247,.92); box-shadow:var(--shadow); }
+    .eyebrow { color:var(--orange); font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { margin:8px 0 7px; font-size:clamp(26px,3.6vw,42px); line-height:1.05; letter-spacing:-.045em; }
+    .lead { margin:0; color:var(--muted); font-size:15px; }
+    .header-side { min-width:270px; display:grid; gap:8px; }
+    .pill { display:flex; align-items:center; gap:9px; padding:9px 13px; border-radius:12px; background:var(--green-light); color:var(--green); font-weight:800; font-size:14px; }
+    .pill.error { color:var(--red); background:#fbe7e5; } .pill.warn { color:#8a5a00; background:#fff3d6; }
+    .dot { width:9px; height:9px; border-radius:99px; background:currentColor; box-shadow:0 0 0 5px rgba(21,107,75,.1); }
+    .facts { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin:18px 0; }
+    .fact { padding:14px 16px; border-radius:15px; border:1px solid var(--line); background:rgba(255,255,255,.65); }
+    .fact b { display:block; font-size:22px; letter-spacing:-.04em; } .fact span { color:var(--muted); font-size:12px; }
+    .layout { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(350px,.7fr); gap:18px; align-items:start; }
+    .stack { display:grid; gap:18px; }
+    .panel { border:1px solid var(--line); border-radius:18px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line); }
+    .panel-head h2 { margin:0; font-size:17px; } .panel-head small { color:var(--muted); }
+    .panel-body { padding:20px; }
+    .step { display:grid; grid-template-columns:42px 1fr; gap:14px; padding:18px 0; border-bottom:1px solid var(--line); }
+    .step:first-child { padding-top:0; } .step:last-child { padding-bottom:0; border-bottom:0; }
+    .step-num { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; background:var(--ink); color:#fff; font-weight:900; }
+    .step h3 { margin:1px 0 4px; font-size:16px; } .step p { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.5; }
+    .fields { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+    .fields label { display:grid; gap:4px; font-size:12px; color:var(--muted); font-weight:700; }
+    .fields input, .fields select { min-width:120px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+    .btn { min-height:38px; padding:8px 14px; border:0; border-radius:9px; color:#fff; background:var(--green); font-weight:800; transition:transform .12s,opacity .12s; }
+    .btn:hover { transform:translateY(-1px); } .btn:disabled { opacity:.35; cursor:not-allowed; transform:none; }
+    .btn.secondary { color:var(--ink); background:#e7e9e2; } .btn.orange { background:var(--orange); } .btn.red { background:var(--red); } .btn.blue { background:var(--blue); }
+    .sessions { display:grid; gap:7px; max-height:280px; overflow:auto; margin-bottom:12px; }
+    .session { display:grid; grid-template-columns:24px 1fr auto; gap:10px; align-items:center; padding:9px 11px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:13px; }
+    .session-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; align-items:center; }
+    .session-row .session { min-width:0; }
+    .delete-session { min-height:30px; padding:5px 9px; font-size:11px; }
+    .path-item.mpc-run { grid-template-columns:1fr auto; }
+    .mpc-run > div { min-width:0; }
+    .session small { color:var(--muted); display:block; font-size:11px; }
+    .tag { padding:2px 7px; border-radius:6px; font-size:11px; font-weight:800; background:#e7e9e2; } .tag.ok { background:var(--green-light); color:var(--green); } .tag.bad { background:#fbe7e5; color:var(--red); }
+    .empty { color:var(--muted); font-size:13px; padding:8px 0; }
+    .decision-layout { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr); gap:14px; align-items:start; }
+    .plan-image { display:block; width:100%; border-radius:12px; background:#181d23; }
+    .plan-legend { display:flex; flex-wrap:wrap; gap:8px 14px; margin:10px 0; font-size:12px; }
+    .plan-legend i { display:inline-block; width:20px; height:4px; margin-right:5px; vertical-align:middle; border-radius:3px; }
+    .decision-card { padding:16px; border:1px solid var(--line); border-radius:12px; font-size:13px; line-height:1.6; background:#fff; }
+    .decision-title { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:19px; font-weight:800; }
+    .decision-state { color:var(--green); background:var(--green-light); padding:3px 10px; border-radius:8px; }
+    .decision-state.stop { color:var(--red); background:#fbe7e5; }
+    .decision-state.stale { color:#8a5a00; background:#fff3d6; }
+    .decision-reason { padding:12px; margin:12px 0; background:#f1f4f0; border-left:4px solid var(--green); border-radius:6px; font-weight:700; }
+    .decision-reason.stop { background:#fff1ed; border-color:var(--red); }
+    .decision-section { padding:10px 0; border-top:1px solid var(--line); }
+    .decision-section h3 { font-size:12px; color:var(--muted); margin:0 0 5px; }
+    .decision-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0; }
+    .decision-metrics div { padding:9px; border-radius:8px; background:#f6f6f1; }
+    .decision-metrics b { display:block; font-size:17px; }
+    .decision-metrics small { display:block; color:var(--muted); font-size:11px; }
+    .decision-risk { color:var(--red); font-weight:700; }
+    .decision-mode { font-size:12px; color:var(--muted); text-align:right; }
+    .hud-speed { display:grid; grid-template-columns:1.3fr 1fr; gap:8px; margin:12px 0 6px; }
+    .hud-speed div { padding:8px 10px; border-radius:8px; background:#f6f6f1; }
+    .hud-speed small { display:block; color:var(--muted); font-size:11px; }
+    .hud-speed b { font-size:34px; line-height:1.1; }
+    .hud-speed i { margin-left:5px; font-style:normal; color:var(--muted); font-size:12px; }
+    .hud-bar { position:relative; height:6px; margin:4px 0 10px; border-radius:3px; background:#e6e6df; }
+    .hud-bar-now { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:var(--green); }
+    .hud-bar-target { position:absolute; top:-3px; bottom:-3px; width:3px; background:var(--red); }
+    .decision-muted { color:var(--muted); font-size:12px; }
+    @media(max-width:900px) { .decision-layout { grid-template-columns:1fr; } }
+    .job-box { padding:18px 20px; } .job-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; } .timer { font-variant-numeric:tabular-nums; color:var(--muted); }
+    pre { margin:0; padding:12px; max-height:380px; overflow:auto; border-radius:10px; background:#141a17; color:#dfe7e2; font-size:11.5px; line-height:1.45; white-space:pre-wrap; word-break:break-all; }
+    .camera-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+    .camera { position:relative; min-height:120px; overflow:hidden; border-radius:12px; background:#1b211e; }
+    .camera img { width:100%; display:block; object-fit:contain; } .camera img.missing { opacity:0; }
+    .camera span { position:absolute; top:8px; left:8px; padding:4px 7px; border-radius:6px; color:#fff; background:rgba(12,20,16,.75); font-size:11px; font-weight:800; }
+    .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; padding:14px 20px; } .kv b { color:var(--muted); font-weight:700; } .kv code { font-size:12px; }
+    .summary { font-size:13px; line-height:1.6; margin:8px 0 12px; padding:10px 12px; border-radius:10px; background:#fff; border:1px solid var(--line); }
+    .toast { position:fixed; right:22px; bottom:22px; padding:12px 16px; border-radius:12px; background:var(--ink); color:#fff; opacity:0; transform:translateY(10px); transition:.2s; font-size:14px; max-width:520px; }
+    .toast.show { opacity:1; transform:none; } .toast.error { background:var(--red); }
+    .guide-link { color:var(--blue); font-weight:700; text-decoration:none; }
+    footer { margin-top:22px; color:var(--muted); font-size:12px; text-align:center; }
+    @media (max-width:1100px) { .layout { grid-template-columns:1fr; } .facts { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:640px) { .shell { padding:14px; } .facts { grid-template-columns:repeat(2,1fr); } header { flex-direction:column; } }
+  </style>
+  <link rel="stylesheet" href="/spider-theme.css">
+  <style>
+    body { margin:0; }
+    .ops { max-width:1900px; margin:0 auto; padding:14px; display:grid; gap:12px; }
+    .ops-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px;
+      background:linear-gradient(90deg,#1a0a10,#0c080e); border:1px solid #5a1a24; border-top:2px solid #ff4055; }
+    .ops-head h1 { margin:0; font:800 20px ui-monospace,monospace; letter-spacing:.12em; color:#ffe3e6; text-shadow:0 0 12px #ff4055aa; }
+    .ops-head span { color:#ff8b97; font:12px ui-monospace,monospace; }
+    .ops-grid { display:grid; grid-template-columns:minmax(0,2.2fr) minmax(330px,.8fr); gap:12px; align-items:start; }
+    .tile { position:relative; background:#0c080e; border:1px solid #4a1820; box-shadow:0 0 18px #ff40551a; }
+    .tile-title { display:flex; justify-content:space-between; gap:8px; padding:7px 10px; color:#ff8b97;
+      font:700 11px ui-monospace,monospace; letter-spacing:.16em; border-bottom:1px solid #3b1820; background:#12090e; }
+    .tile-title b { color:#ffe3e6; font-weight:700; letter-spacing:.04em; }
+    #stage { position:relative; height:min(72vh,780px); min-height:380px; }
+    #stage canvas { position:absolute; inset:0; width:100%; height:100%; }
+    #labels { pointer-events:none; }
+    .tile-tools { position:absolute; right:10px; top:38px; display:flex; gap:6px; z-index:2; }
+    .tile-tools button { background:#2a0d14; color:#ffd5da; border:1px solid #ff405588; padding:5px 10px; font:12px ui-monospace,monospace; cursor:pointer; }
+    #cars { padding:8px 10px; color:#ffd5da; font:12px ui-monospace,monospace; border-top:1px solid #3b1820; min-height:34px; }
+    #guiCams { width:100%; display:block; }
+    .plan-image { width:100%; display:block; }
+    .decision-card .hud-speed.now-only { grid-template-columns:1fr; }
+    .decision-card .hud-speed.now-only b { font-size:84px; line-height:1; }
+    .decision-card .hud-speed.now-only i { font-size:18px; }
+    .decision-card .hud-target-small { float:right; margin-top:58px; color:#ffb3bb; font:600 13px ui-monospace,monospace; }
+    .side { display:flex; flex-direction:column; gap:12px; }
+    .cte { margin-top:6px; }
+    .cte-head { display:flex; align-items:center; justify-content:space-between; color:#ff8b97; font:700 12px ui-monospace,monospace; letter-spacing:.08em; }
+    .cte-head button { background:#2a0d14; color:#ffd5da; border:1px solid #ff405588; padding:3px 8px; font:11px ui-monospace,monospace; cursor:pointer; }
+    .cte-stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; }
+    .cte-stats div { background:#0a0d13; border:1px solid #2b3242; padding:6px 10px; }
+    .cte-stats small { display:block; color:#8e98ac; font:700 11px ui-monospace,monospace; }
+    .cte-stats b { display:block; font:800 34px/1.1 ui-monospace,monospace; color:#fff; }
+    .cte-stats b i { font-size:14px; font-style:normal; color:#8e98ac; margin-left:4px; }
+    .cte-stats span { color:#c9cfdb; font:12px ui-monospace,monospace; } .cte-stats em { font-style:normal; color:#fff; font-weight:800; font-size:15px; }
+    #cteChart { width:100%; height:260px; display:block; }
+    .cte-legend { display:flex; flex-wrap:wrap; gap:10px; color:#9aa4b8; font-size:11px; margin-top:4px; }
+    .cte-legend i { display:inline-block; width:14px; height:3px; margin-right:4px; vertical-align:middle; }
+    .small-card { font-size:12px !important; line-height:1.45 !important; padding:12px 14px !important; }
+    .small-card .decision-title { font-size:12px; }
+    .small-card .decision-reason { font-size:13px; padding:7px 10px; margin:8px 0; }
+    .small-card .decision-metrics b { font-size:16px; }
+    .small-card .decision-section h3 { font-size:11px; }
+
+    /* spider dressing: web backdrop, emblem, glow */
+    body { background:#07050a radial-gradient(circle at 50% -10%,#3a0c16 0,#07050a 55%) fixed !important; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.10;
+      background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='520' height='520' viewBox='-260 -260 520 520' fill='none' stroke='%23ff4055' stroke-width='1.2'><g>%3Cline x1='0' y1='0' x2='260' y2='0'/%3E%3Cline x1='0' y1='0' x2='184' y2='184'/%3E%3Cline x1='0' y1='0' x2='0' y2='260'/%3E%3Cline x1='0' y1='0' x2='-184' y2='184'/%3E%3Cline x1='0' y1='0' x2='-260' y2='0'/%3E%3Cline x1='0' y1='0' x2='-184' y2='-184'/%3E%3Cline x1='0' y1='0' x2='0' y2='-260'/%3E%3Cline x1='0' y1='0' x2='184' y2='-184'/%3E%3Cpath d='M60 0 L42 42 L0 60 L-42 42 L-60 0 L-42 -42 L0 -60 L42 -42Z M120 0 L85 85 L0 120 L-85 85 L-120 0 L-85 -85 L0 -120 L85 -85Z M190 0 L134 134 L0 190 L-134 134 L-190 0 L-134 -134 L0 -190 L134 -134Z'/%3E</g></svg>") center/520px repeat; }
+    .ops-head h1::before { content:""; display:inline-block; width:26px; height:26px; margin-right:10px; vertical-align:-6px;
+      background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-50 -50 100 100' fill='%23ff4055' stroke='%23ff4055' stroke-width='5' stroke-linecap='round'><ellipse cx='0' cy='8' rx='9' ry='15'/><circle cx='0' cy='-13' r='7'/><path fill='none' d='M-6 -2 L-26 -22 L-30 -42 M6 -2 L26 -22 L30 -42 M-7 4 L-34 -4 L-44 -20 M7 4 L34 -4 L44 -20 M-7 12 L-34 18 L-44 34 M7 12 L34 18 L44 34 M-5 18 L-24 34 L-28 46 M5 18 L24 34 L28 46'/></svg>") center/contain no-repeat;
+      filter:drop-shadow(0 0 6px #ff4055); }
+    .tile { transition:box-shadow .25s ease; } .tile:hover { box-shadow:0 0 0 1px #ff405566, 0 0 28px #ff405533; }
+    .tile::after { content:""; position:absolute; right:-1px; bottom:-1px; width:18px; height:18px; border-right:2px solid #ff4055; border-bottom:2px solid #ff4055; filter:drop-shadow(0 0 4px #ff4055); pointer-events:none; }
+    @media (max-width:1300px) { .ops-grid { grid-template-columns:1fr; } }
+  </style>
+  <script src="/hud-fx.js" defer></script>
+</head>
+<body>
+<main class="ops">
+  <div class="ops-head"><h1>SPIDER · DRIVE OPS</h1><span id="aliveTag">대기</span><span id="connection" class="warn">ROS 연결 중</span><span id="health">점군 대기</span><a class="btn secondary" href="/" target="_blank">대시보드</a></div>
+  <div class="tile"><div class="tile-title">CAMERAS · SEMANTIC <b>앞 · 좌 · 우</b></div><img id="guiCams" alt="카메라 + 시맨틱"></div>
+  <div class="ops-grid">
+    <div class="tile"><div class="tile-title">LIDAR + HD MAP 3D <b>점군 · 차선 · 경로 · 인지 한 화면 · 드래그 회전 / 우클릭·Shift 이동 / 휠 확대</b></div>
+      <div class="tile-tools"><button id="chase">추적</button><button id="angle">3D</button><button id="top">위에서</button><button id="layerMap">지도 ON</button><button id="layerColor">높이색</button></div>
+      <div id="stage"><canvas id="cloud"></canvas><canvas id="labels"></canvas></div>
+      <div class="plan-legend">
+        <span><i style="background:#9eadc2"></i>HD맵 차선</span><span><i style="background:#ffd296"></i>전역 경로</span>
+        <span><i style="background:#ff3c46"></i>제어 경로</span><span><i style="background:#b0324a"></i>허용 도로 범위</span><span><i style="background:#9a7cff"></i>터널 벽</span>
+        <span><i style="background:#ff6e78"></i>LiDAR 차량</span><span><i style="background:#ffaa3c"></i>장애물</span><span><i style="background:#78d2ff"></i>보행자</span>
+      </div><div id="cars">차량 탐지 대기</div>
+</div>
+    <div class="side">
+      <div class="decision-card big-panel"><div id="speedBox">속도 대기</div>
+        <div class="cte"><div class="cte-head"><b>경로 이탈 CTE</b><button id="cteReset">누적 초기화</button></div>
+          <div id="cteStats" class="cte-stats">위치 대기</div>
+          <canvas id="cteChart"></canvas>
+          <div class="cte-legend"><span><i style="background:#ffd296"></i>전역 경로 대비(회피·차선변경 포함)</span><span><i style="background:#ff3c46"></i>제어 경로 추종 오차</span><span>+왼쪽 −오른쪽 · 최근 60초</span></div></div></div>
+      <div id="decisionCard" class="decision-card small-card">판단 대기 중</div></div>
+  </div>
+</main>
+    <script>
+    (()=>{
+     const ACT={KEEP_LANE:"차선 유지",YIELD:"양보 · 감속/정지",LEFT_CHANGE:"왼쪽으로 회피",RIGHT_CHANGE:"오른쪽으로 회피",STOP:"정지",TURN_LEFT:"좌회전",TURN_RIGHT:"우회전",UNKNOWN:"판단 불명",FOLLOW:"앞차 추종"};
+     const MODE={"LATTICE":"후보 경로 플래너 · LiDAR 검사","TUNNEL":"터널 · LiDAR 경로 주행","TUNNEL BYPASS":"터널 · LiDAR 회피","TUNNEL MODEL":"터널 · 모델 경로 채택","HIGHWAY":"고속주로 · 이동 중 차선 변경","ROUTE BASE":"기본 경로 주행","STUDENT FORCED":"센서로 검증한 회피 경로","STUDENT REJOIN":"원래 경로로 복귀","STUDENT HOLD":"회피 경로 유지"};
+     const MODEL_REASONS={"model trajectory passed tunnel no-go check":"모델 경로의 불가영역·현재 LiDAR 검사 통과","model trajectory invalid":"모델 경로 값 확인 불가","model trajectory has insufficient ordered progress":"모델 전방 경로가 짧거나 진행 순서 부적합","model trajectory discontinuity":"모델 경로가 끊김","model trajectory horizon too short":"모델 경로의 검사 거리가 부족함","model trajectory cannot maintain checked speed":"모델 경로의 조향·곡률로 현재 목표 속도 유지 불가","model trajectory intersects tunnel no-go area":"모델 경로가 터널 불가영역과 겹침","model trajectory lacks current LiDAR clearance":"모델 경로의 현재 LiDAR 통과 거리 부족","model camera frames stale":"모델 카메라 수신 지연","model camera history unavailable":"모델 카메라 이력 없음","model proposal budget exhausted":"모델 후보 검사 시간 초과","model unavailable":"모델 준비 전","model action probabilities invalid":"모델 분류 확률 확인 불가","model trajectory feasibility input invalid":"모델 경로의 조향·검사 기준값 확인 불가","model trajectory no-go clearance invalid":"불가영역 검사값 확인 불가","model trajectory current LiDAR clearance invalid":"현재 LiDAR 검사값 확인 불가"};
+     const PHRASES=[["tunnel lidar coverage insufficient","터널 LiDAR 관측 범위 부족"],["tunnel obstacle on path","터널 LiDAR 장애물이 차량 이동 범위와 겹침"],["tunnel wall clearance","터널 벽과 차량 간격 부족"],["tunnel lane boundary recovery","터널 출구 차선 안쪽으로 저속 복귀"],["tunnel lane boundary","터널 경로가 허용 차선 밖으로 나감"],["tunnel planning delayed","터널 판단 지연 · 재계산 대기"],["tunnel moving object conflict","터널 이동 물체와 경로 겹침"],["tunnel odometry discontinuity","터널 이동 좌표 급변 · 확인 대기"],["tunnel clear route","터널 벽 확인 · 경로 막힘 없음"],["tunnel lidar checked bypass","LiDAR 장애물 확인 · 벽 안쪽으로 회피"],["tunnel lidar checked rejoin","LiDAR 확인 · 원래 경로 복귀"],["tunnel no safe bypass","터널 통과 가능한 회피 경로 탐색 중"],["tunnel wall match unavailable","터널 벽 정합 확인 필요"],["tunnel lidar stamp frozen","LiDAR 스캔 시각 갱신 중단"],["tunnel lidar stale","터널 LiDAR 수신 지연"],["tunnel localization stale","터널 위치 수신 지연"],["tunnel scan pose time mismatch","LiDAR·위치 시각 불일치"],["tunnel scan pose unavailable","스캔 시각의 차량 위치 없음"],["tunnel scan clock reset","센서 시각 초기화 · 재확인"],["tunnel path blocked","터널 주행 경로 막힘"],["tunnel route join infeasible","터널 경로 진입 조향 확인 필요"],["highway cruise","고속주로 순항"],["waiting for lane-change gap while moving","주행하며 차선 변경 시점 대기"],["waiting for return lane gap while moving","주행하며 복귀 시점 대기"],["moving lane change with checked rear gap","뒤차 간격 확인 · 차선 변경"],["moving lead-vehicle headway","앞차 속도·간격 유지"],["adjust moving lane-change timing","속도 조정 · 차선 변경 시점 계산"],["highway sensor stream stale/warming","고속주로 센서 수신 대기"],["fallback: no ordered forward Student path","모델 전방 경로 없음 → 기본 경로"],["no sensor-confirmed path obstruction","센서로 확인된 경로 막힘 없음"],["no avoidance action intent","회피할 이유 없음"],
+       ["cannot clear merge within prediction horizon","예측 시간 안에 교차 차량 구간 통과 확인 불가"],["no safe static bypass","안전한 회피 경로 없음"],["merge path too short","복귀 경로가 너무 짧음"],
+       ["intersection LiDAR traffic permits entry","LiDAR 통과 간격 확인 · 진입"],["intersection collision risk","교차로 충돌 위험 확인"],["intersection LiDAR not ready","교차로 LiDAR 차량 추적 준비 중"],["intersection sensors stale","교차로 센서 수신 지연"],["intersection model stale","교차로 모델·카메라 갱신 대기"],["intersection model probabilities invalid","교차로 모델 출력 확인 필요"],["intersection traffic conflict","교차로 차량 통과 대기"],["intersection model action ambiguous","교차로 모델 판단 불명확"],["intersection model action does not permit entry: STOP","교차로 모델 판단 · 정지"],["intersection model action does not permit entry: YIELD","교차로 모델 판단 · 양보"],["intersection model action does not permit entry: UNKNOWN","교차로 모델 판단 불명"],["intersection model action does not permit entry: LEFT_CHANGE","교차로 모델 차선변경 제안 · 진입 대기"],["intersection model action does not permit entry: RIGHT_CHANGE","교차로 모델 차선변경 제안 · 진입 대기"],["intersection model action does not permit entry:","교차로 모델 대기 판단:"],["intersection model and LiDAR permit entry","모델 진입 동의 · LiDAR 위험 없음"],["stop line mandatory full stop","정지선 앞 1초 완전 정지"],["stop line waiting for clear traffic","정지선 앞 교차 차량 확인 중"],["stop line checked; cautious entry","정지 완료 · 교차로 저속 진입"],["approaching mandatory stop line","정지선 접근 감속"],["stop line localization invalid","정지선 위치 확인 불가"],["waiting for crossing to clear","횡단 대상이 지나가길 대기"],["continue to stop line","정지선까지 진행"],["stopping at stop line","정지선에서 정지"],["crossing vehicle closing within","가로지르는 차량 접근"],["predicted footprint time overlap","예측 경로가 겹침"],["fast traffic: wait before its lane","빠른 차량: 차선 앞에서 대기"],["approach conflict with braking reserve","충돌 예상 · 감속"],["lead vehicle headway","앞차 간격 유지"],["follow merging lead with checked headway","합류 앞차 따라가기"],["gap accepted with acceleration and clearance","틈 확인 · 진입"],["obstacle on control path","주행 경로 위 장애물"],["fusion_parked_vehicle","주차 차량"],
+       ["approach fast traffic with braking reserve","빠른 교차 차량 · 정지 여유를 두고 접근"],["collision detected; drive restart required","접촉 감지 · 차량 재배치 후 런치 재시작 필요"],
+       ["fusion_obstacle","장애물"],["fusion_pedestrian","보행자"],["fusion_npc","차량"],["lidar","LiDAR 감지"],["pedestrian","보행자"],["obstacle","장애물"],["vehicle","차량"],["yield","양보"],["stop","정지"]];
+     PHRASES.unshift(["tunnel model path checked by LiDAR","best_v5 경로 · LiDAR 검사 통과"]);
+     PHRASES.push(["lattice_return offset","장애물 회피 후 복귀 · 옆으로"],["lattice offset","장애물 회피 · 옆으로"],["previous offset","회피 경로 유지 · 옆으로"],["lane centre","차선 중앙 주행"],["no collision-free path; braking for obstacle","통과 경로 없음 · 장애물 앞 감속"],["tunnel odometry fallback:","터널 벽 정합 대신 위치추정+LiDAR로 주행 ·"],["highway sensor late: hold speed","센서 잠깐 지연 · 속도 유지"],["highway curvature braking envelope","커브 감속"],["highway exit: below 60 km/h at the speed-limit boundary","고속주로 출구 · 60km/h 이하로"],["highway static obstacle stopping reserve","앞 장애물 정지 여유 감속"],["highway map corridor stopping reserve","차선 중앙으로 복귀 중"],["inside junction: clear it fast","교차로 안 · 빠르게 통과"]);
+     const ko=t=>{if(!t)return "—";let s=String(t);for(const [e,k] of PHRASES)s=s.split(e).join(k);return s;};
+     const safe=t=>String(t??"—").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+     const num=(v,n=1)=>typeof v==="number"&&Number.isFinite(v)?v.toFixed(n):"—";
+     const dist=v=>typeof v==="number"&&Number.isFinite(v)?num(v)+"m":"—";
+     const section=(title,body)=>`<div class="decision-section"><h3>${safe(title)}</h3>${body}</div>`;
+     const tick=async()=>{try{
+       const d=await (await fetch("/api/decision",{cache:"no-store"})).json();window.__fused=(d.near||[]).filter(o=>typeof o.f==="number"&&typeof o.l==="number");window.__fusedLag0=(typeof d.t==="number"&&typeof d.web_time==="number")?Math.max(0,d.web_time-d.t):0;window.__fusedRecv=performance.now();window.__fusedV=(d.speed_kmh||0)/3.6;const v6now=d.v6&&d.v6.ok&&Array.isArray(d.v6.path)?d.v6:null;window.__v6=v6now?{path:v6now.path,action:v6now.action_full||v6now.action,p:v6now.p,lag0:Math.max(0,(v6now.age_s||0)+((typeof d.t==="number"&&typeof d.web_time==="number")?Math.max(0,d.web_time-d.t):0))}:null;window.__v6Recv=performance.now();
+       const now=Date.now()/1000,live=d.web_time&&(now-d.web_time)<3;
+       const decisionAge=typeof d.t==="number"?Math.max(0,now-d.t):Infinity;
+       const fresh=live&&decisionAge<1;
+       document.getElementById("aliveTag").textContent=fresh?"실시간 판단 · "+num(decisionAge,2)+"초 전":live?"판단 갱신 지연":"대기 · 마지막 판단 표시";
+       guiLive=live;
+       if(d.action){
+         const lidar=d.lidar||{},tunnel=d.tunnel||{},traffic=d.traffic_plan||{},line=d.stop_line;
+         const guidance=tunnel.model_guidance,noGo=tunnel.no_go;
+         const stopped=d.motion_state==="STOP"||d.emergency_stop||d.published_cap_kmh===0;
+         const state=fresh?(stopped?"정지":"주행"):"기록";
+         const cars=d.intersection_lidar||d.lidar_vehicles;
+         const sensorReady=!d.object_stale&&typeof lidar.age_s==="number"&&lidar.age_s<=.35&&
+           (!d.tunnel||d.tunnel.valid)&&(!cars||(cars.detector_ready??cars.ready));
+         const risks=(d.traffic_risks||[]).slice(0,3);
+         const riskText=risks.map(r=>`<div class="decision-risk">차량 #${safe(r.object_id)} · ${num(r.when)}초 뒤 경로 겹침</div>`).join("");
+         const hazard=d.hazard?`<div class="decision-risk">${safe(ko(d.hazard.name))} · 전방 ${dist(d.hazard.along_m)} / 옆 ${dist(d.hazard.lat_m)}</div>`:"";
+         const obstructions=(tunnel.hazards||d.static_corridor||[]).slice(0,3).map(h=>`<div>회피 대상 ${safe(h.n||h.name)} · 경로 앞 ${dist(h.front??h.front_m)}</div>`).join("");
+         const components=tunnel.clearance_components_m||{};
+         const componentNames={wall:"터널 벽",obstacle:"실물 장애물",lane:"도로 범위",observed:"LiDAR 관측 범위"};
+         const checks=Object.entries(components).map(([key,v])=>`<div>${safe(componentNames[key]||key)}: ${dist(v)}${key===tunnel.limiting_source?" · 검사 범위 최소":""}</div>`).join("");
+         const clear=tunnel.clear_distance_m??d.highway?.clear_distance_m??d.static_clear_distance_m??lidar.path_block_m;
+         const intersection=line?`<div>${safe(ko(line.reason))} · ${safe(line.state)}</div><div>앞범퍼부터 정지선 ${dist(line.distance_m)}${line.stopped_s!=null?" · 정지 "+num(line.stopped_s,2)+"초":""}</div>${line.entry_decision?`<div>${safe(ko(line.entry_decision.reason))}${line.entry_decision.model_advisory?" · 모델 분류는 참고값":""}</div>`:""}`:"";
+         const candidates=d.static_rejected?Object.entries(d.static_rejected).filter(([,v])=>v>0).map(([k,v])=>`${safe(({lane:"도로 범위",curvature:"조향 한계",clearance:"물체 간격"})[k]||k)} ${num(v,0)}`).join(" · "):"";
+         const probSource=d.v6&&d.v6.ok&&d.v6.probabilities?d.v6.probabilities:d.probs;const probabilities=probSource?Object.entries(probSource).filter(([,v])=>typeof v==="number"&&Number.isFinite(v)).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>`<div>${safe(ACT[k]||k)}: ${num(v*100,0)}%</div>`).join(""):"";
+         document.getElementById("speedBox").innerHTML=
+          `<div class="hud-speed now-only"><div><small>현재 속도 · ${state}</small><b>${num(d.speed_kmh,0)}</b><i>km/h</i><span class="hud-target-small">목표 ${num(d.published_cap_kmh,0)} km/h</span></div></div>`+
+          `<div class="hud-bar"><span class="hud-bar-now" style="width:${Math.min(100,Math.max(0,(d.speed_kmh||0)/90*100))}%"></span><span class="hud-bar-target" style="left:${Math.min(100,Math.max(0,(d.published_cap_kmh||0)/90*100))}%"></span></div>`;
+         document.getElementById("decisionCard").innerHTML=
+          `<div class="decision-title"><span class="decision-state ${fresh?(stopped?"stop":""):"stale"}">${state}</span><span class="decision-mode">${safe(MODE[d.mode]||ko(d.mode))}</span></div>`+
+          
+          
+          (d.model_checkpoint?`<div class="decision-muted">모델 ${d.v6?"v6.3 판단 + ":""}${safe(d.model_checkpoint)} · 플래너 ${safe(d.planner||"")}</div>`:"")+
+          (fresh?"":`<div class="decision-muted">마지막 판단 ${Number.isFinite(decisionAge)?num(decisionAge,0)+"초 전":"시각 없음"}</div>`)+
+          `<div class="decision-reason ${stopped?"stop":""}">${safe(ko(d.stop_reason||d.reason))}</div>`+
+          `<div class="decision-metrics"><div><b>${num(d.planner_cap_kmh,0)}</b><small>계획 상한 km/h</small></div><div><b>${num(clear)}</b><small>검사된 통과 거리 m</small></div><div><b>${num(d.decision_hz)}</b><small>판단 / 목표 ${num(d.target_decision_hz??15,0)}Hz</small></div></div>`+
+          section("인지",`<div>LiDAR ${num(lidar.n,0)}점 · ${num(lidar.age_s,2)}초 전 · ${sensorReady?"수신 정상":"수신 확인 필요"}</div><div>실제 판단 물체 ${num(d.n_obj??d.n_objects,0)}개${cars?` · 차량 ${num(cars.car_count??cars.vehicles?.length,0)}대 · ${cars.ready?"추적 준비 완료":"추적 확인 중"}`:""}</div>`)+
+          section("경로 검사",checks||`<div>도로 범위 + 차량 외곽 + LiDAR / 이동 차량 시간 간격 검사</div><div>${typeof clear==="number"?"현재 경로 통과 거리 "+dist(clear):"경로 위 LiDAR 감지 거리 "+dist(lidar.path_block_m)}</div>`)+
+          (candidates?`<div class="decision-muted">후보 거절: ${candidates}</div>`:"")+
+          (d.v6?section("모델 판단 · v6.3",(()=>{const v=d.v6,ma=d.model_avoidance||tunnel.model_policy||{};
+            const side=ma.direction>0?"왼쪽":ma.direction<0?"오른쪽":"방향 미정";
+            const src={v6:"v6 모델이 정함",planner:"플래너 점수로 정함",kept:"진행 중인 회피 유지",lane_hold:"터널 차선 유지"}[ma.direction_source]||"";
+            return v.ok?`<div><b>${safe(ACT[v.action_full]||v.action_full||v.action)} ${num((v.p||0)*100,0)}%</b> · ${num(v.age_s,2)}초 전 판단</div>`+
+              (ma.direction_source?`<div>회피 방향 ${side} · ${safe(src)}</div>`:"")+
+              (ma.static_n!=null?`<div class="decision-muted">정지 물체 ${num(ma.static_n,0)} · 움직이는 물체 ${num(ma.dynamic_n,0)}${ma.hazard_front_m!=null?" · 확인된 장애물 "+dist(ma.hazard_front_m):""}</div>`:""):
+              `<div>v6 대기 · ${safe(v.reason)}</div>`;})()):"")+
+          (guidance?section("터널 모델 후보 · "+(guidance.generator==="v6"?"v6":"best_v5"),`<div><b>${guidance.accepted&&(guidance.source==="model"||guidance.source==="v6")?"모델 경로 채택":"LiDAR 경로 사용 · 모델 경로 채택 안 됨"}</b></div><div>${safe(MODEL_REASONS[guidance.reason]||ko(guidance.reason))}</div>${noGo?`<div class="decision-muted">불가영역 토픽 <code>${safe(noGo.topic||"/perception/no_go_areas")}</code><br>${noGo.valid?"기하 검사 준비 완료":noGo.active?"검사 정보 확인 필요":"터널 토픽 비활성"}</div>`:""}`):"")+
+          section("위험 판단",riskText+hazard+obstructions||`<div>${sensorReady?"현재 기록에 충돌 위험 없음":"센서 확인 필요"}</div>`)+
+          (intersection?section("교차로 · 정지선",intersection):"")+
+          (d.highway?section("고속주로",`차선 변경 ${safe(d.highway.lane_changes??0)}/2 · ${safe(ko(d.highway.reason))}`):"")+
+          `<div class="decision-muted">계획 상한 ${num(d.planner_cap_kmh)}km/h · 전역 경로와 거리 ${dist(d.route_dist_m)}<br>판단 ${num(d.decision_ms)}ms${tunnel.plan?.reused||d.static_path_reused?" · 기존 검사 경로 유지":""}</div>`+
+          (probabilities?`<details class="decision-section"><summary>모델 분류 · ${d.v6&&d.v6.ok?"v6 · "+safe(ACT[d.v6.action_full]||d.v6.action_full)+" "+num((d.v6.p||0)*100,0)+"%":safe(ACT[d.action]||d.action)+" "+num((d.p||0)*100,0)+"%"}</summary>${probabilities}</details>`:"");
+       }
+     }catch(e){document.getElementById("aliveTag").textContent="화면 수신 확인 필요";} setTimeout(tick,200);};
+     // Camera/plan images: own 7.5 Hz loop, preloaded off-screen and swapped
+     // only when complete (no blank flashes), never more than one request each.
+     let guiLive=false;const pending={},shown={};
+     const swap=(id,part)=>{if(pending[id])return;pending[id]=true;const img=new Image();
+       img.onload=()=>{const el=document.getElementById(id);el.src=img.src;pending[id]=false;shown[id]=true;};
+       img.onerror=()=>{pending[id]=false;};img.src="/api/gui?part="+part+"&t="+Date.now();};
+     // Live: 7.5 Hz. Idle: show the last saved frame once.
+     setInterval(()=>{if(guiLive||!shown.guiCams)swap("guiCams","cams");},133);
+     tick();})();
+    </script>
+<script>
+(()=>{'use strict';
+ // One 3-D view in the car frame (x forward, y left, z up, metres): LiDAR points,
+ // HD-map lanes/route/tunnel walls (map frame -> car frame with the live ego pose),
+ // the control path and permitted corridor, LiDAR vehicles and fused objects.
+ const canvas=document.getElementById('cloud'),overlay=document.getElementById('labels'),stage=document.getElementById('stage');
+ const gl=canvas.getContext('webgl',{antialias:true}),ctx=overlay.getContext('2d');
+ if(!gl){document.getElementById('connection').textContent='이 브라우저에서 WebGL 사용 불가';return;}
+ const vertex='attribute vec3 position;uniform mat4 matrix;uniform float size;uniform float heightMode;uniform vec4 color;varying vec4 vColor;'+
+  'void main(){gl_Position=matrix*vec4(position,1.0);gl_PointSize=size;'+
+  'if(heightMode>.5){float h=clamp(position.z/3.0,0.0,1.0);vColor=position.z<.25?vec4(.3,.36,.45,.4):vec4(mix(vec3(1.,.3,.35),vec3(1.,.9,.45),h),1.);}else{vColor=color;}}';
+ const fragment='precision mediump float;varying vec4 vColor;void main(){gl_FragColor=vColor;}';
+ function shader(kind,source){const x=gl.createShader(kind);gl.shaderSource(x,source);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(x));return x;}
+ const program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vertex));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fragment));gl.linkProgram(program);gl.useProgram(program);
+ const position=gl.getAttribLocation(program,'position'),matrixLoc=gl.getUniformLocation(program,'matrix'),sizeLoc=gl.getUniformLocation(program,'size'),colorLoc=gl.getUniformLocation(program,'color'),heightLoc=gl.getUniformLocation(program,'heightMode'),buffer=gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);
+ gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+ let azimuth=0,elevation=.32,range=32,target=[14,0,0];
+ let points=new Float32Array(0),cloudTime=0,carTime=0,lastStamp=null,cloudHz=0,ego=null,vehicles=[],vehicleStatus=null,ws=null,lastFrame=0;
+ let showMap=true,heightColor=true,map=null,controlPath=null,corridor={left:null,right:null},pathTime=0;
+ // ---- camera: perspective orbit around a point ahead of the car
+ function mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++){let v=0;for(let k=0;k<4;k++)v+=a[k*4+r]*b[c*4+k];o[c*4+r]=v;}return o;}
+ function perspective(fov,aspect,near,far){const f=1/Math.tan(fov/2),nf=1/(near-far);return new Float32Array([f/aspect,0,0,0,0,f,0,0,0,0,(far+near)*nf,-1,0,0,2*far*near*nf,0]);}
+ function lookAt(e,t,u){let z=[e[0]-t[0],e[1]-t[1],e[2]-t[2]];let l=Math.hypot(...z);z=z.map(v=>v/l);let x=[u[1]*z[2]-u[2]*z[1],u[2]*z[0]-u[0]*z[2],u[0]*z[1]-u[1]*z[0]];l=Math.hypot(...x)||1;x=x.map(v=>v/l);const y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];
+  return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]),-(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]),-(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]),1]);}
+ function matrix(){const ce=Math.cos(elevation),eye=[target[0]-range*ce*Math.cos(azimuth),target[1]-range*ce*Math.sin(azimuth),target[2]+range*Math.sin(elevation)];
+  const up=elevation>1.5?[Math.cos(azimuth),Math.sin(azimuth),0]:[0,0,1];return mul(perspective(55*Math.PI/180,canvas.width/canvas.height,.5,800),lookAt(eye,target,up));}
+ function project(x,y,z,m){const w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<=.1)return null;return [((m[0]*x+m[4]*y+m[8]*z+m[12])/w+1)*canvas.width/2,(1-(m[1]*x+m[5]*y+m[9]*z+m[13])/w)*canvas.height/2];}
+ function draw(data,mode,color,size,m,height=0){if(!data.length)return;gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW);gl.uniformMatrix4fv(matrixLoc,false,m);gl.uniform4fv(colorLoc,color);gl.uniform1f(sizeLoc,size);gl.uniform1f(heightLoc,height);gl.drawArrays(mode,0,data.length/3);}
+ // ---- map frame -> car frame
+ let zRef=null;
+ function toLocal(list,out,z0,lift=0){const yaw=ego.heading*Math.PI/180,c=Math.cos(yaw),s=Math.sin(yaw),ex=ego.position.x,ey=ego.position.y;
+  for(let i=0;i<list.length;i++){const p=list[i],dx=p[0]-ex,dy=p[1]-ey;out.push(c*dx+s*dy,-s*dx+c*dy,(p.length>2?p[2]-z0:0)+lift);}return out;}
+ function near(list,r=160){if(!ego)return false;const ex=ego.position.x,ey=ego.position.y;for(let i=0;i<list.length;i+=4){const p=list[i];if(Math.abs(p[0]-ex)<r&&Math.abs(p[1]-ey)<r)return true;}const p=list[list.length-1];return Math.abs(p[0]-ex)<r&&Math.abs(p[1]-ey)<r;}
+ function strip(list,z0,lift=0){const pts=toLocal(list,[],z0,lift),seg=[];for(let i=0;i+5<pts.length;i+=3)seg.push(pts[i],pts[i+1],pts[i+2],pts[i+3],pts[i+4],pts[i+5]);return seg;}
+ function groundRef(){if(!map||!ego||!map.route.length)return 0;let best=1e18,z=0;for(const p of map.route){const d=(p[0]-ego.position.x)**2+(p[1]-ego.position.y)**2;if(d<best){best=d;z=p[2];}}return z;}
+ function local(car){if(ego){const yaw=ego.heading*Math.PI/180,dx=car.position[0]-ego.position.x,dy=car.position[1]-ego.position.y;return [Math.cos(yaw)*dx+Math.sin(yaw)*dy,-Math.sin(yaw)*dx+Math.cos(yaw)*dy,car.local_z??car.size[2]/2,(car.heading_deg-ego.heading)*Math.PI/180];}return [...car.local_position,car.local_z??car.size[2]/2,0];}
+ function box(x,y,z,l,w,h,yaw){const cs=Math.cos(yaw),sn=Math.sin(yaw),corners=[];for(let k=0;k<2;k++)for(let j=0;j<2;j++)for(let i=0;i<2;i++){const a=(i-.5)*l,b=(j-.5)*w;corners.push([x+cs*a-sn*b,y+sn*a+cs*b,z+(k-.5)*h]);}const lines=[];for(let i=0;i<8;i++)for(const bit of [1,2,4])if(!(i&bit))lines.push(...corners[i],...corners[i|bit]);return lines;}
+ function ribbon(xy,z,width){const out=[];for(let i=0;i+1<xy.length;i++){const [x0,y0]=xy[i],[x1,y1]=xy[i+1],dx=x1-x0,dy=y1-y0,l=Math.hypot(dx,dy)||1,nx=-dy/l*width/2,ny=dx/l*width/2;
+   out.push(x0+nx,y0+ny,z,x0-nx,y0-ny,z,x1+nx,y1+ny,z,x0-nx,y0-ny,z,x1-nx,y1-ny,z,x1+nx,y1+ny,z);}return out;}
+ function render(now){requestAnimationFrame(render);if(now-lastFrame<70)return;lastFrame=now;
+  const dpr=window.devicePixelRatio||1,w=Math.round(stage.clientWidth*dpr),h=Math.round(stage.clientHeight*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=overlay.width=w;canvas.height=overlay.height=h;gl.viewport(0,0,w,h);}
+  gl.clearColor(.035,.02,.04,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);const m=matrix();
+  ctx.clearRect(0,0,w,h);ctx.font=`${13*dpr}px system-ui`;
+  const haveMap=showMap&&map&&ego;
+  if(!haveMap){const grid=[];for(let t=-100;t<=100;t+=10)grid.push(-100,t,0,100,t,0,t,-100,0,t,100,0);draw(new Float32Array(grid),gl.LINES,[.28,.06,.1,1],1,m);}
+  if(haveMap){
+   zRef=groundRef();
+   const edges=[],centres=[],other=[];
+   const band=(list,w)=>{const r=toLocal(list,[],zRef,0),xy=[];for(let i=0;i<r.length;i+=3)xy.push([r[i],r[i+1]]);return ribbon(xy,.03,w);};
+   for(const lane of map.lanes){if(!near(lane.center))continue;if(lane.kind==='opposite')other.push(...band(lane.left,.12),...band(lane.right,.12));else{edges.push(...band(lane.left,.15),...band(lane.right,.15));centres.push(...strip(lane.center,zRef,.03));}}
+   draw(new Float32Array(other),gl.TRIANGLES,[.4,.44,.5,.6],1,m);
+   draw(new Float32Array(edges),gl.TRIANGLES,[.88,.93,1,.95],1,m);
+   draw(new Float32Array(centres),gl.LINES,[.45,.5,.58,.5],1,m);
+   const route=map.route.filter(p=>Math.abs(p[0]-ego.position.x)<170&&Math.abs(p[1]-ego.position.y)<170);
+   if(route.length>1){const r=toLocal(route,[],zRef,.04),xy=[];for(let i=0;i<r.length;i+=3)xy.push([r[i],r[i+1]]);draw(new Float32Array(ribbon(xy,.04,.35)),gl.TRIANGLES,[1,.82,.59,.55],1,m);}
+   for(const wall of map.walls){if(!near(wall,200))continue;const lo=toLocal(wall,[],zRef,0),hi=toLocal(wall,[],zRef,4.5),seg=[];
+     for(let i=0;i+5<lo.length;i+=3)seg.push(lo[i],lo[i+1],lo[i+2],lo[i+3],lo[i+4],lo[i+5],hi[i],hi[i+1],hi[i+2],hi[i+3],hi[i+4],hi[i+5],lo[i],lo[i+1],lo[i+2],hi[i],hi[i+1],hi[i+2]);
+     draw(new Float32Array(seg),gl.LINES,[.6,.48,1,.75],1,m);}
+  }
+  if(ego&&Date.now()-pathTime<1500){
+   for(const side of ['left','right'])if(corridor[side]?.length>1)draw(new Float32Array(strip(corridor[side],null,.06)),gl.LINES,[.69,.2,.29,1],2,m);
+   if(controlPath?.length>1){const r=toLocal(controlPath,[],0,.08),xy=[];for(let i=0;i<r.length;i+=3)xy.push([r[i],r[i+1]]);draw(new Float32Array(ribbon(xy,.08,1.9)),gl.TRIANGLES,[1,.24,.28,.28],1,m);draw(new Float32Array(strip(controlPath,null,.1)),gl.LINES,[1,.24,.28,1],2,m);}
+  }
+  draw(new Float32Array(box(0,0,.8,4.635,1.892,1.6,0)),gl.LINES,[1,.16,.22,1],2,m);
+  const fresh=Date.now()-cloudTime<800;if(fresh)draw(points,gl.POINTS,[1,.55,.6,1],2*dpr,m,heightColor?1:0);
+  let activeCars=[];
+  if(Date.now()-carTime<500&&vehicleStatus?.ready){activeCars=vehicles;for(const car of activeCars){const [x,y,z,yaw]=local(car);draw(new Float32Array(box(x,y,z,...car.size,yaw)),gl.LINES,[1,.25,.3,1],2,m);const p=project(x,y,z+car.size[2]/2,m);if(p){ctx.fillStyle='#ffd0d5';const speed=car.velocity_valid?`${(Math.hypot(...car.velocity)*3.6).toFixed(1)} km/h`:'속도 추정 중';ctx.fillText(`${car.uid} · ${speed}`,p[0]+6*dpr,p[1]);}}}
+  if(window.__fused){const lag=Math.max(0,Math.min(.6,(window.__fusedLag0||0)+(performance.now()-(window.__fusedRecv||performance.now()))/1000)),shift=(window.__fusedV||0)*lag;for(const o of window.__fused){const X=o.f-shift,Y=o.l;const s=Math.max(.5,(o.ext||.4)*2),ht=o.k==='pedestrian'?1.8:s;const col=o.k==='pedestrian'?[.47,.82,1,1]:o.k==='npc'?[1,.25,.3,1]:[1,.67,.24,1];
+    draw(new Float32Array(box(X,Y,ht/2,s,s,ht,0)),gl.LINES,col,2,m);const p=project(X,Y,ht+.3,m);if(p){ctx.fillStyle=o.k==='pedestrian'?'#78d2ff':'#ffaa3c';ctx.fillText(({pedestrian:'보행자',obstacle:'장애물',npc:'차량'}[o.k]||o.k)+' '+X.toFixed(0)+'m',p[0]+6*dpr,p[1]);}}}
+  if(window.__v6&&window.__v6.path.length>1){const v=window.__v6,lag=Math.max(0,Math.min(.8,v.lag0+(performance.now()-(window.__v6Recv||performance.now()))/1000)),shift=(window.__fusedV||0)*lag,pts=[];
+    for(const q of v.path){const X=q[0]-shift;if(X<-1)continue;pts.push(X,q[1],.15);}
+    if(pts.length>=6){const seg=[];for(let i=0;i+5<pts.length;i+=3)seg.push(pts[i],pts[i+1],pts[i+2],pts[i+3],pts[i+4],pts[i+5]);
+      draw(new Float32Array(seg),gl.LINES,[.78,.42,1,1],3,m);const n=pts.length-3,q=project(pts[n],pts[n+1],.6,m);
+      if(q){const name={KEEP_LANE:'차선 유지',LEFT_CHANGE:'왼쪽 회피',RIGHT_CHANGE:'오른쪽 회피',STOP:'정지',YIELD:'양보',TURN_LEFT:'좌회전',TURN_RIGHT:'우회전'}[v.action]||v.action||'';
+        ctx.fillStyle='#d9a8ff';ctx.fillText('v6 '+name+' '+Math.round((v.p||0)*100)+'%',q[0]+6*dpr,q[1]);}}}
+  document.getElementById('health').textContent=fresh?`점군 ${points.length/3}점 · 화면 ${cloudHz.toFixed(1)}Hz · 탐지 ${vehicleStatus?.hz??0}/15Hz${map?'':' · 지도 로딩'}`:'점군 수신 대기 · 런치/시나리오 Play 확인';
+  document.getElementById('cars').textContent=activeCars.length?activeCars.map(c=>`차량 ${c.uid}: ${(Math.hypot(...c.velocity)*3.6).toFixed(1)} km/h · 신뢰도 ${(c.score*100).toFixed(0)}%`).join('   |   '):vehicleStatus?.active?'탐지 차량 없음':'고속주로 차량 모델 대기';
+ }
+ function cloud(msg){const fields=Object.fromEntries(msg.fields.map(f=>[f.name,f]));if(!['x','y','z'].every(k=>fields[k]?.datatype===7))return;
+  const raw=typeof msg.data==='string'?Uint8Array.from(atob(msg.data),c=>c.charCodeAt(0)):new Uint8Array(msg.data),view=new DataView(raw.buffer,raw.byteOffset,raw.byteLength),little=!msg.is_bigendian,n=msg.width*msg.height,p=new Float32Array(n*3);let count=0;
+  for(let row=0;row<msg.height;row++)for(let col=0;col<msg.width;col++){const offset=row*msg.row_step+col*msg.point_step;if(offset+msg.point_step>raw.byteLength)continue;const x=view.getFloat32(offset+fields.x.offset,little)+1.05,y=view.getFloat32(offset+fields.y.offset,little),z=view.getFloat32(offset+fields.z.offset,little)+1.35;if(![x,y,z].every(Number.isFinite)||Math.hypot(x,y)>100)continue;p[count++]=x;p[count++]=y;p[count++]=z;}
+  points=p.subarray(0,count);cloudTime=Date.now();const stamp=msg.header.stamp.secs+msg.header.stamp.nsecs/1e9;if(lastStamp!==null&&stamp>lastStamp){const hz=1/(stamp-lastStamp);cloudHz=cloudHz?cloudHz*.7+hz*.3:hz;}lastStamp=stamp;
+ }
+ const pathXY=msg=>(msg.poses||[]).map(p=>[p.pose.position.x,p.pose.position.y]);
+ function connect(){ws=new WebSocket(`ws://${location.hostname}:9091`);ws.onopen=()=>{document.getElementById('connection').textContent='ROS 연결됨';document.getElementById('connection').className='';
+   for(const [topic,type,throttle] of [['/lidar/points','sensor_msgs/PointCloud2',200],['/perception/lidar_vehicles','std_msgs/String',100],['/localization/ego_status','morai_msgs/EgoVehicleStatus',100],
+     ['/student/processed_path','nav_msgs/Path',150],['/student/corridor_left','nav_msgs/Path',250],['/student/corridor_right','nav_msgs/Path',250]])
+     ws.send(JSON.stringify({op:'subscribe',topic,type,throttle_rate:throttle,queue_length:1}));};
+ ws.onmessage=event=>{try{const data=JSON.parse(event.data);if(data.op!=='publish')return;const t=data.topic;
+   if(t==='/lidar/points')cloud(data.msg);else if(t==='/localization/ego_status')ego=data.msg;
+   else if(t==='/perception/lidar_vehicles'){vehicleStatus=JSON.parse(data.msg.data);vehicles=vehicleStatus.vehicles;carTime=Date.now();}
+   else if(t==='/student/processed_path'){controlPath=pathXY(data.msg);pathTime=Date.now();}
+   else if(t==='/student/corridor_left')corridor.left=pathXY(data.msg);else if(t==='/student/corridor_right')corridor.right=pathXY(data.msg);}catch(error){console.debug(error);}};
+ ws.onclose=()=>{document.getElementById('connection').textContent='ROS 재연결 중';document.getElementById('connection').className='warn';setTimeout(connect,1500);};}
+ const loadMap=()=>fetch('/api/map3d').then(r=>r.json()).then(d=>{map=d;}).catch(()=>setTimeout(loadMap,5000));
+ let drag=null;canvas.onpointerdown=e=>{drag=[e.clientX,e.clientY,e.button===2||e.shiftKey];canvas.setPointerCapture(e.pointerId);};
+ canvas.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag[0],dy=e.clientY-drag[1];
+   if(drag[2]){const k=range*.0025;target[0]+=(dy*Math.cos(azimuth)+dx*Math.sin(azimuth))*k;target[1]+=(dy*Math.sin(azimuth)-dx*Math.cos(azimuth))*k;}
+   else{azimuth-=dx*.006;elevation=Math.max(.05,Math.min(1.55,elevation+dy*.006));}drag[0]=e.clientX;drag[1]=e.clientY;};
+ canvas.onpointerup=()=>drag=null;canvas.onpointercancel=()=>drag=null;canvas.oncontextmenu=e=>e.preventDefault();
+ canvas.onwheel=e=>{e.preventDefault();range=Math.max(6,Math.min(250,range*Math.exp(e.deltaY*.001)));};
+ const view=(az,el,r,t)=>()=>{azimuth=az;elevation=el;range=r;target=t;};
+ document.getElementById('chase').onclick=view(0,.32,32,[14,0,0]);document.getElementById('angle').onclick=view(-.6,.75,60,[18,0,0]);document.getElementById('top').onclick=view(0,1.55,80,[22,0,0]);
+ document.getElementById('layerMap').onclick=e=>{showMap=!showMap;e.target.textContent=showMap?'지도 ON':'지도 OFF';};
+ document.getElementById('layerColor').onclick=e=>{heightColor=!heightColor;e.target.textContent=heightColor?'높이색':'단색';};
+
+ // ---- cross-track error: signed lateral distance (left +) of the car from the global route and the control path
+ const cteLog=[];let cteSum={route:0,path:0,nr:0,np:0,maxR:0,maxP:0},routeHint=0;
+ function lateral(poly,px,py,start=0,span=poly.length){let best=null,bd=1e18,hint=start;const n=poly.length;
+  for(let k=0;k<Math.min(span,n-1);k++){const i=(start+k)%(n-1),a=poly[i],b=poly[i+1],dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
+   let u=((px-a[0])*dx+(py-a[1])*dy)/L2;if(i>0||span<n)u=Math.max(0,Math.min(1,u));else u=Math.min(1,u);
+   const qx=a[0]+u*dx-px,qy=a[1]+u*dy-py,d=qx*qx+qy*qy;if(d<bd){bd=d;hint=i;best=(dx*(py-a[1])-dy*(px-a[0]))/Math.sqrt(L2);}}
+  return [best,hint];}
+ function sampleCte(){if(!ego)return;const px=ego.position.x,py=ego.position.y,now=Date.now()/1000;let eR=null,eP=null;
+  if(map&&map.route.length>2){const full=routeHint===0;const [v,h]=lateral(map.route,px,py,full?0:(routeHint-40+map.route.length)%(map.route.length-1),full?map.route.length:120);
+   if(v!==null&&Math.abs(v)<15){eR=v;routeHint=h;}else routeHint=0;}
+  if(controlPath?.length>1&&Date.now()-pathTime<1000){const [v]=lateral(controlPath,px,py,0,controlPath.length);if(v!==null&&Math.abs(v)<10)eP=v;}
+  if(eR===null&&eP===null)return;cteLog.push([now,eR,eP]);while(cteLog.length&&now-cteLog[0][0]>60)cteLog.shift();
+  if(eR!==null){cteSum.route+=eR*eR;cteSum.nr++;cteSum.maxR=Math.max(cteSum.maxR,Math.abs(eR));}
+  if(eP!==null){cteSum.path+=eP*eP;cteSum.np++;cteSum.maxP=Math.max(cteSum.maxP,Math.abs(eP));}}
+ const rms=(rows,k)=>{let s=0,n=0;for(const r of rows)if(r[k]!==null){s+=r[k]*r[k];n++;}return n?Math.sqrt(s/n):null;};
+ const f2=v=>v===null||v===undefined?'—':v.toFixed(2);
+ function drawCte(){const c=document.getElementById('cteChart');if(!c)return;const dpr=window.devicePixelRatio||1,W=Math.round(c.clientWidth*dpr),H=Math.round(c.clientHeight*dpr);if(c.width!==W||c.height!==H){c.width=W;c.height=H;}
+  const g=c.getContext('2d');g.clearRect(0,0,W,H);g.fillStyle='#0a0609';g.fillRect(0,0,W,H);const now=Date.now()/1000;
+  let lim=.5;for(const r of cteLog)for(const k of [1,2])if(r[k]!==null)lim=Math.max(lim,Math.abs(r[k]));lim=Math.min(6,Math.ceil(lim*2)/2);
+  const X=t=>(1-(now-t)/60)*(W-40*dpr)+40*dpr,Y=v=>H/2-v/lim*(H/2-8*dpr);
+  g.font=`${10*dpr}px ui-monospace,monospace`;g.lineWidth=1;
+  for(const v of [-lim,-lim/2,0,lim/2,lim]){g.strokeStyle=v===0?'#6a3a44':'#2c1820';g.beginPath();g.moveTo(40*dpr,Y(v));g.lineTo(W,Y(v));g.stroke();g.fillStyle='#b98a92';g.fillText((v>0?'+':'')+v.toFixed(1)+'m',2*dpr,Y(v)+3*dpr);}
+  for(const [k,col] of [[1,'#ffd296'],[2,'#ff3c46']]){g.strokeStyle=col;g.lineWidth=1.6*dpr;g.beginPath();let pen=false;for(const r of cteLog){if(r[k]===null){pen=false;continue;}const x=X(r[0]),y=Y(r[k]);if(pen)g.lineTo(x,y);else g.moveTo(x,y);pen=true;}g.stroke();}
+  const last=cteLog[cteLog.length-1]||[0,null,null];
+  const big=(label,now,r60,acc,mx,col)=>`<div style="border-left:3px solid ${col}"><small>${label}</small><b>${f2(now)}<i>m</i></b><span>RMSE 60초 <em>${f2(r60)}</em> · 누적 ${f2(acc)} · 최대 ${f2(mx)}</span></div>`;
+  document.getElementById('cteStats').innerHTML=big('전역 경로 이탈',last[1],rms(cteLog,1),cteSum.nr?Math.sqrt(cteSum.route/cteSum.nr):null,cteSum.maxR,'#ffd296')+big('제어 경로 추종',last[2],rms(cteLog,2),cteSum.np?Math.sqrt(cteSum.path/cteSum.np):null,cteSum.maxP,'#ff3c46');}
+ setInterval(()=>{sampleCte();drawCte();},100);
+ document.getElementById('cteReset').onclick=()=>{cteSum={route:0,path:0,nr:0,np:0,maxR:0,maxP:0};};
+ window.addEventListener('beforeunload',()=>ws?.close());loadMap();connect();requestAnimationFrame(render);
+})();
+</script>
+</body></html>

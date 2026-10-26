@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주행 가능 영역</title>
+<script src="/vendor/roslib.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #171b21; --line: #2a313b; --text: #e6e9ee; --muted: #8b95a3;
+    --route: #39d98a; --same: #55606f; --opp: #7a3346; --allowed: #3cc8ff; --sel: #ffe066;
+    --zone: rgba(255, 77, 94, .22); --block: #ff4d5e; --ego: #ffffff;
+    --path: #ffe63c; --corridor: #3cc8ff; --npc: #5a8cff; --ped: #ffd83c; --obs: #ff5a5a;
+    --static: #ffa65c; --dynamic: #69d7ae; --tunnel: #b58cff; --overpass: #5ab4ff; --signal: #ffd46b; --intersection: #ff7ac8; --normal: #8b95a3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Noto Sans KR", sans-serif; height: 100vh; display: flex; overflow: hidden; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #map { flex: 1; position: relative; min-height: 0; }
+  canvas#cv { display: block; width: 100%; height: 100%; cursor: grab; }
+  canvas#cv.picking { cursor: crosshair; }
+  #strip { height: 64px; border-top: 1px solid var(--line); background: var(--panel); position: relative; }
+  canvas#bar { display: block; width: 100%; height: 100%; cursor: pointer; }
+  aside { width: 360px; background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; overflow-x: hidden; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  h2 { font-size: 13px; margin: 18px 0 8px; color: var(--muted); font-weight: 600; }
+  .muted { color: var(--muted); font-size: 12px; }
+  button, select { background: #232a33; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; font: inherit; }
+  button:hover { border-color: #4a5566; }
+  button.primary { background: #1f6f4a; border-color: #2c9a67; }
+  button.on { border-color: var(--sel); background: #37424f; }
+  input[type=text], input[type=number] { background: #0f1216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; width: 100%; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; font-size: 12px; }
+  .legend i { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
+  .card { background: #11151a; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 12px; }
+  .sec { display: grid; grid-template-columns: 86px 1fr 1fr auto; gap: 4px; align-items: center; margin: 6px 0; padding: 6px; border-left: 4px solid var(--normal); background: #11151a; border-radius: 4px; }
+  .sec input.label { grid-column: 1 / 4; }
+  .sec .btns { display: flex; gap: 4px; grid-column: 4; grid-row: 1 / 4; flex-direction: column; }
+  .sec .btns button { padding: 2px 7px; font-size: 12px; }
+  .sec .head { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .num { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 11px; color: #0f1216; font-weight: 700; font-size: 12px; }
+  .sec.focus { outline: 2px solid var(--sel); }
+  #tip { position: absolute; pointer-events: none; background: #000c; padding: 3px 7px; border-radius: 4px; font-size: 12px; display: none; white-space: nowrap; }
+  #msg { margin-top: 8px; font-size: 12px; min-height: 18px; }
+  #msg.err { color: var(--block); } #msg.ok { color: var(--route); }
+  a { color: var(--allowed); }
+  .health { display: grid; grid-template-columns: 12px 1fr auto; gap: 3px 8px; align-items: center; font-size: 12px; }
+  .health .dot { width: 10px; height: 10px; border-radius: 5px; }
+  .health .d { grid-column: 2 / 4; color: var(--muted); font-size: 11px; margin-top: -2px; margin-bottom: 3px; }
+  .health .grp { grid-column: 1 / 4; color: var(--muted); font-size: 11px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; }
+  #healthSummary.ok { color: var(--route); } #healthSummary.warn { color: var(--signal); } #healthSummary.bad { color: var(--block); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 14px; }
+  @media (max-width: 760px) { body { flex-direction: column; } aside { width: 100%; height: 45vh; border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<div id="main">
+  <div id="map"><canvas id="cv"></canvas><div id="tip"></div></div>
+  <div id="strip"><canvas id="bar"></canvas></div>
+</div>
+<aside>
+  <h1>주행 가능 영역</h1>
+  <div class="muted">알파마요는 경로 차선과 여기서 고른 <b>같은 방향 차선</b>만 회피에 씁니다. 저장하면 주행 중에도 2초 안에 반영됩니다. <a href="/">대시보드로</a></div>
+
+  <div class="legend row">
+    <span><i style="background:var(--route)"></i>경로 차선</span>
+    <span><i style="background:var(--same)"></i>같은 방향</span>
+    <span><i style="background:var(--allowed)"></i>사용할 차선</span>
+    <span><i style="background:var(--opp)"></i>반대 방향</span>
+    <span><i style="background:var(--tunnel)"></i>터널: 양쪽 차선 모두 사용</span>
+    <span><i style="background:var(--path)"></i>알파마요 경로</span>
+    <span><i style="background:var(--corridor)"></i>허용 범위</span>
+  </div>
+  <div class="row"><label><input type="checkbox" id="liveOn" checked> 실시간 표시</label><span class="muted" id="rosState">연결 중…</span></div>
+  <h2>센서 상태 <span id="healthSummary" class="muted">수신 대기…</span></h2>
+  <div id="health" class="health"></div>
+  <div class="row">
+    <button id="fit">경로 전체</button>
+    <button id="follow">차량 따라가기</button>
+  </div>
+
+  <h2>사용할 차선 <span id="allowedCount" class="muted"></span></h2>
+  <div class="muted">같은 방향 차선을 클릭해서 켜고 끕니다. 반대 방향 차선은 고를 수 없습니다. 단, "터널" 구간 안에서는 장애물이 있으면 중앙선을 넘어 반대 차선까지 써서 회피합니다.</div>
+  <div class="row">
+    <button id="useDefault">HD맵 기본 옆차선으로 채우기</button>
+    <button id="clearAllowed">모두 해제</button>
+  </div>
+  <div id="sel" class="card muted">차선에 마우스를 올리면 정보가 나옵니다.</div>
+
+  <h2>구간 (미션)</h2>
+  <div class="legend row" id="typeLegend"></div>
+  <div class="muted"><b>교차로</b>: 차선이 없으므로 장애물이 나오면 좌우 4.5 m 안의 빈 공간에 회피 경로를 만들어 비켜 갑니다. <b>터널</b>: 반대 차선까지 사용. 그 밖의 구간은 1차선이면 중앙선을 넘지 않습니다.</div>
+  <div class="muted">아래 막대를 누르면 그 위치로 이동합니다. "찍기"를 누르고 경로 위를 두 번 클릭하면 시작과 끝이 들어갑니다.</div>
+  <div class="row">
+    <button id="addSection">구간 추가</button>
+    <button id="missionSections">미션 파일 기본값 불러오기</button>
+  </div>
+  <div class="muted" id="autoNote"></div>
+  <div id="sections"></div>
+
+  <details>
+    <summary>금지구역 (선택)</summary>
+    <div class="muted">버튼을 누르고 지도에 꼭짓점을 찍은 뒤 더블클릭(또는 Enter)으로 완성합니다.</div>
+    <div class="row"><button id="drawZone">금지구역 그리기</button></div>
+    <div id="zones"></div>
+  </details>
+
+  <h2>저장</h2>
+  <div class="row">
+    <button class="primary" id="save">저장</button>
+    <button id="reload">저장된 상태로 되돌리기</button>
+  </div>
+  <div id="msg"></div>
+  <div class="muted" id="path" style="word-break:break-all"></div>
+</aside>
+<script>
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const bar = document.getElementById("bar"), bctx = bar.getContext("2d");
+const tip = document.getElementById("tip"), msg = document.getElementById("msg");
+const TYPES = {static: "정적", dynamic: "동적", tunnel: "터널", overpass: "고가도로", signal: "신호등", intersection: "교차로", normal: "일반"};
+let lanes = [], route = [], station = [], routeLength = 1, missionDefaults = [], autoSections = [];
+let allowed = new Set(), sections = [], zones = [];
+let view = {cx: 0, cy: 0, scale: 1}, hover = null, ego = null, egoS = null, followEgo = false, dirty = false;
+let drawing = null, picking = null, focusSec = null;
+const shown = () => [...sections, ...autoSections].sort((a, b) => a.start_m - b.start_m || b.end_m - a.end_m);
+const secNo = sec => sec.auto ? "교" : sections.indexOf(sec) + 1;
+const secTitle = sec => `${TYPES[sec.type]}${sec.label ? " · " + sec.label : ""}`;
+function sortSections() { sections.sort((a, b) => a.start_m - b.start_m || b.end_m - a.end_m); }
+function sectionsAt(s) { return shown().filter(sec => sec.start_m <= s && s <= sec.end_m); }
+const live = {path: [], left: [], right: [], objects: [], on: true};
+const dpr = () => window.devicePixelRatio || 1;
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function toScreen(x, y) { return [cv.width / 2 + (x - view.cx) * view.scale, cv.height / 2 - (y - view.cy) * view.scale]; }
+function toWorld(sx, sy) { return [view.cx + (sx - cv.width / 2) / view.scale, view.cy - (sy - cv.height / 2) / view.scale]; }
+function setMsg(text, cls) { msg.textContent = text; msg.className = cls || ""; }
+function markDirty() { dirty = true; setMsg("저장하지 않은 변경이 있습니다.", "err"); }
+
+function nearestStation(x, y) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < route.length; i++) {
+    const d = (route[i][0] - x) ** 2 + (route[i][1] - y) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return {s: station[best] || 0, d: Math.sqrt(bestD)};
+}
+function routeSlice(s0, s1) { return route.filter((_, i) => station[i] >= s0 && station[i] <= s1); }
+
+function resize() {
+  for (const c of [cv, bar]) { const r = c.getBoundingClientRect(); c.width = r.width * dpr(); c.height = r.height * dpr(); }
+  draw();
+}
+function fit(points, pad = 0.9) {
+  if (!points.length) return;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of points) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
+  view.scale = pad * Math.min(cv.width / Math.max(x1 - x0, 20), cv.height / Math.max(y1 - y0, 20));
+  draw();
+}
+function polyline(points, color, width, dash) {
+  if (points.length < 2) return;
+  ctx.beginPath();
+  points.forEach(([x, y], i) => { const [sx, sy] = toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+  ctx.setLineDash(dash || []); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke(); ctx.setLineDash([]);
+}
+// Tunnel sections are open road: every lane there is usable, either direction (planner rule).
+function inTunnel(lane) {
+  return sections.some(sec => sec.type === "tunnel" && Math.min(lane.s1, sec.end_m) - Math.max(lane.s0, sec.start_m) > 0.5 * (lane.s1 - lane.s0));
+}
+function laneColor(lane) {
+  if (lane.kind === "route") return css("--route");
+  if (inTunnel(lane)) return css("--tunnel");
+  if (lane.kind === "opposite") return css("--opp");
+  return allowed.has(lane.id) ? css("--allowed") : css("--same");
+}
+
+function draw() {
+  const k = dpr(), laneW = Math.max(1.5 * k, Math.min(3.2 * view.scale, 14 * k));
+  ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, cv.width, cv.height);
+  for (const sec of shown()) polyline(routeSlice(sec.start_m, sec.end_m), css("--" + sec.type) + (sec === focusSec ? "aa" : "66"), laneW * (sec === focusSec ? 4.5 : 3.4));
+  for (const lane of lanes) polyline(lane.pts, laneColor(lane), lane.kind === "same" && allowed.has(lane.id) ? laneW : laneW * 0.75);
+  for (const zone of zones.concat(drawing ? [{polygon: drawing, open: true}] : [])) {
+    if (zone.polygon.length < 2) continue;
+    ctx.beginPath();
+    zone.polygon.forEach(([x, y], i) => { const [sx, sy] = toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+    if (!zone.open) ctx.closePath();
+    ctx.fillStyle = css("--zone"); ctx.fill(); ctx.strokeStyle = css("--block"); ctx.lineWidth = 1.5 * k; ctx.stroke();
+  }
+  if (hover) polyline(hover.pts, css("--sel"), laneW * 1.3);
+  drawSectionLabels(k);
+  if (live.on) {
+    polyline(live.left, css("--corridor"), 1.5 * k, [5 * k, 4 * k]);
+    polyline(live.right, css("--corridor"), 1.5 * k, [5 * k, 4 * k]);
+    polyline(live.path, css("--path"), Math.max(2.5 * k, laneW * 0.45));
+    for (const o of live.objects) {
+      const [sx, sy] = toScreen(o.x, o.y);
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(-o.heading * Math.PI / 180);
+      ctx.fillStyle = css(o.kind === "npc" ? "--npc" : o.kind === "pedestrian" ? "--ped" : "--obs");
+      const l = Math.max(o.l * view.scale, 4 * k), w = Math.max(o.w * view.scale, 4 * k);
+      ctx.fillRect(-l / 2, -w / 2, l, w);
+      if (o.speed > 0.3) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(o.speed * 2 * view.scale, 0); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 2 * k; ctx.stroke(); }
+      ctx.restore();
+    }
+  }
+  if (ego) {
+    const [sx, sy] = toScreen(ego.x, ego.y), h = -ego.heading_deg * Math.PI / 180, r = 9 * k;
+    ctx.beginPath();
+    ctx.moveTo(sx + Math.cos(h) * r * 1.6, sy + Math.sin(h) * r * 1.6);
+    ctx.lineTo(sx + Math.cos(h + 2.5) * r, sy + Math.sin(h + 2.5) * r);
+    ctx.lineTo(sx + Math.cos(h - 2.5) * r, sy + Math.sin(h - 2.5) * r);
+    ctx.closePath(); ctx.fillStyle = css("--ego"); ctx.fill();
+  }
+  drawBar();
+}
+
+function routeAt(s) {
+  let i = station.findIndex(v => v >= s); if (i < 0) i = route.length - 1;
+  const a = route[Math.max(0, i - 1)], b = route[Math.min(route.length - 1, i + 1)];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return {p: route[i], n: [-(b[1] - a[1]) / len, (b[0] - a[0]) / len]};
+}
+function badge(x, y, lines, color, k) {
+  ctx.font = `600 ${12 * k}px system-ui, "Noto Sans KR"`; ctx.textBaseline = "alphabetic";
+  const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + 14 * k, h = (lines.length * 15 + 8) * k;
+  ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 6 * k); ctx.fill();
+  ctx.fillStyle = "#0f1216";
+  lines.forEach((t, i) => ctx.fillText(t, x - w / 2 + 7 * k, y - h / 2 + (15 * i + 16) * k));
+}
+function drawSectionLabels(k) {
+  shown().forEach((sec, idx) => {
+    const color = css("--" + sec.type);
+    // start/end ticks across the road
+    for (const s of [sec.start_m, sec.end_m]) {
+      const {p, n} = routeAt(s), half = Math.max(8 * k / view.scale, 4.5);
+      const [ax, ay] = toScreen(p[0] + n[0] * half, p[1] + n[1] * half), [bx, by] = toScreen(p[0] - n[0] * half, p[1] - n[1] * half);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.strokeStyle = color; ctx.lineWidth = 3 * k; ctx.stroke();
+    }
+    if (sec.auto && view.scale < 1.2 * k) return;      // auto intersections: label only when zoomed in
+    // numbered badge beside the middle of the section; sides alternate so neighbours separate
+    const {p, n} = routeAt((sec.start_m + sec.end_m) / 2), side = idx % 2 ? -1 : 1, off = 46 * k / view.scale;
+    const [mx, my] = toScreen(p[0], p[1]), [lx, ly] = toScreen(p[0] + n[0] * off * side, p[1] + n[1] * off * side);
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(lx, ly); ctx.strokeStyle = color; ctx.lineWidth = 1.5 * k; ctx.stroke();
+    badge(lx, ly, sec.auto ? [`교차로 (자동) ${Math.round(sec.start_m)}–${Math.round(sec.end_m)} m`]
+      : [`${secNo(sec)}. ${secTitle(sec)}`, `${Math.round(sec.start_m)}–${Math.round(sec.end_m)} m`], color, k);
+  });
+}
+
+function drawBar() {
+  const k = dpr(), W = bar.width, H = bar.height, x0 = 12 * k, x1 = W - 12 * k;
+  const sx = s => x0 + (x1 - x0) * s / routeLength;
+  bctx.fillStyle = css("--panel"); bctx.fillRect(0, 0, W, H);
+  bctx.fillStyle = "#2a313b"; bctx.fillRect(x0, H * 0.42, x1 - x0, 6 * k);
+  for (const sec of shown()) {
+    const nested = shown().some(o => o !== sec && o.start_m <= sec.start_m && o.end_m >= sec.end_m && (o.end_m - o.start_m) > (sec.end_m - sec.start_m));
+    const y = H * (nested ? 0.56 : 0.10), w = Math.max(2 * k, sx(sec.end_m) - sx(sec.start_m)), h = 15 * k;
+    bctx.fillStyle = css("--" + sec.type);
+    bctx.fillRect(sx(sec.start_m), y, w, h);
+    if (sec === focusSec) { bctx.strokeStyle = css("--sel"); bctx.lineWidth = 2 * k; bctx.strokeRect(sx(sec.start_m), y, w, h); }
+    bctx.font = `700 ${11 * k}px system-ui, "Noto Sans KR"`;
+    const full = `${secNo(sec)} ${TYPES[sec.type]}`, short = `${secNo(sec)}`;
+    const text = bctx.measureText(full).width + 6 * k < w ? full : short;
+    bctx.fillStyle = "#0f1216";
+    if (bctx.measureText(text).width + 4 * k < w) bctx.fillText(text, sx(sec.start_m) + 3 * k, y + 11.5 * k);
+    else { bctx.fillStyle = css("--" + sec.type); bctx.fillText(short, sx(sec.start_m), y > H * 0.3 ? y + h + 10 * k : y - 2 * k); }
+  }
+  bctx.fillStyle = css("--muted"); bctx.font = `${10 * k}px system-ui`;
+  for (let s = 0; s <= routeLength; s += 250) bctx.fillText(`${s}m`, sx(s) - 8 * k, H - 5 * k);
+  if (egoS !== null) { bctx.fillStyle = css("--ego"); bctx.fillRect(sx(egoS) - 1.5 * k, 3 * k, 3 * k, H * 0.74); }
+}
+
+function laneAt(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy), limit = 9 * dpr() / view.scale;
+  let best = null, bestD = limit;
+  for (const lane of lanes) {
+    const p = lane.pts;
+    for (let i = 1; i < p.length; i++) {
+      const [ax, ay] = p[i - 1], [bx, by] = p[i], dx = bx - ax, dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((wx - ax) * dx + (wy - ay) * dy) / (dx * dx + dy * dy || 1)));
+      const d = Math.hypot(wx - ax - t * dx, wy - ay - t * dy);
+      if (d < bestD) { bestD = d; best = lane; }
+    }
+  }
+  return best;
+}
+
+function showLane(lane) {
+  const box = document.getElementById("sel");
+  if (!lane) { box.className = "card muted"; box.textContent = "차선에 마우스를 올리면 정보가 나옵니다."; return; }
+  const kind = lane.kind !== "route" && inTunnel(lane) ? "터널 구간 · 차선 구분 없이 사용 (반대 방향 포함)"
+    : {route: "경로 차선 (항상 사용)", same: allowed.has(lane.id) ? "같은 방향 · 사용함" : "같은 방향 · 사용 안 함", opposite: "반대 방향 (사용 불가)"}[lane.kind];
+  box.className = "card";
+  box.innerHTML = `<b>${lane.id}</b><br>${kind}<br>도로 ${lane.road || "-"} · ${lane.lane ?? "-"}차로 · 경로 ${lane.s0}~${lane.s1} m${lane.hdmap_default ? "<br>HD맵 기본 옆차선" : ""}`;
+}
+function renderAllowed() { document.getElementById("allowedCount").textContent = `(${allowed.size}개)`; }
+
+function renderSections() {
+  const box = document.getElementById("sections");
+  box.innerHTML = sections.length ? "" : '<div class="muted">없음</div>';
+  sections.forEach((sec, i) => {
+    const row = document.createElement("div"); row.className = "sec"; row.style.borderLeftColor = css("--" + sec.type);
+    row.classList.toggle("focus", sec === focusSec);
+    row.innerHTML = `<div class="head"><span class="num" style="background:${css("--" + sec.type)}">${i + 1}</span><b>${secTitle(sec)}</b><span class="muted">${Math.round(sec.end_m - sec.start_m)} m</span></div>
+      <div class="btns"><button>보기</button><button>찍기</button><button>삭제</button></div>
+      <select>${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === sec.type ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <input type="number" step="1" value="${sec.start_m}" title="시작 (m)"><input type="number" step="1" value="${sec.end_m}" title="끝 (m)">
+      <input class="label" type="text" placeholder="메모 (예: 터널 정적 장애물)">`;
+    const [, btns, type, start, end, label] = row.children, [show, pick, del] = btns.children;
+    label.value = sec.label || "";
+    label.value = sec.label || "";
+    type.onchange = () => { sec.type = type.value; markDirty(); renderSections(); draw(); };
+    start.onchange = () => { sec.start_m = +start.value; sortSections(); markDirty(); renderSections(); draw(); };
+    end.onchange = () => { sec.end_m = +end.value; sortSections(); markDirty(); renderSections(); draw(); };
+    label.onchange = () => { sec.label = label.value; markDirty(); renderSections(); draw(); };
+    show.onclick = () => { focusSec = sec; renderSections(); fit(routeSlice(sec.start_m - 20, sec.end_m + 20), 0.55); };
+    pick.onclick = () => { picking = {sec, first: null}; cv.classList.add("picking"); setMsg("지도에서 경로 위 시작점을 클릭하세요 (Esc 취소).", ""); };
+    del.onclick = () => { sections.splice(i, 1); markDirty(); renderSections(); draw(); };
+    box.appendChild(row);
+  });
+}
+
+function renderZones() {
+  const box = document.getElementById("zones");
+  box.innerHTML = zones.length ? "" : '<div class="muted">없음</div>';
+  zones.forEach((zone, i) => {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<input type="text" style="flex:1"><button>삭제</button>`;
+    const [name, del] = row.children;
+    name.value = zone.name || "";
+    name.oninput = () => { zone.name = name.value; markDirty(); };
+    del.onclick = () => { zones.splice(i, 1); markDirty(); renderZones(); draw(); };
+    box.appendChild(row);
+  });
+}
+function finishZone() {
+  if (drawing && drawing.length >= 3) { zones.push({name: `금지구역 ${zones.length + 1}`, polygon: drawing}); markDirty(); renderZones(); }
+  drawing = null; cv.classList.remove("picking"); document.getElementById("drawZone").classList.remove("on"); draw();
+}
+
+let drag = null, moved = false;
+cv.addEventListener("mousedown", e => { drag = [e.offsetX, e.offsetY]; moved = false; });
+window.addEventListener("mouseup", () => { drag = null; });
+cv.addEventListener("mousemove", e => {
+  if (drag) {
+    const dx = e.offsetX - drag[0], dy = e.offsetY - drag[1];
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    view.cx -= dx * dpr() / view.scale; view.cy += dy * dpr() / view.scale; drag = [e.offsetX, e.offsetY];
+    followEgo = false; document.getElementById("follow").classList.remove("on"); draw(); return;
+  }
+  const [wx, wy] = toWorld(e.offsetX * dpr(), e.offsetY * dpr()), at = nearestStation(wx, wy);
+  const lane = drawing || picking ? null : laneAt(e.offsetX * dpr(), e.offsetY * dpr());
+  if (lane !== hover) { hover = lane; showLane(lane); draw(); }
+  const here = at.d < 25 ? sectionsAt(at.s).map(sec => `${secNo(sec)}. ${secTitle(sec)}`).join(" / ") : "";
+  const text = (lane ? lane.id + " · " : "") + (at.d < 25 ? `경로 ${Math.round(at.s)} m` : "") + (here ? " · " + here : "");
+  tip.style.display = text ? "block" : "none"; tip.textContent = text;
+  tip.style.left = e.offsetX + 12 + "px"; tip.style.top = e.offsetY + 12 + "px";
+});
+cv.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+cv.addEventListener("click", e => {
+  if (moved) return;
+  const [wx, wy] = toWorld(e.offsetX * dpr(), e.offsetY * dpr());
+  if (drawing) { drawing.push([+wx.toFixed(2), +wy.toFixed(2)]); draw(); return; }
+  if (picking) {
+    const s = Math.round(nearestStation(wx, wy).s);
+    if (picking.first === null) { picking.first = s; setMsg(`시작 ${s} m. 이제 끝점을 클릭하세요.`, ""); return; }
+    picking.sec.start_m = Math.min(picking.first, s); picking.sec.end_m = Math.max(picking.first, s); sortSections();
+    picking = null; cv.classList.remove("picking"); markDirty(); renderSections(); draw(); return;
+  }
+  const lane = laneAt(e.offsetX * dpr(), e.offsetY * dpr());
+  if (!lane) return;
+  if (lane.kind !== "route" && inTunnel(lane)) { setMsg("터널 구간은 차선 구분 없이 양쪽 차선을 모두 씁니다.", "ok"); return; }
+  if (lane.kind !== "same") { setMsg(lane.kind === "route" ? "경로 차선은 항상 사용합니다." : "반대 방향 차선은 사용할 수 없습니다.", "err"); return; }
+  allowed.has(lane.id) ? allowed.delete(lane.id) : allowed.add(lane.id);
+  markDirty(); renderAllowed(); showLane(lane); draw();
+});
+cv.addEventListener("dblclick", () => { if (drawing) { drawing.pop(); finishZone(); } });
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const [wx, wy] = toWorld(e.offsetX * dpr(), e.offsetY * dpr());
+  view.scale *= Math.exp(-e.deltaY * 0.0015);
+  const [nx, ny] = toWorld(e.offsetX * dpr(), e.offsetY * dpr());
+  view.cx += wx - nx; view.cy += wy - ny; draw();
+}, {passive: false});
+bar.addEventListener("click", e => {
+  const k = dpr(), x0 = 12 * k, x1 = bar.width - 12 * k, s = (e.offsetX * k - x0) / (x1 - x0) * routeLength;
+  const hit = sectionsAt(s).sort((a, b) => (a.end_m - a.start_m) - (b.end_m - b.start_m))[0];
+  if (hit) { focusSec = hit; renderSections(); fit(routeSlice(hit.start_m - 20, hit.end_m + 20), 0.55); }
+  else fit(routeSlice(s - 60, s + 60), 0.6);
+});
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (drawing) { drawing = null; finishZone(); } if (picking) { picking = null; cv.classList.remove("picking"); setMsg(""); } }
+  if (e.key === "Enter" && drawing) finishZone();
+});
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+document.getElementById("fit").onclick = () => fit(route);
+document.getElementById("follow").onclick = e => { followEgo = !followEgo; e.target.classList.toggle("on", followEgo); };
+document.getElementById("useDefault").onclick = () => { lanes.filter(l => l.hdmap_default).forEach(l => allowed.add(l.id)); markDirty(); renderAllowed(); draw(); };
+document.getElementById("clearAllowed").onclick = () => { allowed.clear(); markDirty(); renderAllowed(); draw(); };
+document.getElementById("addSection").onclick = () => {
+  const s = egoS !== null ? Math.round(egoS) : 0;
+  const sec = {type: "static", label: "", start_m: s, end_m: s + 50};
+  sections.push(sec); sortSections(); focusSec = sec; markDirty(); renderSections(); draw();
+};
+document.getElementById("missionSections").onclick = () => { sections = missionDefaults.map(s => ({...s})); sortSections(); markDirty(); renderSections(); draw(); };
+document.getElementById("drawZone").onclick = e => {
+  if (drawing) { finishZone(); return; }
+  drawing = []; cv.classList.add("picking"); e.target.classList.add("on");
+};
+document.getElementById("liveOn").onchange = e => { live.on = e.target.checked; draw(); };
+document.getElementById("save").onclick = async () => {
+  try {
+    const res = await fetch("/api/drivable-rules", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({allowed_links: [...allowed], sections, zones})});
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+    applyRules(data.rules); dirty = false;
+    setMsg(`저장됨 (${data.rules.updated_at}) · 사용 차선 ${allowed.size}개 · 구간 ${sections.length}개`, "ok");
+  } catch (err) { setMsg("저장 실패: " + err.message, "err"); }
+};
+document.getElementById("reload").onclick = async () => { await loadRules(); };
+
+function applyRules(rules) {
+  allowed = new Set(rules.allowed_links || []); sections = (rules.sections || []).map(s => ({...s})); sortSections(); zones = rules.zones || [];
+  renderAllowed(); renderSections(); renderZones(); draw();
+}
+async function loadRules() {
+  const data = await (await fetch("/api/drivable-rules")).json();
+  document.getElementById("path").textContent = "파일: " + data.path;
+  if (data.mode !== "whitelist") {
+    // First visit: start from what the planner used so far (HD-map neighbours) and the mission file.
+    applyRules({allowed_links: lanes.filter(l => l.hdmap_default).map(l => l.id), sections: missionDefaults, zones: data.zones});
+    dirty = true;
+    setMsg("저장된 설정이 없어 HD맵 기본 옆차선과 미션 파일 구간으로 채웠습니다. 확인 후 저장하세요.", "err");
+  } else { applyRules(data); dirty = false; setMsg(`저장된 설정 (${data.updated_at})`, "ok"); }
+}
+
+function connectRos() {
+  const state = document.getElementById("rosState");
+  if (typeof ROSLIB === "undefined") { state.textContent = "roslib 없음"; return; }
+  const ros = new ROSLIB.Ros({url: `ws://${location.hostname || "127.0.0.1"}:9091`});
+  ros.on("connection", () => { state.textContent = "ROS 연결됨"; });
+  ros.on("error", () => { state.textContent = "ROS 연결 실패, 재시도…"; });
+  ros.on("close", () => { setTimeout(connectRos, 3000); });
+  // Competition topics only: localization pose, Alpamayo path/corridor, MORAI object list. Never /Ego_topic.
+  const sub = (name, type, rate, fn) => new ROSLIB.Topic({ros, name, messageType: type, throttle_rate: rate, queue_length: 1}).subscribe(fn);
+  const pts = m => m.poses.map(p => [p.pose.position.x, p.pose.position.y]);
+  sub("/student/processed_path", "nav_msgs/Path", 150, m => { live.path = pts(m); });
+  sub("/student/corridor_left", "nav_msgs/Path", 200, m => { live.left = pts(m); });
+  sub("/student/corridor_right", "nav_msgs/Path", 200, m => { live.right = pts(m); });
+  sub("/localization/ego_status", "morai_msgs/EgoVehicleStatus", 100, m => {
+    ego = {x: m.position.x, y: m.position.y, heading_deg: m.heading};
+    egoS = nearestStation(ego.x, ego.y).s;
+    if (followEgo) { view.cx = ego.x; view.cy = ego.y; }
+  });
+  sub("/competition/sensor_health", "std_msgs/String", 0, m => renderHealth(JSON.parse(m.data)));
+  sub("/perception/objects", "morai_msgs/ObjectStatusList", 200, m => {
+    const out = [];
+    for (const [kind, list] of [["npc", m.npc_list], ["pedestrian", m.pedestrian_list], ["obstacle", m.obstacle_list]])
+      for (const o of list || []) out.push({kind, x: o.position.x, y: o.position.y, heading: o.heading,
+        l: Math.max(o.size.x, .5), w: Math.max(o.size.y, .5), speed: Math.hypot(o.velocity.x, o.velocity.y)});
+    live.objects = out;
+  });
+}
+const STATE_COLOR = {ok: "--route", warn: "--signal", bad: "--block", off: "--muted"};
+let healthAt = 0;
+function renderHealth(data) {
+  healthAt = Date.now();
+  const box = document.getElementById("health");
+  let html = "", group = null;
+  const order = ["센서", "인지", "측위", "주행"];
+  const items = [...data.items].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+  for (const it of items) {
+    if (it.group !== group) { group = it.group; html += `<div class="grp">${group}</div>`; }
+    const rate = it.hz === null ? "" : `${it.hz.toFixed(1)} / ${it.expected_hz} Hz`;
+    html += `<span class="dot" style="background:var(${STATE_COLOR[it.state]})"></span><span>${it.name}</span><span class="muted">${rate}</span>` +
+            `<span class="d">${it.detail || ""}</span>`;
+  }
+  box.innerHTML = html;
+  const counts = {ok: 0, warn: 0, bad: 0};
+  data.items.forEach(it => { if (it.state in counts) counts[it.state]++; });
+  const sum = document.getElementById("healthSummary");
+  sum.className = counts.bad ? "bad" : counts.warn ? "warn" : "ok";
+  sum.textContent = `정상 ${counts.ok} · 주의 ${counts.warn} · 이상 ${counts.bad}`;
+}
+setInterval(() => {
+  if (healthAt && Date.now() - healthAt > 3000) {
+    const sum = document.getElementById("healthSummary");
+    sum.className = "bad"; sum.textContent = "상태 노드 응답 없음 (대회 런치 시작 시 자동 실행)";
+  }
+}, 1000);
+setInterval(draw, 150);
+
+document.getElementById("typeLegend").innerHTML = Object.entries(TYPES)
+  .map(([k, v]) => `<span><i style="background:var(--${k})"></i>${v}</span>`).join("");
+
+(async () => {
+  connectRos();
+  const data = await (await fetch("/api/route-lanes")).json();
+  lanes = data.lanes || []; route = data.route || []; station = data.station || [];
+  routeLength = data.length_m || 1; missionDefaults = data.mission_sections || []; autoSections = data.auto_intersections || [];
+  document.getElementById("autoNote").textContent = `HD맵 교차로 ${autoSections.length}곳은 지정하지 않아도 자동으로 적용됩니다 (분홍 "자동").`;
+  resize(); fit(route);
+  await loadRules();
+})();
+window.addEventListener("resize", resize);
+</script>
+</body>
+</html>

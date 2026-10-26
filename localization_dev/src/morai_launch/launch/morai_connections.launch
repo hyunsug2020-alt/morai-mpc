@@ -1,0 +1,33 @@
+<launch>
+  <!-- Compatibility alias. MORAI boundary transport is UDP-only. -->
+  <arg name="simulator_ip" default="$(optenv MORAI_SIM_IP 127.0.0.1)" />
+  <arg name="bind_ip" default="$(optenv MORAI_LOCAL_IP 127.0.0.1)" />
+  <arg name="status_port" default="$(optenv MORAI_STATUS_PORT 1909)" />
+  <arg name="collision_port" default="$(optenv MORAI_COLLISION_PORT 7789)" />
+  <arg name="control_port" default="$(optenv MORAI_CONTROL_PORT 9093)" />
+  <arg name="physical_max_steer_deg" default="40.0" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="imu_port" default="9091" />
+  <arg name="gps_port" default="9090" />
+  <arg name="use_official_velodyne" default="true" />
+  <arg name="camera_packet_format" default="auto" />
+  <arg name="show_camera_windows" default="false" />
+  <!-- Retained only so old callers do not fail on an unknown argument. -->
+  <arg name="competition_mode" default="true" />
+
+  <include file="$(find morai_launch)/launch/competition_udp_connections.launch">
+    <arg name="simulator_ip" value="$(arg simulator_ip)" />
+    <arg name="bind_ip" value="$(arg bind_ip)" />
+    <arg name="status_port" value="$(arg status_port)" />
+    <arg name="collision_port" value="$(arg collision_port)" />
+    <arg name="control_port" value="$(arg control_port)" />
+    <arg name="physical_max_steer_deg" value="$(arg physical_max_steer_deg)" />
+    <arg name="enable_control_output" value="false" />
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="use_official_velodyne" value="$(arg use_official_velodyne)" />
+    <arg name="camera_packet_format" value="$(arg camera_packet_format)" />
+    <arg name="show_camera_windows" value="$(arg show_camera_windows)" />
+  </include>
+</launch>

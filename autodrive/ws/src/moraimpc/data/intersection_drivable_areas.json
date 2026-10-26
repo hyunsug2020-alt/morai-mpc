@@ -1,0 +1,7 @@
+{
+  "format": "morai_intersection_drivable_areas",
+  "version": 1,
+  "coordinate_frame": "map",
+  "intersections": []
+}
+

@@ -1,0 +1,35 @@
+{
+  "format": "morai_local_bypass_corridors",
+  "version": 1,
+  "coordinate_frame": "map",
+  "corridors": [
+    {
+      "id": "competition_4000203_right",
+      "link_id": "A2256W000222",
+      "allowed_sides": ["right"],
+      "maximum_center_offset_m": 2.0,
+      "entry_margin_m": 0.0,
+      "exit_margin_m": 0.0,
+      "maximum_speed_kmh": 10.0,
+      "minimum_body_clearance_m": 0.5,
+      "maximum_curvature_inv_m": 0.17,
+      "enabled": true,
+      "note": "Competition route surveyed connector; left side is marked/opposite."
+    },
+    {
+      "id": "competition_4000253_woodbox_right",
+      "link_id": "A2256W000215",
+      "allowed_sides": [
+        "right"
+      ],
+      "maximum_center_offset_m": 1.6,
+      "entry_margin_m": 0.0,
+      "exit_margin_m": 0.0,
+      "maximum_speed_kmh": 5.0,
+      "minimum_body_clearance_m": 0.5,
+      "maximum_curvature_inv_m": 0.17,
+      "enabled": true,
+      "note": "Competition WoodBox connector; left is marked/opposite, right is the only permitted bypass side."
+    }
+  ]
+}

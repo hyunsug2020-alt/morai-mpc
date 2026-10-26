@@ -1,0 +1,5 @@
+ARG SEMANTIC_BASE_IMAGE=pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+FROM ${SEMANTIC_BASE_IMAGE}
+RUN python -m pip install --no-cache-dir numpy==1.26.4 opencv-python-headless==4.11.0.86 onnxruntime-gpu==1.19.2 Pillow==10.4.0 PyYAML==6.0.2
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ENTRYPOINT []

@@ -1,0 +1,38 @@
+# Runtime LTV tuning preset.
+# Apply while follower is running:
+#   rosparam load $(rospack find moraimpc)/config/ltv_tuning.yaml /path_follower_node
+
+live_tuning: true
+param_reload_period_s: 0.5
+ltv_only: true
+target_vel: 35.0
+wheelbase: 3.0
+
+# Curve speed cap: larger alpha / smaller alat / longer lookahead = safer/slower curves.
+curve_decel_enable: true
+curve_speed_alpha: 12.0
+curve_alat_max: 2.26
+curve_lookahead_m: 18.0
+curve_lookahead_min_m: 25.0
+curve_lookahead_max_m: 70.0
+curve_lookahead_time_s: 2.5
+curve_brake_decel_mps2: 2.0
+curve_min_vel_kmh: 6.0
+
+# Steering response: raise kappa_gain or max_steer_rate if curves are under-followed.
+# Lower them if steering oscillates.
+kappa_gain: 1.28
+max_steer_rate: 50.0
+max_steer_deg: 35.0
+
+# LTV QP weights: raise w_dr/w_theta for tighter tracking, raise w_u/w_u_v_gain for smoother steering.
+w_dr: 220.0
+w_theta_low_speed: 250.0
+w_theta_high_speed: 220.0
+w_kappa: 120.0
+w_u: 5200.0
+w_u_v_gain: 350.0
+w_dr_curve_boost: 2.8
+
+# Avoid planner velocity is treated as upper cap by default.
+avoid_vel_as_cap: true

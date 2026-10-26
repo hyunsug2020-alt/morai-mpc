@@ -1,0 +1,89 @@
+{
+  "format": "morai_fixed_tunnel_walls_v1",
+  "origin_xy": [
+    28.335184155178446,
+    -488.2631280074125
+  ],
+  "axis_heading_deg": -151.51379502216196,
+  "left_offset_m": 8.369700233217756,
+  "right_offset_m": -3.561149446455317,
+  "longitudinal_min_m": 2.5463592042437755,
+  "longitudinal_max_m": 117.65215289077172,
+  "max_lateral_correction_m": 0.8,
+  "max_yaw_correction_deg": 3.0,
+  "wall_filter_tolerance_m": 0.03,
+  "entry_anchor": {
+    "position": [
+      28.42107705698054,
+      -488.4178904363803
+    ],
+    "heading_deg": -145.3694780489591,
+    "scan_index": 74,
+    "route_station_m": 1879.2447989647803,
+    "source": "entry localized ego; GPS fused before blackout"
+  },
+  "build": {
+    "recorded_capture": "/home/david/morai_collector_20260911_1703/data/autodrive/follow_runs/follow-20261002T152952Z-1309248/tunnel_analysis/tunnel_scans.npz",
+    "supported_scans": 137,
+    "anchor_scans": 7,
+    "measured_width_median_m": 11.942624172133058,
+    "width_p95_error_m": 0.016156220886484364,
+    "measured_world_heading_range_deg": [
+      -152.1785105241069,
+      -150.73739178594357
+    ]
+  },
+  "walls": {
+    "left": [
+      [
+        30.089012351959877,
+        -496.83400391639265
+      ],
+      [
+        -71.08114988326689,
+        -551.7333847280506
+      ]
+    ],
+    "right": [
+      [
+        24.398627541662716,
+        -486.34759867962566
+      ],
+      [
+        -76.77153469356406,
+        -541.2469794912836
+      ]
+    ]
+  },
+  "holdout_validation": {
+    "capture": "/home/david/morai_collector_20260911_1703/data/autodrive/tunnel_scans/entry_20261003_005222/raw_scans.npz",
+    "active_scans": 67,
+    "valid_scans": 67,
+    "valid_fraction": 1.0,
+    "reasons": {
+      "two tunnel walls matched": 67
+    }
+  },
+  "realigned_from": {
+    "origin_xy": [
+      28.42107705698054,
+      -488.4178904363803
+    ],
+    "axis_heading_deg": -150.96979502216195,
+    "left_offset_m": 8.369700233217756,
+    "right_offset_m": -3.561149446455317,
+    "longitudinal_min_m": 2.5463592042437755,
+    "longitudinal_max_m": 117.65215289077172
+  },
+  "realignment": {
+    "date": "2026-10-10",
+    "rotation_deg": -0.544,
+    "lateral_shift_m": -0.177,
+    "pivot_xy": [
+      28.42107705698054,
+      -488.4178904363803
+    ],
+    "reason": "built 2026-10-02 from ESKF poses before imu_yaw_variance_override (2026-10-06) pinned heading to IMU yaw; since then every tunnel pass measured walls 0.544 deg / 0.177 m off this map (lateral correction growing 9.5 mm per metre)",
+    "evidence": "1805 wall matches in follow-20261009T171938Z, 174200Z, 185440Z, 191227Z, 204445Z: yaw correction median 0.544 deg (run-bootstrap 90% 0.535-0.548); lateral correction + ESKF error vs withheld raw GPS = 0.177 m + 0.543 deg slope (rms 0.09 m). ESKF vs raw GPS in the tunnel: no growth (median -0.09..+0.19 m per 20 m bin); ESKF heading vs GPS course outside: -0.01 deg."
+  }
+}

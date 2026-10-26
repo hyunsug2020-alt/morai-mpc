@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>moraimpc</name>
+  <version>0.0.0</version>
+  <description>Minimal MORAI global-path LTV-MPC follower</description>
+  <maintainer email="david@todo.todo">david</maintainer>
+  <license>TODO</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>roscpp</depend>
+  <depend>rospy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>morai_msgs</depend>
+  <depend>libjsoncpp-dev</depend>
+  <build_depend>eigen</build_depend>
+</package>

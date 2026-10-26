@@ -1,0 +1,39 @@
+<launch>
+  <!-- Validation only: /Ego_topic never enters the odometry estimator. -->
+  <arg name="gui" default="true" />
+  <arg name="ground_truth_topic" default="/Ego_topic" />
+  <arg name="odom_topic" default="/odometry/pure" />
+  <arg name="incremental_topic"
+       default="/lio_sam/mapping/odometry_incremental" />
+  <arg name="alignment_samples" default="30" />
+  <arg name="max_sync_delta_s" default="0.15" />
+  <arg name="record_debug_bag" default="true" />
+  <arg name="bag_output_prefix"
+       default="$(find morai_control)/logs/bags/pure_odometry_debug" />
+  <arg name="output_csv"
+       default="$(find morai_control)/logs/pure_odometry_accuracy.csv" />
+
+  <node pkg="morai_control" type="lio_odometry_experiment.py"
+        name="pure_odometry_analysis" output="screen" required="true">
+    <param name="ground_truth_topic" value="$(arg ground_truth_topic)" />
+    <param name="odom_topic" value="$(arg odom_topic)" />
+    <param name="incremental_topic" value="$(arg incremental_topic)" />
+    <param name="ground_truth_heading_mode" value="ros_yaw_deg" />
+    <param name="alignment_samples" value="$(arg alignment_samples)" />
+    <param name="max_sync_delta_s" value="$(arg max_sync_delta_s)" />
+    <param name="synchronization_mode" value="source_stamp" />
+    <param name="source_pose_frame" value="base_link" />
+    <param name="monitor_gps" value="false" />
+    <param name="monitor_degeneracy" value="false" />
+    <param name="estimate_label" value="Pure Wheel-IMU Odometry" />
+    <param name="enable_gui" value="$(arg gui)" />
+    <param name="output_csv" value="$(arg output_csv)" />
+    <param name="unique_output" value="true" />
+  </node>
+
+  <!-- Bounded standalone replay log. GPS, LiDAR, SLAM and ESKF topics are
+       intentionally excluded so the backup estimator remains auditable. -->
+  <node if="$(arg record_debug_bag)" pkg="rosbag" type="record"
+        name="pure_odometry_debug_record" output="screen"
+        args="--lz4 --split --duration=60 --max-splits=5 --min-space=2G -o $(arg bag_output_prefix) /clock /Ego_topic /imu/data /odometry/pure /pure_odometry/diagnostics" />
+</launch>

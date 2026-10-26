@@ -1,0 +1,272 @@
+<launch>
+  <!-- Detection only. Sensor UDP receivers and rosbridge are intentionally
+       excluded; start them with scripts/morai_sensor_connection_menu.sh. -->
+  <arg name="camera_topic" default="/around_view/camera/front/image_raw"/>
+  <arg name="point_cloud_topic" default="/velodyne_points"/>
+  <arg name="show_camera_viewer" default="true"/>
+  <arg name="device" default="0"/>
+
+  <!-- Opt-in multi-class backends. No legacy weights are used as a fallback.
+       Camera weights and LiDAR config/checkpoint must cover all four classes. -->
+  <arg name="use_unified_camera" default="false"/>
+  <arg name="use_unified_lidar" default="false"/>
+  <arg name="unified_camera_model" default=""/>
+  <arg name="unified_lidar_checkpoint" default=""/>
+  <arg name="unified_lidar_model_config" default=""/>
+  <arg name="unified_lidar_data_config" default=""/>
+  <!-- Must match preprocessing used to train the unified LiDAR model. -->
+  <arg name="unified_lidar_remove_ground" default="false"/>
+
+  <arg name="vehicle_camera_confidence" default="0.25"/>
+  <arg name="human_animal_camera_confidence" default="0.50"/>
+  <arg name="obstacle_camera_confidence" default="0.50"/>
+  <arg name="traffic_light_camera_confidence" default="0.25"/>
+  <arg name="camera_image_size" default="1280"/>
+
+  <arg name="car_lidar_score_threshold" default="0.445"/>
+  <arg name="human_animal_lidar_score_threshold" default="0.35"/>
+  <arg name="obstacle_lidar_score_threshold" default="0.35"/>
+
+  <arg name="model_root" default="$(find morai_launch)/../../trained_models"/>
+  <arg name="vehicle_camera_model"
+       default="$(arg model_root)/morai_camera_vehicle/weights/best(C).pt"/>
+  <arg name="human_animal_camera_model"
+       default="$(arg model_root)/BEST(P).pt"/>
+  <arg name="obstacle_camera_model"
+       default="$(arg model_root)/morai_obstacle_models_20260820/camera_yolo26s/yolo26s_obstacle_best.pt"/>
+  <arg name="traffic_light_camera_model"
+       default="$(arg model_root)/morai_traffic_light/weights/best(TL).pt"/>
+
+  <arg name="car_lidar_model_root"
+       default="$(arg model_root)/morai_pointpillar_20k_2026-08-14"/>
+  <arg name="human_animal_lidar_model_root"
+       default="$(arg model_root)/morai_pointpillar_human_animal_2026-08-20"/>
+  <arg name="obstacle_lidar_model_root"
+       default="$(arg model_root)/morai_obstacle_models_20260820/lidar_pointpillars"/>
+
+  <!-- Legacy road-object models and unified model are mutually exclusive.
+       Traffic-light inference remains independent in both modes. -->
+  <include unless="$(arg use_unified_camera)"
+           file="$(find camera_vehicle_training)/launch/camera_vehicle_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="false"/>
+    <arg name="show_viewer" value="false"/>
+    <arg name="detector_node_name" value="camera_vehicle_detector"/>
+    <arg name="viewer_node_name" value="camera_vehicle_viewer_disabled"/>
+    <arg name="model_path" value="$(arg vehicle_camera_model)"/>
+    <arg name="overlay_topic" value="/camera_vehicle_detection/overlay"/>
+    <arg name="detections_topic" value="/camera_vehicle_detection/detections"/>
+    <arg name="device" value="$(arg device)"/>
+    <arg name="confidence" value="$(arg vehicle_camera_confidence)"/>
+    <arg name="image_size" value="$(arg camera_image_size)"/>
+  </include>
+
+  <include file="$(find camera_vehicle_training)/launch/camera_vehicle_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="false"/>
+    <arg name="show_viewer" value="false"/>
+    <arg name="detector_node_name" value="camera_traffic_light_detector"/>
+    <arg name="viewer_node_name" value="camera_traffic_light_viewer_disabled"/>
+    <arg name="model_path" value="$(arg traffic_light_camera_model)"/>
+    <arg name="overlay_topic" value="/camera_traffic_light_detection/overlay"/>
+    <arg name="detections_topic" value="/camera_traffic_light_detection/detections"/>
+    <arg name="device" value="$(arg device)"/>
+    <arg name="confidence" value="$(arg traffic_light_camera_confidence)"/>
+    <arg name="image_size" value="$(arg camera_image_size)"/>
+  </include>
+
+  <include unless="$(arg use_unified_camera)"
+           file="$(find camera_vehicle_training)/launch/camera_vehicle_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="false"/>
+    <arg name="show_viewer" value="false"/>
+    <arg name="detector_node_name" value="camera_human_animal_detector"/>
+    <arg name="viewer_node_name" value="camera_human_animal_viewer_disabled"/>
+    <arg name="model_path" value="$(arg human_animal_camera_model)"/>
+    <arg name="overlay_topic" value="/camera_person_animal_detection/overlay"/>
+    <arg name="detections_topic" value="/camera_person_animal_detection/detections"/>
+    <arg name="device" value="$(arg device)"/>
+    <arg name="confidence" value="$(arg human_animal_camera_confidence)"/>
+    <arg name="image_size" value="$(arg camera_image_size)"/>
+  </include>
+
+  <include unless="$(arg use_unified_camera)"
+           file="$(find camera_vehicle_training)/launch/camera_vehicle_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="false"/>
+    <arg name="show_viewer" value="false"/>
+    <arg name="detector_node_name" value="camera_obstacle_detector"/>
+    <arg name="viewer_node_name" value="camera_obstacle_viewer_disabled"/>
+    <arg name="model_path" value="$(arg obstacle_camera_model)"/>
+    <arg name="overlay_topic" value="/camera_obstacle_detection/overlay"/>
+    <arg name="detections_topic" value="/camera_obstacle_detection/detections"/>
+    <arg name="device" value="$(arg device)"/>
+    <arg name="confidence" value="$(arg obstacle_camera_confidence)"/>
+    <arg name="image_size" value="$(arg camera_image_size)"/>
+  </include>
+
+  <include if="$(arg use_unified_camera)"
+           file="$(find camera_vehicle_training)/launch/camera_vehicle_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="false"/>
+    <arg name="show_viewer" value="false"/>
+    <arg name="detector_node_name" value="camera_object_detector"/>
+    <arg name="model_path" value="$(arg unified_camera_model)"/>
+    <arg name="required_classes" value="[Car, Human, Animal, Obstacle]"/>
+    <arg name="overlay_topic" value="/camera_object_detection/overlay"/>
+    <arg name="detections_topic" value="/camera_object_detection/detections"/>
+    <arg name="device" value="$(arg device)"/>
+    <arg name="confidence"
+         value="$(eval min(arg('vehicle_camera_confidence'), arg('human_animal_camera_confidence'), arg('obstacle_camera_confidence')))"/>
+    <arg name="image_size" value="$(arg camera_image_size)"/>
+  </include>
+
+  <node pkg="camera_vehicle_training"
+        type="camera_detection_fusion_node.py"
+        name="camera_all_detection_fusion"
+        clear_params="true"
+        output="screen"
+        required="true">
+    <param name="image_topic" value="$(arg camera_topic)"/>
+    <param name="vehicle_detections_topic"
+           value="/camera_vehicle_detection/detections"/>
+    <param name="human_animal_detections_topic"
+           value="/camera_person_animal_detection/detections"/>
+    <param name="obstacle_detections_topic"
+           value="/camera_obstacle_detection/detections"/>
+    <param name="traffic_light_detections_topic"
+           value="/camera_traffic_light_detection/detections"/>
+    <rosparam if="$(arg use_unified_camera)" param="source_topics">
+      objects: /camera_object_detection/detections
+      traffic_light: /camera_traffic_light_detection/detections
+    </rosparam>
+    <!-- Preserve class-specific acceptance thresholds after shared inference. -->
+    <rosparam if="$(arg use_unified_camera)" param="class_confidence_thresholds" subst_value="true">
+      car: $(arg vehicle_camera_confidence)
+      human: $(arg human_animal_camera_confidence)
+      animal: $(arg human_animal_camera_confidence)
+      obstacle: $(arg obstacle_camera_confidence)
+    </rosparam>
+    <param name="overlay_topic" value="/camera_all_detection/overlay"/>
+    <param name="detections_topic" value="/camera_all_detection/detections"/>
+    <param name="maximum_sync_delta_s" value="0.20"/>
+    <param name="publish_rate" value="15.0"/>
+    <!-- Suppress tiny distant Human false positives from lane-divider drums.
+         LiDAR detections remain available to collision avoidance. -->
+    <param name="minimum_human_bbox_width_px" value="7.0"/>
+    <param name="minimum_human_bbox_height_px" value="22.0"/>
+    <param name="minimum_human_bbox_area_px" value="150.0"/>
+  </node>
+
+  <node if="$(arg show_camera_viewer)"
+        pkg="image_view"
+        type="image_view"
+        name="camera_all_detection_viewer"
+        output="screen">
+    <remap from="image" to="/camera_all_detection/overlay"/>
+    <param name="autosize" value="true"/>
+  </node>
+
+  <!-- Legacy and unified PointPillars backends share the output adapter. -->
+  <include unless="$(arg use_unified_lidar)"
+           file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="detector_node_name" value="lidar_car_detector"/>
+    <arg name="marker_topic" value="/lidar_all_detection/car_markers"/>
+    <arg name="detections_topic" value="/lidar_all_detection/car"/>
+    <arg name="score_threshold" value="$(arg car_lidar_score_threshold)"/>
+    <arg name="start_rviz" value="false"/>
+    <arg name="remove_ground" value="true"/>
+    <arg name="filtered_points_topic" value="/lidar_all_detection/car_points_no_ground"/>
+    <arg name="checkpoint" value="$(arg car_lidar_model_root)/best_model.pth"/>
+    <arg name="model_config" value="$(arg car_lidar_model_root)/pointpillar_morai.yaml"/>
+    <arg name="data_config" value="$(arg car_lidar_model_root)/morai_dataset.yaml"/>
+    <arg name="model_epoch" value="20"/>
+    <arg name="checkpoint_label" value="best_model_epoch_20.pth"/>
+  </include>
+
+  <include unless="$(arg use_unified_lidar)"
+           file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="detector_node_name" value="lidar_human_animal_detector"/>
+    <arg name="marker_topic" value="/lidar_all_detection/human_animal_markers"/>
+    <arg name="detections_topic" value="/lidar_all_detection/human_animal"/>
+    <arg name="score_threshold" value="$(arg human_animal_lidar_score_threshold)"/>
+    <arg name="start_rviz" value="false"/>
+    <arg name="remove_ground" value="false"/>
+    <arg name="filtered_points_topic" value=""/>
+    <arg name="checkpoint" value="$(arg human_animal_lidar_model_root)/best_model_epoch_37.pth"/>
+    <arg name="model_config" value="$(arg human_animal_lidar_model_root)/pointpillar_human_animal.yaml"/>
+    <arg name="data_config" value="$(arg human_animal_lidar_model_root)/morai_human_animal_dataset.yaml"/>
+    <arg name="model_epoch" value="37"/>
+    <arg name="checkpoint_label" value="best_model_epoch_37.pth"/>
+  </include>
+
+  <include unless="$(arg use_unified_lidar)"
+           file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="detector_node_name" value="lidar_obstacle_detector"/>
+    <arg name="marker_topic" value="/lidar_all_detection/obstacle_markers"/>
+    <arg name="detections_topic" value="/lidar_all_detection/obstacle"/>
+    <arg name="score_threshold" value="$(arg obstacle_lidar_score_threshold)"/>
+    <arg name="start_rviz" value="false"/>
+    <arg name="remove_ground" value="false"/>
+    <arg name="filtered_points_topic" value=""/>
+    <arg name="checkpoint" value="$(arg obstacle_lidar_model_root)/pointpillar_obstacle.pth"/>
+    <arg name="model_config" value="$(arg obstacle_lidar_model_root)/pointpillar_obstacle.yaml"/>
+    <arg name="data_config" value="$(arg obstacle_lidar_model_root)/morai_obstacle_dataset.yaml"/>
+    <arg name="model_epoch" value="40"/>
+    <arg name="checkpoint_label" value="pointpillar_obstacle.pth"/>
+  </include>
+
+  <include if="$(arg use_unified_lidar)"
+           file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="detector_node_name" value="lidar_object_detector"/>
+    <arg name="marker_topic" value="/lidar_all_detection/objects_markers"/>
+    <arg name="detections_topic" value="/lidar_all_detection/objects"/>
+    <arg name="score_threshold"
+         value="$(eval min(arg('car_lidar_score_threshold'), arg('human_animal_lidar_score_threshold'), arg('obstacle_lidar_score_threshold')))"/>
+    <arg name="class_filter" value="Car,Human,Animal,Obstacle"/>
+    <arg name="strict_checkpoint" value="true"/>
+    <arg name="start_rviz" value="false"/>
+    <arg name="remove_ground" value="$(arg unified_lidar_remove_ground)"/>
+    <arg name="filtered_points_topic" value=""/>
+    <arg name="checkpoint" value="$(arg unified_lidar_checkpoint)"/>
+    <arg name="model_config" value="$(arg unified_lidar_model_config)"/>
+    <arg name="data_config" value="$(arg unified_lidar_data_config)"/>
+    <arg name="model_epoch" value="0"/>
+    <arg name="checkpoint_label" value="unified"/>
+  </include>
+
+  <node pkg="lidar_detection"
+        type="multi_detection_fusion_node.py"
+        name="lidar_all_detection_fusion"
+        clear_params="true"
+        output="screen"
+        required="true">
+    <rosparam unless="$(arg use_unified_lidar)" param="sources">
+      - {name: car, topic: /lidar_all_detection/car}
+      - {name: human_animal, topic: /lidar_all_detection/human_animal}
+      - {name: obstacle, topic: /lidar_all_detection/obstacle}
+    </rosparam>
+    <rosparam if="$(arg use_unified_lidar)" param="sources">
+      - {name: objects, topic: /lidar_all_detection/objects}
+    </rosparam>
+    <rosparam if="$(arg use_unified_lidar)" param="class_score_thresholds" subst_value="true">
+      Car: $(arg car_lidar_score_threshold)
+      Human: $(arg human_animal_lidar_score_threshold)
+      Animal: $(arg human_animal_lidar_score_threshold)
+      Obstacle: $(arg obstacle_lidar_score_threshold)
+    </rosparam>
+    <param name="markers_topic" value="/lidar_all_detection/markers"/>
+    <param name="detections_topic" value="/lidar_all_detection/detections"/>
+    <param name="ego_self_filter_enabled" value="true"/>
+    <param name="lidar_x" value="1.045"/>
+    <param name="lidar_y" value="0.0"/>
+    <param name="lidar_yaw_deg" value="0.0"/>
+    <param name="ego_self_filter_front_m" value="2.60"/>
+    <param name="ego_self_filter_rear_m" value="2.60"/>
+    <param name="ego_self_filter_half_width_m" value="1.20"/>
+  </node>
+</launch>

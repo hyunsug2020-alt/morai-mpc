@@ -1,0 +1,49 @@
+<launch>
+  <!-- Student v3 publishes a validated rolling path and speed cap to /avoid_waypoints.
+       Competition variant: drives off GPS+IMU+wheel-speed ESKF localization
+       (/localization/ego_status) instead of MORAI's native /Ego_topic.
+       See follower_student.launch for the live, unmodified native-/Ego_topic
+       version that is currently driving; do not merge into or replace it. -->
+  <arg name="cruise_kmh" default="15.0" />
+  <arg name="log_file" default="$(optenv STUDENT_MPC_LOG_FILE /data/autodrive/student_v3_mpc_log.json)" />
+  <include file="$(find moraimpc)/launch/hdmap_path_follower.launch">
+    <arg name="path_file" value="/data/autodrive/global_path.json" />
+    <!-- Measured MORAI effective wheelbase (3.90 m) instead of the nominal 3.0 m. -->
+    <arg name="vehicle_config" value="$(optenv STUDENT_VEHICLE_CONFIG /opt/autodrive/ros/ioniq5_vehicle_competition.yaml)" />
+    <!-- w_u 5200 -> 8000: the 3.90 m wheelbase made steering ~30 % livelier (reversals 0.30 -> 0.51/s). -->
+    <arg name="speed_profile_csv" value="$(optenv STUDENT_LTV_PROFILE /opt/autodrive/ros/ltv_speed_profile_competition.csv)" />
+    <arg name="ego_topic" value="/localization/ego_status" />
+    <!-- Signed organizer-approved wheel/CAN speed prevents ESKF standstill
+         noise from being mistaken for rollback; tracking still uses ESKF. -->
+    <arg name="signed_speed_topic" value="/Competition_topic" />
+    <arg name="object_topic" value="/perception/objects_map" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="ltv_only" value="true" />
+    <!-- Use the same lateral-acceleration limit as the Student planner.
+         Avoid applying a second heuristic curvature multiplier to its speed cap. -->
+    <arg name="avoid_speed_rise_mps2" value="3.0" />
+    <arg name="avoid_speed_fall_mps2" value="3.0" />
+    <!-- Predict the speed reached during the 3 m/s^2 command ramp. -->
+    <arg name="velocity_contract" value="reachable" />
+    <!-- Run 34 wheel-angle telemetry fits ~0.08 s steering response; the whole loop
+         (ESKF 0.05-0.11 s + steering 0.085 s + yaw response 0.09 s, MORAI truth runs
+         224-240) is ~0.25 s. 0.08 oscillated / diverged at 80-90 km/h at real-time sim
+         speed in the offline closed loop of the actual LTV code (2026-10-06). -->
+    <arg name="actuator_tau_model" value="0.25" />
+    <arg name="curve_speed_alpha" value="0.0" />
+    <arg name="curve_alat_max" value="$(optenv STUDENT_CURVE_ALAT 2.26)" />
+    <arg name="curve_min_vel_kmh" value="10.0" />
+    <arg name="use_avoid_path" value="true" />
+    <arg name="avoid_vel_as_cap" value="true" />
+    <arg name="stop_on_stale_avoid_path" value="true" />
+    <arg name="stop_at_path_end" value="false" />
+    <!-- Keep tracking steering during a rolling stop; center only once stopped. -->
+    <arg name="center_steer_stop_speed_mps" value="0.15" />
+    <!-- Competition UDP uses throttle/brake commands, encoded by the UDP gateway. -->
+    <arg name="longitudinal_cmd_type" value="1" />
+    <arg name="gear_control_enabled" value="true" />
+    <arg name="initialize_control_mode" value="false" />
+    <arg name="control_mode" value="2" />
+    <arg name="log_file" value="$(arg log_file)" />
+  </include>
+</launch>

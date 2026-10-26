@@ -1,0 +1,51 @@
+<launch>
+  <!-- Map-free competition localization.
+       Inputs: MORAI GPS + raw IMU + independent vehicle/IMU odometry.
+       Output: ESKF /eskf/odom -> /localization/ego_status.
+       No LIO-SAM, LiDAR odometry, LIO mux, or point-cloud map. -->
+  <arg name="vehicle_state_topic" default="/Competition_topic" />
+  <arg name="imu_topic" default="/imu/data" />
+  <arg name="gps_topic" default="/gps" />
+  <arg name="pure_odometry_topic" default="/odometry/pure" />
+  <arg name="eskf_output_topic" default="/eskf/odom" />
+  <arg name="vehicle_config"
+       default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+  <!-- MORAI sensor preset whose GPS/IMU mount positions the ESKF uses as lever arms.
+       Must match the preset actually loaded in MORAI. -->
+  <arg name="sensor_config_file"
+       default="$(find morai_control)/config/morai_sensor.json" />
+  <arg name="ego_wheel_angle_sign" default="1.0" />
+  <arg name="imu_yaw_offset_deg" default="0.0" />
+  <arg name="odometry_motion_rate_scale" default="0.49848" />
+  <arg name="ego_heading_offset_deg" default="$(eval -float(arg('imu_yaw_offset_deg')))" />
+  <arg name="eskf_config"
+       default="$(find eskf)/config/eskf_robust.yaml" />
+  <arg name="publish_tf" default="true" />
+  <arg name="publish_sensor_tf" default="true" />
+
+  <group ns="/">
+    <include file="$(find morai_control)/launch/sensor_fusion.launch">
+      <arg name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+      <arg name="imu_topic" value="$(arg imu_topic)" />
+      <arg name="gps_topic" value="$(arg gps_topic)" />
+      <arg name="start_pure_odometry" value="true" />
+      <arg name="pure_odometry_topic" value="$(arg pure_odometry_topic)" />
+      <arg name="eskf_output_topic" value="$(arg eskf_output_topic)" />
+      <arg name="vehicle_config" value="$(arg vehicle_config)" />
+      <arg name="eskf_config" value="$(arg eskf_config)" />
+      <arg name="sensor_config_file" value="$(arg sensor_config_file)" />
+      <arg name="ego_wheel_angle_sign" value="$(arg ego_wheel_angle_sign)" />
+      <arg name="imu_yaw_offset_deg" value="$(arg imu_yaw_offset_deg)" />
+      <arg name="odometry_motion_rate_scale" value="$(arg odometry_motion_rate_scale)" />
+      <arg name="ego_heading_offset_deg" value="$(arg ego_heading_offset_deg)" />
+      <arg name="slam_aiding_enabled" value="false" />
+      <!-- Competition_topic speed is fused directly as wheel aiding. Pure
+           odometry is derived from the same speed, so do not fuse it twice. -->
+      <arg name="wheel_aiding_enabled" value="true" />
+      <arg name="odometry_speed_aiding_enabled" value="false" />
+      <arg name="odometry_pose_aiding_enabled" value="true" />
+      <arg name="publish_tf" value="$(arg publish_tf)" />
+      <arg name="publish_sensor_tf" value="$(arg publish_sensor_tf)" />
+    </include>
+  </group>
+</launch>

@@ -1,0 +1,134 @@
+<launch>
+    <!-- MORAI UDP LiDAR + raw IMU normalization + LIO-SAM.
+         Default path follows the downloaded manual:
+         1) MORAI LiDAR UDP publishes /velodyne_points with ring/time.
+         2) MORAI raw /imu is normalized as /imu/data for LIO-SAM.
+         3) LIO-SAM runs with config/params_morai.yaml. -->
+
+    <arg name="lidar_port" default="2368" />
+    <arg name="imu_port" default="9091" />
+    <arg name="imu_max_wire_clock_skew_s" default="10.0" />
+    <arg name="gps_port" default="9090" />
+    <arg name="udp_source_ip" default="" />
+    <arg name="udp_bind_ip" default="0.0.0.0" />
+    <arg name="start_imu_input" default="true" />
+    <arg name="resample_imu_for_lio" default="true" />
+    <arg name="lio_imu_topic" default="/imu/data_lio" />
+    <arg name="lio_imu_rate_hz" default="100.0" />
+    <arg name="start_input_monitor" default="true" />
+    <arg name="use_udp_imu" default="true" />
+    <arg name="use_official_velodyne" default="true" />
+    <arg name="normalize_lidar_time" default="true" />
+    <arg name="max_scan_duration_s" default="0.50" />
+    <arg name="start_gps_udp" default="true" />
+    <arg name="start_gps_odometry" default="true" />
+    <arg name="start_lidar_udp" default="true" />
+    <arg name="start_lio_sam" default="true" />
+    <arg name="start_navsat" default="false" />
+    <arg name="start_rviz" default="false" />
+    <arg name="start_robot_state_publisher" default="true" />
+    <arg name="params_file" default="$(find lio_sam)/config/params_morai.yaml" />
+    <!-- Canonical absolute topics. These remain stable even when the shell
+         exports ROS_NAMESPACE (for example /central). -->
+    <arg name="raw_lidar_topic" default="/velodyne_points" />
+    <arg name="lio_lidar_topic" default="/velodyne_points_lio" />
+    <arg name="gps_east_offset" default="302595.0" />
+    <arg name="gps_north_offset" default="4124145.0" />
+
+    <group ns="/">
+    <group if="$(arg start_lidar_udp)">
+        <!-- MORAI transmits native VLP-16 packets. The official driver
+             preserves calibrated rings and per-point firing time. -->
+        <include if="$(arg use_official_velodyne)"
+                 file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">
+            <arg name="port" value="$(arg lidar_port)" />
+            <arg name="device_ip" value="$(arg udp_source_ip)" />
+            <arg name="frame_id" value="velodyne" />
+            <arg name="rpm" value="600.0" />
+            <arg name="min_range" value="1.0" />
+            <arg name="max_range" value="100.0" />
+            <arg name="organize_cloud" value="false" />
+        </include>
+
+        <node unless="$(arg use_official_velodyne)"
+              pkg="lio_sam" type="morai_lidar_udp.py"
+              name="morai_lidar_udp" output="screen">
+            <param name="lidar_port" value="$(arg lidar_port)" />
+            <param name="bind_ip" value="$(arg udp_bind_ip)" />
+            <param name="source_ip" value="$(arg udp_source_ip)" />
+        </node>
+    </group>
+
+    <node if="$(arg resample_imu_for_lio)"
+          pkg="lio_sam" type="imu_resampler.py"
+          name="imu_resampler" output="screen" required="true">
+        <param name="input_topic" value="/imu/data" />
+        <param name="output_topic" value="$(arg lio_imu_topic)" />
+        <param name="target_rate_hz" value="$(arg lio_imu_rate_hz)" />
+        <param name="max_gap_s" value="0.30" />
+    </node>
+
+    <node if="$(arg start_input_monitor)"
+          pkg="lio_sam" type="lio_input_monitor.py"
+          name="lio_input_monitor" output="screen">
+        <param name="raw_imu_topic" value="/imu/data" />
+        <param name="dense_imu_topic" value="$(arg lio_imu_topic)" />
+        <param name="lidar_topic" value="$(arg lio_lidar_topic)" />
+    </node>
+
+    <!-- velodyne_pointcloud stamps a completed scan and emits negative
+         per-point offsets. LIO-SAM requires a scan-start header and
+         non-negative relative point times. -->
+    <node if="$(arg normalize_lidar_time)"
+          pkg="lio_sam" type="velodyne_time_normalizer.py"
+          name="velodyne_time_normalizer" output="screen">
+        <param name="input_topic" value="$(arg raw_lidar_topic)" />
+        <param name="output_topic" value="$(arg lio_lidar_topic)" />
+        <param name="max_scan_duration_s" value="$(arg max_scan_duration_s)" />
+    </node>
+
+    <group if="$(arg start_imu_input)">
+        <node unless="$(arg use_udp_imu)"
+              pkg="lio_sam" type="morai_ros1_bridge.py"
+              name="morai_ros1_bridge" output="screen" />
+
+        <node if="$(arg use_udp_imu)"
+              pkg="lio_sam" type="morai_imu_udp.py"
+              name="morai_imu_udp" output="screen">
+            <param name="imu_port" value="$(arg imu_port)" />
+            <param name="bind_ip" value="$(arg udp_bind_ip)" />
+            <param name="source_ip" value="$(arg udp_source_ip)" />
+            <param name="max_wire_clock_skew_s"
+                   value="$(arg imu_max_wire_clock_skew_s)" />
+        </node>
+    </group>
+
+    <node if="$(arg start_gps_udp)"
+          pkg="lio_sam" type="morai_gps_udp.py"
+          name="morai_gps_udp" output="screen"
+          respawn="true" respawn_delay="1.0">
+        <param name="gps_port" value="$(arg gps_port)" />
+        <param name="bind_ip" value="$(arg udp_bind_ip)" />
+        <param name="source_ip" value="$(arg udp_source_ip)" />
+        <param name="east_offset" value="$(arg gps_east_offset)" />
+        <param name="north_offset" value="$(arg gps_north_offset)" />
+    </node>
+
+    <node if="$(arg start_gps_odometry)"
+          pkg="lio_sam" type="morai_gps_odometry.py"
+          name="morai_gps_odometry" output="screen">
+        <param name="utm_zone" value="52" />
+        <param name="variance" value="1.0" />
+    </node>
+
+    <include if="$(arg start_lio_sam)" file="$(find lio_sam)/launch/run.launch">
+        <arg name="params_file" value="$(arg params_file)" />
+        <arg name="start_navsat" value="$(arg start_navsat)" />
+        <arg name="start_rviz" value="$(arg start_rviz)" />
+        <arg name="start_robot_state_publisher"
+             value="$(arg start_robot_state_publisher)" />
+        <arg name="override_imu_topic" value="$(arg resample_imu_for_lio)" />
+        <arg name="imu_topic" value="$(arg lio_imu_topic)" />
+    </include>
+    </group>
+</launch>

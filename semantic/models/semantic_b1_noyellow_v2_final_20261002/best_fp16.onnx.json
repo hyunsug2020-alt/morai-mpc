@@ -1,0 +1,91 @@
+{
+  "checkpoint": "/mnt/ssd2/semantic_capture/training/models/run_b1_noyellow_v2_20261002_105111/best.pt",
+  "model_family": "efficientvit_segmentation",
+  "mode": "foreground_sigmoid",
+  "threshold": 0.5,
+  "backbone": "efficientvit_b1.r256_in1k",
+  "head_channels": 128,
+  "num_classes": 6,
+  "class_names": [
+    "vehicle",
+    "person_animal",
+    "obstacle",
+    "traffic_light",
+    "yellow_lane",
+    "white_lane"
+  ],
+  "camera_policy": {
+    "front": {
+      "rgb_id": 1,
+      "semantic_id": 4,
+      "rgb_port": 12002,
+      "semantic_port": 13002,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "left": {
+      "rgb_id": 2,
+      "semantic_id": 8,
+      "rgb_port": 12004,
+      "semantic_port": 13004,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "right": {
+      "rgb_id": 3,
+      "semantic_id": 9,
+      "rgb_port": 12006,
+      "semantic_port": 13006,
+      "supervised_class_ids": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "student_rgb": true
+    },
+    "signal": {
+      "rgb_id": 10,
+      "semantic_id": 11,
+      "rgb_port": 12008,
+      "semantic_port": 12010,
+      "supervised_class_ids": [
+        3
+      ],
+      "student_rgb": true
+    }
+  },
+  "general_only": false,
+  "front_exclusion_mask": "front_exclusion_mask_1280x720.png",
+  "view_exclusion_masks": {
+    "front": "front_exclusion_mask_1280x720.png",
+    "left": "left_exclusion_mask_640x480.png",
+    "right": "right_exclusion_mask_640x480.png"
+  },
+  "dataset": "/mnt/ssd2/semantic_capture/training/dataset_b1_noyellow_v2",
+  "input_width": 640,
+  "input_height": 384,
+  "output": "masks",
+  "outputs": [
+    "logits",
+    "masks"
+  ],
+  "opset": 17,
+  "max_abs_error": 0.0002593994140625,
+  "parity_rtol": 0.001,
+  "parity_atol": 0.001,
+  "precision": "fp16 (float32 I/O)"
+}

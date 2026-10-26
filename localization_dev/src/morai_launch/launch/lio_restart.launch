@@ -1,0 +1,16 @@
+<launch>
+  <!-- Compatibility alias for the complete restartable tunnel-localization
+       stack. Keep morai_connections.launch running for transport. -->
+  <arg name="start_rviz" default="false" />
+  <arg name="start_eskf" default="true" />
+  <arg name="raw_lidar_topic" default="/central/velodyne_points" />
+  <arg name="params_file"
+       default="$(find lio_sam)/config/params_morai.yaml" />
+
+  <include file="$(find morai_launch)/launch/tunnel_localization.launch">
+    <arg name="params_file" value="$(arg params_file)" />
+    <arg name="start_rviz" value="$(arg start_rviz)" />
+    <arg name="start_eskf" value="$(arg start_eskf)" />
+    <arg name="raw_lidar_topic" value="$(arg raw_lidar_topic)" />
+  </include>
+</launch>

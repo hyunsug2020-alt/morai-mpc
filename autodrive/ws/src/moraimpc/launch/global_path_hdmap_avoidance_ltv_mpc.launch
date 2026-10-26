@@ -1,0 +1,28 @@
+<launch>
+  <!-- 글로벌 경로 + HD Map 기반 장애물 회피 + LTV-MPC 추종 -->
+  <arg name="object_topic" default="/Object_topic" />
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="initialize_control_mode" default="true" />
+
+  <include file="$(find moraimpc)/launch/hdmap_lane_change.launch">
+    <arg name="path_file" value="$(find moraimpc)/data/competition_directional_global_path.txt" />
+    <arg name="global_path_file" value="$(find moraimpc)/data/competition_directional_global_path.txt" />
+    <arg name="hdmap_zip" value="$(find moraimpc)/data/hdmap.zip" />
+    <arg name="directional_map" value="$(find moraimpc)/data/competition_directional_drivable_map.json.gz" />
+    <arg name="vehicle_config" value="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+    <arg name="lane_policy_file" value="$(find moraimpc)/data/lane_policy_overrides.json" />
+    <arg name="local_bypass_corridor_file" value="$(find moraimpc)/data/local_bypass_corridor_overrides.json" />
+    <arg name="object_topic" value="$(arg object_topic)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="use_base_route" value="true" />
+    <arg name="ltv_only" value="true" />
+    <arg name="follower" value="true" />
+    <arg name="mode_init" value="false" />
+    <arg name="initialize_control_mode" value="$(arg initialize_control_mode)" />
+    <arg name="control_mode" value="3" />
+    <arg name="rviz" value="false" />
+    <arg name="visualization" value="false" />
+    <arg name="log_file" value="/tmp/hdmap_avoidance_ltv_mpc.json" />
+    <arg name="planner_diagnostics_csv" value="/tmp/hdmap_avoidance.csv" />
+  </include>
+</launch>

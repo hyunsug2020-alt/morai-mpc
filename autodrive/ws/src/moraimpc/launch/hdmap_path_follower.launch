@@ -1,0 +1,136 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="ego_topic" default="/localization/ego_status" />
+  <!-- Optional signed body-frame wheel/CAN speed, used only to detect rollback. -->
+  <arg name="signed_speed_topic" default="" />
+  <arg name="signed_speed_timeout_s" default="0.25" />
+  <arg name="object_topic" default="/perception/objects_map" />
+  <arg name="vehicle_config" default="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+  <arg name="cruise_kmh" default="35.0" />
+  <!-- Allow brief planner jitter without repeatedly entering safety stop. -->
+  <arg name="avoid_path_timeout_s" default="1.5" />
+  <arg name="ltv_only" default="true" />
+  <arg name="speed_profile_csv" default="$(find moraimpc)/config/ltv_speed_profile.csv" />
+  <arg name="live_tuning" default="true" />
+  <arg name="param_reload_period_s" default="0.5" />
+  <arg name="use_avoid_path" default="true" />
+  <arg name="avoid_vel_as_cap" default="true" />
+  <arg name="avoid_speed_rise_mps2" default="1.0" />
+  <arg name="avoid_speed_fall_mps2" default="5.0" />
+  <arg name="stop_on_stale_avoid_path" default="true" />
+  <arg name="stop_at_path_end" default="false" />
+  <arg name="center_steer_stop_speed_mps" default="0.5" />
+  <arg name="avoid_reacquire_dist_m" default="3.0" />
+  <arg name="curve_decel_enable" default="true" />
+  <arg name="curve_speed_alpha" default="12.0" />
+  <arg name="curve_alat_max" default="1.7" />
+  <arg name="curve_lookahead_min_m" default="25.0" />
+  <arg name="curve_lookahead_max_m" default="70.0" />
+  <arg name="curve_lookahead_time_s" default="2.5" />
+  <arg name="curve_brake_decel_mps2" default="2.0" />
+  <arg name="curve_min_vel_kmh" default="6.0" />
+  <arg name="kappa_gain" default="1.28" />
+  <arg name="max_steer_rate" default="30.0" />
+  <arg name="max_steer_deg" default="35.0" />
+  <arg name="w_dr" default="220.0" />
+  <arg name="w_theta_low_speed" default="250.0" />
+  <arg name="w_theta_high_speed" default="220.0" />
+  <arg name="w_kappa" default="120.0" />
+  <arg name="w_u" default="5200.0" />
+  <arg name="w_u_v_gain" default="350.0" />
+  <arg name="w_dr_curve_boost" default="2.8" />
+  <arg name="log_file" default="$(find moraimpc)/logs/lane_change_log.json" />
+  <arg name="longitudinal_cmd_type" default="2" />
+  <arg name="gear_control_enabled" default="true" />
+  <arg name="initialize_control_mode" default="false" />
+  <arg name="control_mode" default="3" />
+  <!-- Controller-consistency contract (explicit; see controller_consistency.hpp).
+       wheel_angle_unit: installed session60 EgoVehicleStatus.wheel_angle range -35..40 is
+       degrees (official docs conflict); CtrlCmd.steering stays road-wheel radians. -->
+  <arg name="wheel_angle_unit" default="deg" />
+  <!-- emitted | measured | command(legacy integral).
+       revision2 default 'emitted' + actuator_tau_model>0: the physical steering state is an
+       ACTUATOR-OBSERVER MODEL ESTIMATE driven by the emitted commands (no physical feedback is
+       claimed); the wheel feed is validated and logged (observer_residual_kappa) only.
+       'measured' uses a validated wheel_angle and falls back to the observer with a speed cap. -->
+  <arg name="steering_state_source" default="emitted" />
+  <!-- physical (road-wheel rad x steering_output_gain) | legacy_gain (x kappa_gain 1.28) -->
+  <arg name="steer_output_mode" default="physical" />
+  <arg name="steering_output_gain" default="1.0" />
+  <!-- station | index(legacy) -->
+  <arg name="preview_mode" default="station" />
+  <!-- legacy | reachable (C2, opt-in: low-speed body-swing regression offline) -->
+  <arg name="velocity_contract" default="legacy" />
+  <!-- first-order steering lag assumed by the controller model (emitted and measured sources).
+       Robustness/test assumption, NOT a measured or calibrated MORAI lag. Pre-registered rule
+       (controller_revision2/design.json v1): maximise the linearised worst-case closed-loop margin
+       over the DESIGN set tau_true in {0,0.1,0.25} s -> 0.30 (spectral radius 0.9717, tail 3.5 s).
+       A tracking-motivated 0.20 was falsified by the holdout set (one body exit, tau 0.35 nonlinear
+       S-curve) and rejected. Cost: phase lead when the real lag is shorter (larger tracking error on
+       fast curvature changes, bounded). -->
+  <arg name="actuator_tau_model" default="0.30" />
+  <!-- tail cost-to-go horizon [s] beyond the 1.5 s constrained horizon (0 = legacy) -->
+  <arg name="tail_horizon_s" default="3.5" />
+  <arg name="wheel_fallback_max_kmh" default="10.0" />
+
+  <node pkg="moraimpc" type="path_follower_node" name="path_follower_node" output="screen">
+    <rosparam command="load" file="$(arg vehicle_config)" />
+    <remap from="/localization/ego_status" to="$(arg ego_topic)" />
+    <remap from="/Object_topic" to="$(arg object_topic)" />
+    <remap from="/ctrl_cmd_0" to="/ctrl_cmd" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="target_vel" value="$(arg cruise_kmh)" />
+    <param name="force_nmpc" value="false" />
+    <param name="ltv_only" value="$(arg ltv_only)" />
+    <param name="speed_profile_csv" value="$(arg speed_profile_csv)" />
+    <param name="live_tuning" value="$(arg live_tuning)" />
+    <param name="param_reload_period_s" value="$(arg param_reload_period_s)" />
+    <param name="use_avoid_path" value="$(arg use_avoid_path)" />
+    <param name="ego_timeout_s" value="0.5" />
+    <param name="signed_speed_topic" value="$(arg signed_speed_topic)" />
+    <param name="signed_speed_timeout_s" value="$(arg signed_speed_timeout_s)" />
+    <param name="avoid_path_timeout_s" value="$(arg avoid_path_timeout_s)" />
+    <param name="stop_on_stale_avoid_path" value="$(arg stop_on_stale_avoid_path)" />
+    <param name="center_steer_stop_speed_mps" value="$(arg center_steer_stop_speed_mps)" />
+    <param name="morai_steering_sign" value="1.0" />
+    <param name="avoid_vel_as_cap" value="$(arg avoid_vel_as_cap)" />
+    <param name="avoid_speed_rise_mps2" value="$(arg avoid_speed_rise_mps2)" />
+    <param name="avoid_speed_fall_mps2" value="$(arg avoid_speed_fall_mps2)" />
+    <param name="stop_at_path_end" value="$(arg stop_at_path_end)" />
+    <param name="avoid_reacquire_dist_m" value="$(arg avoid_reacquire_dist_m)" />
+    <param name="curve_decel_enable" value="$(arg curve_decel_enable)" />
+    <param name="curve_speed_alpha" value="$(arg curve_speed_alpha)" />
+    <param name="curve_alat_max" value="$(arg curve_alat_max)" />
+    <param name="curve_lookahead_min_m" value="$(arg curve_lookahead_min_m)" />
+    <param name="curve_lookahead_max_m" value="$(arg curve_lookahead_max_m)" />
+    <param name="curve_lookahead_time_s" value="$(arg curve_lookahead_time_s)" />
+    <param name="curve_brake_decel_mps2" value="$(arg curve_brake_decel_mps2)" />
+    <param name="curve_min_vel_kmh" value="$(arg curve_min_vel_kmh)" />
+    <param name="kappa_gain" value="$(arg kappa_gain)" />
+    <param name="max_steer_rate" value="$(arg max_steer_rate)" />
+    <param name="max_steer_deg" value="$(arg max_steer_deg)" />
+    <param name="w_dr" value="$(arg w_dr)" />
+    <param name="w_theta_low_speed" value="$(arg w_theta_low_speed)" />
+    <param name="w_theta_high_speed" value="$(arg w_theta_high_speed)" />
+    <param name="w_kappa" value="$(arg w_kappa)" />
+    <param name="w_u" value="$(arg w_u)" />
+    <param name="w_u_v_gain" value="$(arg w_u_v_gain)" />
+    <param name="w_dr_curve_boost" value="$(arg w_dr_curve_boost)" />
+    <param name="log_file" value="$(arg log_file)" />
+    <param name="longitudinal_cmd_type" value="$(arg longitudinal_cmd_type)" />
+    <param name="gear_control_enabled" value="$(arg gear_control_enabled)" />
+    <param name="initialize_control_mode" value="$(arg initialize_control_mode)" />
+    <param name="control_mode" value="$(arg control_mode)" />
+    <param name="wheel_angle_unit" value="$(arg wheel_angle_unit)" />
+    <param name="steering_state_source" value="$(arg steering_state_source)" />
+    <param name="steer_output_mode" value="$(arg steer_output_mode)" />
+    <param name="steering_output_gain" value="$(arg steering_output_gain)" />
+    <param name="preview_mode" value="$(arg preview_mode)" />
+    <param name="velocity_contract" value="$(arg velocity_contract)" />
+    <param name="wheel_fallback_max_kmh" value="$(arg wheel_fallback_max_kmh)" />
+    <param name="actuator_tau_model" value="$(arg actuator_tau_model)" />
+    <param name="tail_horizon_s" value="$(arg tail_horizon_s)" />
+  </node>
+</launch>

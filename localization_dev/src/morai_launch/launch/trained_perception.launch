@@ -1,0 +1,22 @@
+<launch>
+  <arg name="point_cloud_topic" default="/central/velodyne_points"/>
+  <arg name="camera_topic" default="/around_view/camera/front/image_raw"/>
+  <arg name="start_camera_receiver" default="true"/>
+  <arg name="start_rviz" default="true"/>
+  <arg name="show_lane_viewer" default="true"/>
+  <arg name="lidar_score_threshold" default="0.445"/>
+  <arg name="lane_inference_hz" default="10.0"/>
+
+  <include file="$(find lidar_detection)/launch/pointpillar_detection.launch">
+    <arg name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    <arg name="score_threshold" value="$(arg lidar_score_threshold)"/>
+    <arg name="start_rviz" value="$(arg start_rviz)"/>
+  </include>
+
+  <include file="$(find lane_detection)/launch/polar_lane_detection.launch">
+    <arg name="input_topic" value="$(arg camera_topic)"/>
+    <arg name="start_camera_receiver" value="$(arg start_camera_receiver)"/>
+    <arg name="show_viewer" value="$(arg show_lane_viewer)"/>
+    <arg name="max_inference_hz" value="$(arg lane_inference_hz)"/>
+  </include>
+</launch>

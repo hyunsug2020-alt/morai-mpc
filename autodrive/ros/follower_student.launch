@@ -1,0 +1,36 @@
+<launch>
+  <!-- Student v3 publishes a validated rolling path and speed cap to /avoid_waypoints. -->
+  <arg name="cruise_kmh" default="15.0" />
+  <arg name="log_file" default="$(optenv STUDENT_MPC_LOG_FILE /data/autodrive/student_v3_mpc_log.json)" />
+  <include file="$(find moraimpc)/launch/hdmap_path_follower.launch">
+    <arg name="path_file" value="/data/autodrive/global_path.json" />
+    <arg name="ego_topic" value="/Ego_topic" />
+    <arg name="object_topic" value="/Object_topic" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="ltv_only" value="true" />
+    <!-- Use the same lateral-acceleration limit as the Student planner.
+         Avoid applying a second heuristic curvature multiplier to its speed cap. -->
+    <arg name="avoid_speed_rise_mps2" value="3.0" />
+    <arg name="avoid_speed_fall_mps2" value="3.0" />
+    <!-- Predict the speed reached during the 3 m/s^2 command ramp. -->
+    <arg name="velocity_contract" value="reachable" />
+    <!-- Run 34 wheel-angle telemetry fits ~0.08 s steering response;
+         the inherited 0.30 s observer lag over-predicts delay in curves. -->
+    <arg name="actuator_tau_model" value="0.08" />
+    <arg name="curve_speed_alpha" value="0.0" />
+    <arg name="curve_alat_max" value="2.26" />
+    <arg name="curve_min_vel_kmh" value="10.0" />
+    <arg name="use_avoid_path" value="true" />
+    <arg name="avoid_vel_as_cap" value="true" />
+    <arg name="stop_on_stale_avoid_path" value="true" />
+    <arg name="stop_at_path_end" value="false" />
+    <!-- Use MORAI velocity control, as the existing follow/avoid launches do.
+         The follower boundary still applies the 3 m/s² ramp and all stop caps;
+         a second proportional pedal loop introduced unmodelled launch lag. -->
+    <arg name="longitudinal_cmd_type" value="2" />
+    <arg name="gear_control_enabled" value="true" />
+    <arg name="initialize_control_mode" value="true" />
+    <arg name="control_mode" value="3" />
+    <arg name="log_file" value="$(arg log_file)" />
+  </include>
+</launch>

@@ -1,0 +1,201 @@
+mode: foreground_sigmoid
+label_version: 2
+animal_verified: false
+ignore_index: 255
+classes:
+- id: 0
+  name: vehicle
+  color:
+  - 220
+  - 20
+  - 60
+- id: 1
+  name: person_animal
+  color:
+  - 98
+  - 2
+  - 255
+- id: 2
+  name: obstacle
+  color:
+  - 236
+  - 255
+  - 2
+- id: 3
+  name: traffic_light
+  color:
+  - 255
+  - 74
+  - 240
+- id: 4
+  name: yellow_lane
+  color:
+  - 255
+  - 255
+  - 0
+- id: 5
+  name: white_lane
+  color:
+  - 255
+  - 255
+  - 255
+palette:
+- source: vehicle
+  rgb:
+  - 255
+  - 2
+  - 2
+  class: vehicle
+- source: sedan
+  rgb:
+  - 255
+  - 60
+  - 60
+  class: vehicle
+- source: suv
+  rgb:
+  - 255
+  - 75
+  - 75
+  class: vehicle
+- source: truck
+  rgb:
+  - 255
+  - 90
+  - 90
+  class: vehicle
+- source: bus
+  rgb:
+  - 255
+  - 105
+  - 105
+  class: vehicle
+- source: van
+  rgb:
+  - 255
+  - 120
+  - 120
+  class: vehicle
+- source: wagon
+  rgb:
+  - 255
+  - 135
+  - 135
+  class: vehicle
+- source: mpv
+  rgb:
+  - 255
+  - 150
+  - 150
+  class: vehicle
+- source: pedestrian
+  rgb:
+  - 98
+  - 2
+  - 255
+  class: person_animal
+- source: obstacle
+  rgb:
+  - 236
+  - 255
+  - 2
+  class: obstacle
+- source: asphalt
+  rgb:
+  - 127
+  - 127
+  - 127
+  class: none
+- source: white_lane
+  rgb:
+  - 255
+  - 255
+  - 255
+  class: white_lane
+- source: yellow_lane
+  rgb:
+  - 255
+  - 255
+  - 0
+  class: none
+- source: blue_lane
+  rgb:
+  - 0
+  - 178
+  - 255
+  class: none
+- source: crosswalk
+  rgb:
+  - 76
+  - 255
+  - 76
+  class: none
+- source: stop_line
+  rgb:
+  - 255
+  - 0
+  - 0
+  class: none
+- source: road_sign
+  rgb:
+  - 204
+  - 127
+  - 51
+  class: none
+- source: traffic_light
+  rgb:
+  - 255
+  - 74
+  - 240
+  class: traffic_light
+- source: traffic_sign
+  rgb:
+  - 99
+  - 48
+  - 250
+  class: none
+- source: sidewalk
+  rgb:
+  - 255
+  - 102
+  - 30
+  class: none
+- source: standing_object
+  rgb:
+  - 113
+  - 178
+  - 37
+  class: obstacle
+- source: building
+  rgb:
+  - 153
+  - 255
+  - 51
+  class: none
+- source: road_edge
+  rgb:
+  - 178
+  - 178
+  - 178
+  class: none
+- source: sky
+  rgb:
+  - 0
+  - 255
+  - 255
+  class: none
+- source: other
+  rgb:
+  - 23
+  - 2
+  - 6
+  class: none
+- source: ego_vehicle
+  rgb:
+  - 0
+  - 0
+  - 0
+  class: none
+excluded_classes:
+- yellow_lane
+note: 'yellow_lane: 데이터 부족으로 학습 제외. 노란 차선 픽셀은 배경, 채널 4는 학습되지 않음(추론 시 무시).'

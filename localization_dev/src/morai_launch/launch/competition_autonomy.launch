@@ -1,0 +1,119 @@
+<launch>
+  <!-- 2026 MOLIT rule-limited stack. No /Ego_topic or /Object_topic input. -->
+  <arg name="start_connections" default="true" />
+  <!-- Competition and local development both use the same UDP-only boundary. -->
+  <arg name="transport" default="udp" />
+  <arg name="simulator_ip" default="$(optenv MORAI_SIM_IP '')" />
+  <arg name="bind_ip" default="$(optenv MORAI_LOCAL_IP 0.0.0.0)" />
+  <arg name="status_port" default="$(optenv MORAI_STATUS_PORT 0)" />
+  <arg name="collision_port" default="$(optenv MORAI_COLLISION_PORT 0)" />
+  <arg name="control_port" default="$(optenv MORAI_CONTROL_PORT 0)" />
+  <arg name="physical_max_steer_deg" default="40.0" />
+  <arg name="gps_port" default="9090" />
+  <arg name="imu_port" default="9091" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="start_localization" default="true" />
+  <!-- LIO-SAM remains unavailable until a point-cloud map is collected. -->
+  <arg name="use_lio_sam" default="false" />
+  <arg name="start_perception" default="true" />
+  <arg name="use_unified_camera" default="false" />
+  <arg name="use_unified_lidar" default="false" />
+  <arg name="unified_camera_model" default="" />
+  <arg name="unified_lidar_checkpoint" default="" />
+  <arg name="unified_lidar_model_config" default="" />
+  <arg name="unified_lidar_data_config" default="" />
+  <arg name="unified_lidar_remove_ground" default="false" />
+  <arg name="start_control" default="false" />
+  <!-- 0 selects the mode written by the connection launch in terminal 1. -->
+  <arg name="control_mode" default="0" />
+  <arg name="initialize_control_mode" default="true" />
+  <arg name="rviz" default="true" />
+  <!-- Visualization messages are independent from the RViz process. -->
+  <arg name="visualization" default="$(arg rviz)" />
+  <arg name="show_camera_viewer" default="true" />
+  <!-- Normal 35 km/h target. Safety caps can only lower this value; a
+       competition run must opt in explicitly with cruise_kmh:=50.0. -->
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="global_rejoin_max_kmh" default="10.0" />
+  <!-- Opt-in until the stop position and camera ROI are validated in MORAI. -->
+  <arg name="traffic_stop_enable" default="false" />
+  <arg name="traffic_unknown_is_stop" default="false" />
+  <!-- The competition YOLO model labels the combined straight+left phase as
+       green_left.  It therefore permits the fixed route to proceed straight
+       as well as left; steering direction still comes only from the route. -->
+  <arg name="traffic_green_left_is_go" default="true" />
+  <!-- Forward driven-lane corridor in the 1280x720 traffic-camera image. -->
+  <arg name="traffic_roi_min_x_ratio" default="0.30" />
+  <arg name="traffic_roi_max_x_ratio" default="0.70" />
+  <arg name="traffic_roi_min_y_ratio" default="0.0" />
+  <arg name="traffic_roi_max_y_ratio" default="0.62" />
+  <arg name="traffic_track_center_gate_ratio" default="0.16" />
+  <arg name="global_path_file"
+       default="$(find moraimpc)/data/competition_directional_global_path.txt" />
+  <arg name="lane_policy_file"
+       default="$(find moraimpc)/data/lane_policy_overrides.json" />
+  <arg name="object_topic" default="/perception/objects_map" />
+
+  <group if="$(arg start_connections)">
+    <include if="$(eval arg('transport') == 'udp')"
+             file="$(find morai_launch)/launch/competition_udp_connections.launch">
+      <arg name="simulator_ip" value="$(arg simulator_ip)" />
+      <arg name="bind_ip" value="$(arg bind_ip)" />
+      <arg name="status_port" value="$(arg status_port)" />
+      <arg name="collision_port" value="$(arg collision_port)" />
+      <arg name="control_port" value="$(arg control_port)" />
+      <arg name="physical_max_steer_deg"
+           value="$(arg physical_max_steer_deg)" />
+      <arg name="enable_control_output" value="$(arg start_control)" />
+      <arg name="gps_port" value="$(arg gps_port)" />
+      <arg name="imu_port" value="$(arg imu_port)" />
+      <arg name="lidar_port" value="$(arg lidar_port)" />
+      <arg name="show_camera_windows" value="false" />
+    </include>
+  </group>
+
+  <include if="$(eval arg('start_localization') and arg('use_lio_sam'))"
+           file="$(find morai_launch)/launch/tunnel_localization.launch">
+    <arg name="start_rviz" value="false" />
+    <arg name="vehicle_state_topic" value="/Competition_topic" />
+  </include>
+
+  <include if="$(eval arg('start_localization') and not arg('use_lio_sam'))"
+           file="$(find morai_launch)/launch/gps_odometry_eskf.launch">
+    <arg name="vehicle_state_topic" value="/Competition_topic" />
+  </include>
+
+  <include file="$(find moraimpc)/launch/perception_hdmap_avoidance.launch">
+    <arg name="start_perception" value="$(arg start_perception)" />
+    <arg name="use_unified_camera" value="$(arg use_unified_camera)" />
+    <arg name="use_unified_lidar" value="$(arg use_unified_lidar)" />
+    <arg name="unified_camera_model" value="$(arg unified_camera_model)" />
+    <arg name="unified_lidar_checkpoint" value="$(arg unified_lidar_checkpoint)" />
+    <arg name="unified_lidar_model_config" value="$(arg unified_lidar_model_config)" />
+    <arg name="unified_lidar_data_config" value="$(arg unified_lidar_data_config)" />
+    <arg name="unified_lidar_remove_ground" value="$(arg unified_lidar_remove_ground)" />
+    <arg name="start_camera_receiver" value="false" />
+    <arg name="start_lidar_receiver" value="false" />
+    <arg name="show_perception_viewer" value="$(arg show_camera_viewer)" />
+    <arg name="start_control" value="$(arg start_control)" />
+    <arg name="visualization" value="$(arg visualization)" />
+    <arg name="rviz" value="$(arg rviz)" />
+    <arg name="competition_mode" value="true" />
+    <arg name="control_mode" value="$(arg control_mode)" />
+    <arg name="initialize_control_mode"
+         value="$(eval arg('start_control') and arg('initialize_control_mode'))" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="global_rejoin_max_kmh" value="$(arg global_rejoin_max_kmh)" />
+    <arg name="global_path_file" value="$(arg global_path_file)" />
+    <arg name="lane_policy_file" value="$(arg lane_policy_file)" />
+    <arg name="object_topic" value="$(arg object_topic)" />
+    <arg name="traffic_stop_enable" value="$(arg traffic_stop_enable)" />
+    <arg name="traffic_unknown_is_stop" value="$(arg traffic_unknown_is_stop)" />
+    <arg name="traffic_green_left_is_go" value="$(arg traffic_green_left_is_go)" />
+    <arg name="traffic_roi_min_x_ratio" value="$(arg traffic_roi_min_x_ratio)" />
+    <arg name="traffic_roi_max_x_ratio" value="$(arg traffic_roi_max_x_ratio)" />
+    <arg name="traffic_roi_min_y_ratio" value="$(arg traffic_roi_min_y_ratio)" />
+    <arg name="traffic_roi_max_y_ratio" value="$(arg traffic_roi_max_y_ratio)" />
+    <arg name="traffic_track_center_gate_ratio" value="$(arg traffic_track_center_gate_ratio)" />
+  </include>
+</launch>

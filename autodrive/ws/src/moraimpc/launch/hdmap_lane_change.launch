@@ -1,0 +1,353 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find moraimpc)/config/rosconsole.config" />
+
+  <arg name="path_file" default="$(find moraimpc)/data/hdmap_path.json" />
+  <arg name="global_path_file" default="$(arg path_file)" />
+  <arg name="vehicle_config" default="$(find moraimpc)/config/ioniq5_vehicle.yaml" />
+  <arg name="planner_type" default="hdmap_lane_change.py" />
+  <arg name="log_file" default="$(find moraimpc)/logs/lane_change_log.json" />
+  <arg name="planner_diagnostics_csv" default="$(find moraimpc)/logs/global_path_avoidance.csv" />
+  <arg name="cruise_kmh" default="35.0" />
+  <arg name="global_rejoin_max_kmh" default="10.0" />
+  <arg name="ltv_only" default="true" />
+  <arg name="live_tuning" default="true" />
+  <arg name="param_reload_period_s" default="0.5" />
+  <arg name="target_lane" default="0" />
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="directional_map" default="$(find moraimpc)/data/competition_directional_drivable_map.json.gz" />
+  <arg name="lane_policy_file" default="$(find moraimpc)/data/lane_policy_overrides.json" />
+  <arg name="local_bypass_corridor_file" default="$(find moraimpc)/data/local_bypass_corridor_overrides.json" />
+  <arg name="object_topic" default="/Object_topic" />
+  <!-- Experimental: HD-map stop nodes + the user's traffic-light YOLO output. -->
+  <arg name="traffic_stop_enable" default="false" />
+  <arg name="traffic_detection_topic"
+       default="/camera_traffic_light_detection/detections" />
+  <arg name="traffic_stop_lookahead_m" default="70.0" />
+  <arg name="traffic_stop_margin_m" default="2.0" />
+  <arg name="traffic_stop_decel_mps2" default="2.5" />
+  <arg name="traffic_unknown_is_stop" default="false" />
+  <arg name="traffic_green_left_is_go" default="false" />
+  <arg name="traffic_roi_min_x_ratio" default="0.15" />
+  <arg name="traffic_roi_max_x_ratio" default="0.85" />
+  <arg name="traffic_roi_min_y_ratio" default="0.0" />
+  <arg name="traffic_roi_max_y_ratio" default="0.70" />
+  <arg name="traffic_track_center_gate_ratio" default="0.18" />
+  <arg name="route_len_m" default="220.0" />
+  <arg name="use_base_route" default="false" />
+  <arg name="loop_hdmap_route" default="true" />
+  <arg name="stop_at_path_end" default="false" />
+  <arg name="anchor_current_pose" default="false" />
+  <arg name="avoid_reacquire_dist_m" default="3.0" />
+  <arg name="base_heading_match_margin_m" default="5.0" />
+  <arg name="detect_dist_m" default="70.0" />
+  <arg name="block_lat_m" default="1.8" />
+  <!-- Minimum body-to-object gap used by the exact OBB blocker filter. -->
+  <arg name="path_block_clearance_m" default="0.35" />
+  <arg name="target_front_gap_m" default="10.0" />
+  <arg name="target_rear_gap_m" default="7.0" />
+  <arg name="gap_front_min_m" default="7.0" />
+  <arg name="gap_rear_min_m" default="5.0" />
+  <arg name="gap_front_time_s" default="0.55" />
+  <arg name="gap_rear_time_s" default="0.45" />
+  <arg name="gap_rel_speed_time_s" default="0.7" />
+  <arg name="gap_predict_time_s" default="1.8" />
+  <arg name="arrive_lane_lat_m" default="1.5" />
+  <arg name="arrive_forced_lane_lat_m" default="0.8" />
+  <arg name="max_avoid_hops" default="4" />
+  <arg name="require_rejoin_path" default="true" />
+  <arg name="rejoin_check_m" default="140.0" />
+  <arg name="urgent_transition_min_m" default="14.0" />
+  <arg name="urgent_transition_margin_m" default="6.0" />
+  <arg name="stopped_avoid_blend_m" default="10.0" />
+  <arg name="stopped_avoid_trigger_m" default="10.0" />
+  <arg name="avoid_change_min_kmh" default="20.0" />
+  <arg name="avoid_change_time_s" default="1.8" />
+  <arg name="straight_lane_change_enable" default="true" />
+  <arg name="straight_lane_change_lookahead_m" default="45.0" />
+  <arg name="straight_lane_change_max_heading_deg" default="5.0" />
+  <arg name="straight_lane_change_blend_m" default="20.0" />
+  <arg name="straight_lane_change_time_s" default="1.3" />
+  <arg name="straight_fast_min_gap_margin_m" default="2.0" />
+  <arg name="avoid_hard_stop_m" default="4.0" />
+  <arg name="avoid_hold_max_kmh" default="20.0" />
+  <arg name="lane_change_preflight_margin_m" default="0.50" />
+  <arg name="delayed_lane_change_max_delay_m" default="16.0" />
+  <arg name="delayed_lane_change_delay_step_m" default="1.0" />
+  <arg name="delayed_lane_change_min_transition_m" default="8.0" />
+  <arg name="delayed_lane_change_max_transition_m" default="20.0" />
+  <arg name="avoid_vel_as_cap" default="true" />
+  <arg name="avoid_speed_rise_mps2" default="1.0" />
+  <arg name="avoid_speed_fall_mps2" default="5.0" />
+  <arg name="require_object_feed" default="true" />
+  <arg name="object_timeout_s" default="0.8" />
+  <arg name="object_hard_timeout_s" default="2.0" />
+  <arg name="perception_degraded_kmh" default="10.0" />
+  <arg name="intersection_bypass_enable" default="true" />
+  <arg name="intersection_bypass_offset_m" default="3.2" />
+  <arg name="intersection_bypass_max_kmh" default="10.0" />
+  <arg name="free_bypass_enable" default="true" />
+  <arg name="free_bypass_lateral_bias_m" default="0.45" />
+  <arg name="free_bypass_max_shift_m" default="7.5" />
+  <arg name="free_bypass_max_kmh" default="25.0" />
+  <arg name="straight_free_bypass_max_kmh" default="35.0" />
+  <arg name="marked_edge_bypass_enable" default="false" />
+  <arg name="marked_edge_bypass_max_kmh" default="15.0" />
+  <!-- Never command reverse from an unverified perception-only blocker. -->
+  <arg name="backup_recovery_enable" default="false" />
+  <arg name="backup_recovery_distance_m" default="5.0" />
+  <arg name="backup_recovery_trigger_m" default="9.0" />
+  <arg name="backup_recovery_wait_cycles" default="15" />
+  <arg name="backup_recovery_max_kmh" default="4.0" />
+  <arg name="backup_recovery_rear_clear_m" default="8.0" />
+  <arg name="backup_recovery_rearm_distance_m" default="3.0" />
+  <arg name="allow_opposite_last_resort" default="false" />
+  <arg name="opposite_wait_cycles" default="20" />
+  <arg name="opposite_nearly_stopped_mps" default="0.5" />
+  <arg name="opposite_max_kmh" default="5.0" />
+  <arg name="opposite_clear_ahead_m" default="70.0" />
+  <arg name="opposite_clear_behind_m" default="20.0" />
+  <arg name="opposite_corridor_lat_m" default="2.2" />
+  <arg name="opposite_max_separation_m" default="5.0" />
+  <arg name="opposite_min_overlap_m" default="20.0" />
+  <arg name="curve_decel_enable" default="true" />
+  <arg name="curve_speed_alpha" default="12.0" />
+  <arg name="curve_alat_max" default="2.26" />
+  <arg name="curve_lookahead_min_m" default="25.0" />
+  <arg name="curve_lookahead_max_m" default="70.0" />
+  <arg name="curve_lookahead_time_s" default="2.5" />
+  <arg name="curve_brake_decel_mps2" default="2.0" />
+  <arg name="curve_min_vel_kmh" default="6.0" />
+  <arg name="kappa_gain" default="1.28" />
+  <arg name="max_steer_rate" default="50.0" />
+  <arg name="max_steer_deg" default="35.0" />
+  <arg name="w_dr" default="220.0" />
+  <arg name="w_theta_low_speed" default="250.0" />
+  <arg name="w_theta_high_speed" default="220.0" />
+  <arg name="w_kappa" default="120.0" />
+  <arg name="w_u" default="5200.0" />
+  <arg name="w_u_v_gain" default="350.0" />
+  <arg name="w_dr_curve_boost" default="2.8" />
+  <arg name="mode_init" default="false" />
+  <arg name="follower" default="false" />
+  <arg name="longitudinal_cmd_type" default="2" />
+  <arg name="gear_control_enabled" default="true" />
+  <arg name="initialize_control_mode" default="false" />
+  <arg name="control_mode" default="3" />
+  <arg name="rviz" default="true" />
+  <!-- Marker generation also feeds Foxglove and must not depend on RViz. -->
+  <arg name="visualization" default="$(arg rviz)" />
+  <arg name="rviz_config" default="$(find moraimpc)/rviz/hdmap_lane_view.rviz" />
+  <arg name="show_lane_labels" default="true" />
+  <arg name="show_ego_pose_label" default="true" />
+  <arg name="show_npc_labels" default="true" />
+
+  <node if="$(arg mode_init)" pkg="moraimpc" type="morai_mode_init.py" name="morai_mode_init" output="screen" />
+
+  <node pkg="moraimpc" type="$(arg planner_type)" name="hdmap_lane_change" output="screen">
+    <remap from="/Object_topic" to="$(arg object_topic)" />
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="directional_map" value="$(arg directional_map)" />
+    <param name="lane_policy_file" value="$(arg lane_policy_file)" />
+    <param name="local_bypass_corridor_file" value="$(arg local_bypass_corridor_file)" />
+    <param name="path_file" value="$(arg path_file)" />
+    <param name="base_route_file" value="$(arg global_path_file)" />
+    <param name="diagnostics_csv" value="$(arg planner_diagnostics_csv)" />
+    <param name="ego_timeout_s" value="0.5" />
+    <param name="global_rejoin_lat_m" value="0.7" />
+    <param name="global_rejoin_trigger_m" value="1.5" />
+    <param name="global_rejoin_trigger_cycles_needed" value="5" />
+    <param name="global_rejoin_max_dist_m" value="8.0" />
+    <param name="global_rejoin_hard_stop_dist_m" value="20.0" />
+    <param name="global_rejoin_recovery_kmh" value="5.0" />
+    <param name="global_rejoin_max_kmh" value="$(arg global_rejoin_max_kmh)" />
+    <param name="global_rejoin_cycles_needed" value="8" />
+    <param name="global_rejoin_no_lane_max_heading_deg" value="85.0" />
+    <param name="base_heading_match_margin_m" value="$(arg base_heading_match_margin_m)" />
+    <param name="cruise_mps" value="$(eval arg('cruise_kmh')/3.6)" />
+    <param name="target_lane" value="$(arg target_lane)" />
+    <param name="use_base_route" value="$(arg use_base_route)" />
+    <param name="loop_hdmap_route" value="$(arg loop_hdmap_route)" />
+    <param name="anchor_current_pose" value="$(arg anchor_current_pose)" />
+    <param name="auto_avoid" value="true" />
+    <param name="lane_change_trans_m" value="28.0" />
+    <param name="route_len_m" value="$(arg route_len_m)" />
+    <param name="rate_hz" value="10.0" />
+    <!-- Limits apply only while an obstacle avoidance candidate is searched. -->
+    <param name="max_avoid_candidates" value="3" />
+    <param name="max_delayed_transition_candidates" value="5" />
+    <param name="detect_dist_m" value="$(arg detect_dist_m)" />
+    <param name="block_lat_m" value="$(arg block_lat_m)" />
+    <param name="path_block_clearance_m" value="$(arg path_block_clearance_m)" />
+    <param name="target_front_gap_m" value="$(arg target_front_gap_m)" />
+    <param name="target_rear_gap_m" value="$(arg target_rear_gap_m)" />
+    <param name="gap_front_min_m" value="$(arg gap_front_min_m)" />
+    <param name="gap_rear_min_m" value="$(arg gap_rear_min_m)" />
+    <param name="gap_front_time_s" value="$(arg gap_front_time_s)" />
+    <param name="gap_rear_time_s" value="$(arg gap_rear_time_s)" />
+    <param name="gap_rel_speed_time_s" value="$(arg gap_rel_speed_time_s)" />
+    <param name="gap_predict_time_s" value="$(arg gap_predict_time_s)" />
+    <!-- Avoid false 5.0<5.0 gap rejection from projection/float noise. -->
+    <param name="gap_compare_epsilon_m" value="0.10" />
+    <param name="avoid_source_pass_margin_m" value="6.0" />
+    <param name="arrive_lane_lat_m" value="$(arg arrive_lane_lat_m)" />
+    <param name="arrive_forced_lane_lat_m" value="$(arg arrive_forced_lane_lat_m)" />
+    <param name="max_avoid_hops" value="$(arg max_avoid_hops)" />
+    <param name="require_rejoin_path" value="$(arg require_rejoin_path)" />
+    <param name="rejoin_check_m" value="$(arg rejoin_check_m)" />
+    <param name="urgent_transition_min_m" value="$(arg urgent_transition_min_m)" />
+    <param name="urgent_transition_margin_m" value="$(arg urgent_transition_margin_m)" />
+    <param name="stopped_avoid_blend_m" value="$(arg stopped_avoid_blend_m)" />
+    <param name="stopped_avoid_trigger_m" value="$(arg stopped_avoid_trigger_m)" />
+    <param name="avoid_change_min_kmh" value="$(arg avoid_change_min_kmh)" />
+    <param name="avoid_change_time_s" value="$(arg avoid_change_time_s)" />
+    <param name="straight_lane_change_enable" value="$(arg straight_lane_change_enable)" />
+    <param name="straight_lane_change_lookahead_m" value="$(arg straight_lane_change_lookahead_m)" />
+    <param name="straight_lane_change_max_heading_deg" value="$(arg straight_lane_change_max_heading_deg)" />
+    <param name="straight_lane_change_blend_m" value="$(arg straight_lane_change_blend_m)" />
+    <param name="straight_lane_change_time_s" value="$(arg straight_lane_change_time_s)" />
+    <param name="straight_fast_min_gap_margin_m" value="$(arg straight_fast_min_gap_margin_m)" />
+    <param name="avoid_hard_stop_m" value="$(arg avoid_hard_stop_m)" />
+    <param name="avoid_hold_max_kmh" value="$(arg avoid_hold_max_kmh)" />
+    <param name="lane_change_preflight_margin_m" value="$(arg lane_change_preflight_margin_m)" />
+    <param name="delayed_lane_change_max_delay_m" value="$(arg delayed_lane_change_max_delay_m)" />
+    <param name="delayed_lane_change_delay_step_m" value="$(arg delayed_lane_change_delay_step_m)" />
+    <param name="delayed_lane_change_min_transition_m" value="$(arg delayed_lane_change_min_transition_m)" />
+    <param name="delayed_lane_change_max_transition_m" value="$(arg delayed_lane_change_max_transition_m)" />
+    <param name="require_object_feed" value="$(arg require_object_feed)" />
+    <param name="object_timeout_s" value="$(arg object_timeout_s)" />
+    <param name="object_hard_timeout_s" value="$(arg object_hard_timeout_s)" />
+    <param name="perception_degraded_kmh" value="$(arg perception_degraded_kmh)" />
+    <param name="vulnerable_safety_gap_m" value="12.0" />
+    <param name="vulnerable_lateral_m" value="3.5" />
+    <param name="lane_change_collision_lat_m" value="2.4" />
+    <param name="vulnerable_brake_decel_mps2" value="3.0" />
+    <param name="vulnerable_follow_gain" value="0.40" />
+    <param name="obstacle_follow_gain" value="0.35" />
+    <param name="speed_cap_rise_mps2" value="$(arg avoid_speed_rise_mps2)" />
+    <param name="crossing_predict_time_s" value="4.0" />
+    <param name="crossing_predict_step_s" value="0.2" />
+    <param name="crossing_time_margin_s" value="2.0" />
+    <param name="intersection_bypass_enable" value="$(arg intersection_bypass_enable)" />
+    <param name="intersection_bypass_offset_m" value="$(arg intersection_bypass_offset_m)" />
+    <param name="intersection_bypass_max_kmh" value="$(arg intersection_bypass_max_kmh)" />
+    <param name="bypass_vehicle_length_m" value="4.635" />
+    <param name="bypass_vehicle_width_m" value="1.892" />
+    <param name="bypass_wheelbase_m" value="3.0" />
+    <param name="bypass_max_steer_deg" value="$(arg max_steer_deg)" />
+    <param name="bypass_max_steer_rate_deg_s" value="$(arg max_steer_rate)" />
+    <param name="bypass_max_lateral_accel_mps2" value="2.26" />
+    <param name="free_bypass_enable" value="$(arg free_bypass_enable)" />
+    <param name="free_bypass_lateral_bias_m" value="$(arg free_bypass_lateral_bias_m)" />
+    <param name="free_bypass_max_shift_m" value="$(arg free_bypass_max_shift_m)" />
+    <param name="free_bypass_max_kmh" value="$(arg free_bypass_max_kmh)" />
+    <param name="straight_free_bypass_max_kmh" value="$(arg straight_free_bypass_max_kmh)" />
+    <!-- Small-box fallback for a one-sided marked outer road edge. Opposing
+         geometry and two-sided ambiguous markings remain forbidden. -->
+    <param name="marked_edge_bypass_enable" value="$(arg marked_edge_bypass_enable)" />
+    <param name="marked_edge_bypass_max_kmh" value="$(arg marked_edge_bypass_max_kmh)" />
+    <param name="marked_edge_bypass_max_object_width_m" value="1.4" />
+    <param name="marked_edge_bypass_max_object_length_m" value="2.5" />
+    <param name="marked_edge_bypass_max_offset_m" value="2.4" />
+    <param name="marked_edge_bypass_tracking_margin_m" value="0.5" />
+    <param name="marked_edge_bypass_min_object_m" value="6.5" />
+    <!-- If a close static object leaves no legal forward path, retrace the
+         recently driven corridor in R, stop, restore D, and plan again. -->
+    <param name="backup_recovery_enable" value="$(arg backup_recovery_enable)" />
+    <param name="backup_recovery_distance_m" value="$(arg backup_recovery_distance_m)" />
+    <param name="backup_recovery_trigger_m" value="$(arg backup_recovery_trigger_m)" />
+    <param name="backup_recovery_wait_cycles" value="$(arg backup_recovery_wait_cycles)" />
+    <param name="backup_recovery_max_kmh" value="$(arg backup_recovery_max_kmh)" />
+    <param name="backup_recovery_rear_clear_m" value="$(arg backup_recovery_rear_clear_m)" />
+    <param name="backup_recovery_rearm_distance_m" value="$(arg backup_recovery_rearm_distance_m)" />
+    <param name="backup_recovery_rear_lateral_m" value="1.8" />
+    <param name="backup_recovery_timeout_cycles" value="120" />
+    <param name="backup_recovery_start_timeout_cycles" value="150" />
+    <param name="backup_recovery_drive_wait_cycles" value="60" />
+    <param name="local_bypass_nudge_max_m" value="1.6" />
+    <param name="local_bypass_nudge_step_m" value="0.2" />
+    <param name="local_bypass_tracking_margin_m" value="0.15" />
+    <param name="local_bypass_gap_max_kmh" value="25.0" />
+    <param name="centerline_guard_margin_m" value="1.30" />
+    <param name="centerline_guard_min_opposite_heading_deg" value="145.0" />
+    <param name="white_lane_max_separation_m" value="5.0" />
+    <param name="traffic_stop_enable" value="$(arg traffic_stop_enable)" />
+    <param name="traffic_detection_topic" value="$(arg traffic_detection_topic)" />
+    <param name="traffic_stop_lookahead_m" value="$(arg traffic_stop_lookahead_m)" />
+    <param name="traffic_stop_margin_m" value="$(arg traffic_stop_margin_m)" />
+    <param name="traffic_stop_decel_mps2" value="$(arg traffic_stop_decel_mps2)" />
+    <param name="traffic_unknown_is_stop" value="$(arg traffic_unknown_is_stop)" />
+    <param name="traffic_green_left_is_go" value="$(arg traffic_green_left_is_go)" />
+    <param name="traffic_roi_min_x_ratio" value="$(arg traffic_roi_min_x_ratio)" />
+    <param name="traffic_roi_max_x_ratio" value="$(arg traffic_roi_max_x_ratio)" />
+    <param name="traffic_roi_min_y_ratio" value="$(arg traffic_roi_min_y_ratio)" />
+    <param name="traffic_roi_max_y_ratio" value="$(arg traffic_roi_max_y_ratio)" />
+    <param name="traffic_track_center_gate_ratio" value="$(arg traffic_track_center_gate_ratio)" />
+    <param name="traffic_confirm_frames" value="2" />
+    <param name="traffic_detection_timeout_s" value="1.0" />
+    <param name="traffic_minimum_confidence" value="0.35" />
+    <param name="traffic_yellow_is_stop" value="true" />
+    <param name="allow_opposite_last_resort" value="$(arg allow_opposite_last_resort)" />
+    <param name="opposite_wait_cycles" value="$(arg opposite_wait_cycles)" />
+    <param name="opposite_nearly_stopped_mps" value="$(arg opposite_nearly_stopped_mps)" />
+    <param name="opposite_max_kmh" value="$(arg opposite_max_kmh)" />
+    <param name="opposite_clear_ahead_m" value="$(arg opposite_clear_ahead_m)" />
+    <param name="opposite_clear_behind_m" value="$(arg opposite_clear_behind_m)" />
+    <param name="opposite_corridor_lat_m" value="$(arg opposite_corridor_lat_m)" />
+    <param name="opposite_max_separation_m" value="$(arg opposite_max_separation_m)" />
+    <param name="opposite_min_overlap_m" value="$(arg opposite_min_overlap_m)" />
+    <param name="rejoin_route_refresh_m" value="3.0" />
+  </node>
+
+  <include if="$(arg follower)" file="$(find moraimpc)/launch/hdmap_path_follower.launch">
+    <arg name="path_file" value="$(arg path_file)" />
+    <arg name="object_topic" value="$(arg object_topic)" />
+    <arg name="vehicle_config" value="$(arg vehicle_config)" />
+    <arg name="log_file" value="$(arg log_file)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="ltv_only" value="$(arg ltv_only)" />
+    <arg name="live_tuning" value="$(arg live_tuning)" />
+    <arg name="param_reload_period_s" value="$(arg param_reload_period_s)" />
+    <arg name="use_avoid_path" value="true" />
+    <arg name="longitudinal_cmd_type" value="$(arg longitudinal_cmd_type)" />
+    <arg name="gear_control_enabled" value="$(arg gear_control_enabled)" />
+    <arg name="initialize_control_mode" value="$(arg initialize_control_mode)" />
+    <arg name="control_mode" value="$(arg control_mode)" />
+    <arg name="avoid_vel_as_cap" value="$(arg avoid_vel_as_cap)" />
+    <arg name="avoid_speed_rise_mps2" value="$(arg avoid_speed_rise_mps2)" />
+    <arg name="avoid_speed_fall_mps2" value="$(arg avoid_speed_fall_mps2)" />
+    <arg name="stop_at_path_end" value="$(arg stop_at_path_end)" />
+    <arg name="avoid_reacquire_dist_m" value="$(arg avoid_reacquire_dist_m)" />
+    <arg name="curve_decel_enable" value="$(arg curve_decel_enable)" />
+    <arg name="curve_speed_alpha" value="$(arg curve_speed_alpha)" />
+    <arg name="curve_alat_max" value="$(arg curve_alat_max)" />
+    <arg name="curve_lookahead_min_m" value="$(arg curve_lookahead_min_m)" />
+    <arg name="curve_lookahead_max_m" value="$(arg curve_lookahead_max_m)" />
+    <arg name="curve_lookahead_time_s" value="$(arg curve_lookahead_time_s)" />
+    <arg name="curve_brake_decel_mps2" value="$(arg curve_brake_decel_mps2)" />
+    <arg name="curve_min_vel_kmh" value="$(arg curve_min_vel_kmh)" />
+    <arg name="kappa_gain" value="$(arg kappa_gain)" />
+    <arg name="max_steer_rate" value="$(arg max_steer_rate)" />
+    <arg name="max_steer_deg" value="$(arg max_steer_deg)" />
+    <arg name="w_dr" value="$(arg w_dr)" />
+    <arg name="w_theta_low_speed" value="$(arg w_theta_low_speed)" />
+    <arg name="w_theta_high_speed" value="$(arg w_theta_high_speed)" />
+    <arg name="w_kappa" value="$(arg w_kappa)" />
+    <arg name="w_u" value="$(arg w_u)" />
+    <arg name="w_u_v_gain" value="$(arg w_u_v_gain)" />
+    <arg name="w_dr_curve_boost" value="$(arg w_dr_curve_boost)" />
+  </include>
+
+  <node if="$(arg visualization)" pkg="moraimpc" type="hdmap_viz.py" name="hdmap_viz" output="screen">
+    <remap from="/Object_topic" to="$(arg object_topic)" />
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="global_path_file" value="$(arg global_path_file)" />
+    <param name="directional_map" value="$(arg directional_map)" />
+    <param name="show_lane_labels" value="$(arg show_lane_labels)" />
+    <param name="show_ego_pose_label" value="$(arg show_ego_pose_label)" />
+    <param name="show_npc_labels" value="$(arg show_npc_labels)" />
+    <param name="publish_tf" value="false" />
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="hdmap_lane_rviz"
+        args="-d $(arg rviz_config)" output="screen" />
+</launch>

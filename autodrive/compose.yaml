@@ -1,0 +1,72 @@
+name: morai-autodrive
+services:
+  autodrive:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: morai-autodrive:1
+    container_name: morai_autodrive
+    network_mode: host
+    environment:
+      ROS_MASTER_URI: http://127.0.0.1:11312
+      ROS_IP: 127.0.0.1
+      ROSBRIDGE_PORT: "9091"
+      AUTODRIVE_DATA: /data/autodrive
+      AUTODRIVE_LIDAR_CPUS: "${AUTODRIVE_LIDAR_CPUS-}"
+    volumes:
+      - ../data/autodrive:/data/autodrive
+      - ../data/raw:/data/raw
+      # Keep build/devel in the container; use the host's editable source packages.
+      - ./ws/src/moraimpc:/opt/autodrive/ws/src/moraimpc:ro
+      - ./ws/src/morai_msgs:/opt/autodrive/ws/src/morai_msgs:ro
+      - ./ros:/opt/autodrive/ros:ro
+    init: true
+    restart: unless-stopped
+  semantic:
+    build:
+      context: .
+      dockerfile: Dockerfile.performance_semantic
+      args:
+        SEMANTIC_BASE_IMAGE: "${SEMANTIC_BASE_IMAGE:-pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime}"
+    image: morai-performance-semantic:20261008
+    entrypoint: []
+    container_name: alpamayo_semantic
+    network_mode: host
+    cpus: "${SEMANTIC_CPU_LIMIT:-4.0}"
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "2"
+      SEMANTIC_MAIN_CPUS: "${SEMANTIC_MAIN_CPUS-}"
+      SEMANTIC_BACKGROUND_CPUS: "${SEMANTIC_BACKGROUND_CPUS-}"
+      SEMANTIC_DISPLAY_CPUS: "${SEMANTIC_DISPLAY_CPUS-}"
+    command:
+      - python
+      - /app/semantic_sidecar.py
+      - --model
+      - /competition/semantic/models/semantic_b1_noyellow_v2_final_20261002/best_fp16.onnx
+      - --pipeline
+      - /competition/semantic/pipeline
+      - --live
+      - /competition/data/autodrive/semantic_live
+      - --max-fps
+      - "10.0"
+      - --overlay-hz
+      - "0.2"
+      - --gpu-postprocess
+      - "${SEMANTIC_GPU_POSTPROCESS:-off}"
+    volumes:
+      - ./semantic_sidecar.py:/app/semantic_sidecar.py:ro
+      - ./semantic_gpu_masks.py:/app/semantic_gpu_masks.py:ro
+      - ../semantic:/competition/semantic:ro
+      - ../data/autodrive/semantic_live:/competition/data/autodrive/semantic_live
+      - /dev/shm/alpamayo_semantic:/dev/shm/alpamayo_semantic
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+              count: all
+    init: true
+    restart: unless-stopped

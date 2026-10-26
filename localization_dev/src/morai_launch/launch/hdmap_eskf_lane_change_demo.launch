@@ -1,0 +1,167 @@
+<launch>
+  <!-- One-screen perception/localization/HD-map lane-change demo.
+
+       Localization and planning inputs:
+         /gps + /imu/data + /Competition_topic -> pure odom + ESKF
+         camera/LiDAR detections -> map objects -> HD-map lane planner
+         front camera -> Polar-RCNN lane overlay
+
+       All MORAI boundary traffic uses the competition UDP gateway. -->
+  <arg name="start_connections" default="true" />
+  <arg name="start_localization" default="true" />
+  <arg name="start_gps_gate" default="true" />
+  <arg name="start_perception" default="true" />
+  <arg name="start_lane_detection" default="true" />
+  <arg name="start_lane_aid" default="true" />
+  <arg name="start_control" default="false" />
+  <arg name="simulator_ip" default="$(optenv MORAI_SIM_IP 127.0.0.1)" />
+  <arg name="bind_ip" default="$(optenv MORAI_LOCAL_IP 127.0.0.1)" />
+  <arg name="status_port" default="$(optenv MORAI_STATUS_PORT 1909)" />
+  <arg name="collision_port" default="$(optenv MORAI_COLLISION_PORT 7789)" />
+  <arg name="control_port" default="$(optenv MORAI_CONTROL_PORT 9093)" />
+  <arg name="physical_max_steer_deg" default="40.0" />
+  <arg name="gps_port" default="9090" />
+  <arg name="imu_port" default="9091" />
+  <arg name="lidar_port" default="2368" />
+  <arg name="traffic_stop_enable" default="false" />
+  <arg name="traffic_unknown_is_stop" default="false" />
+  <arg name="traffic_green_left_is_go" default="false" />
+  <arg name="show_dashboard" default="true" />
+  <arg name="rviz" default="false" />
+  <arg name="cruise_kmh" default="25.0" />
+  <!-- false: start from any HD-map lane visible in the current MORAI scene.
+       true: constrain the planner to global_path_file for an actual run. -->
+  <arg name="use_base_route" default="false" />
+  <arg name="lane_model"
+       default="/home/david/polar_lane_training/runs/lane_20260820/epoch_020.pth" />
+  <arg name="lane_inference_hz" default="10.0" />
+  <arg name="gps_source_topic" default="/gps" />
+  <arg name="gps_topic" default="/gps_gated" />
+  <arg name="hdmap_zip" default="$(find moraimpc)/data/hdmap.zip" />
+  <arg name="global_path_file"
+       default="$(find moraimpc)/data/competition_directional_global_path.txt" />
+  <arg name="lane_policy_file"
+       default="$(find moraimpc)/data/lane_policy_overrides.json" />
+
+  <include if="$(arg start_connections)"
+           file="$(find morai_launch)/launch/competition_udp_connections.launch">
+    <arg name="simulator_ip" value="$(arg simulator_ip)" />
+    <arg name="bind_ip" value="$(arg bind_ip)" />
+    <arg name="status_port" value="$(arg status_port)" />
+    <arg name="collision_port" value="$(arg collision_port)" />
+    <arg name="control_port" value="$(arg control_port)" />
+    <arg name="physical_max_steer_deg" value="$(arg physical_max_steer_deg)" />
+    <arg name="enable_control_output" value="$(arg start_control)" />
+    <arg name="gps_port" value="$(arg gps_port)" />
+    <arg name="imu_port" value="$(arg imu_port)" />
+    <arg name="lidar_port" value="$(arg lidar_port)" />
+    <arg name="show_camera_windows" value="false" />
+  </include>
+
+  <!-- Keeps the MORAI receiver alive while independently cutting only the
+       localization GPS input through /gps_gate/disconnect and /connect. -->
+  <node if="$(arg start_gps_gate)"
+        pkg="morai_launch"
+        type="gps_signal_gate.py"
+        name="gps_signal_gate"
+        output="screen"
+        required="true">
+    <param name="input_topic" value="$(arg gps_source_topic)" />
+    <param name="output_topic" value="$(arg gps_topic)" />
+    <param name="enabled" value="true" />
+  </node>
+
+  <include if="$(arg start_localization)"
+           file="$(find morai_launch)/launch/gps_odometry_eskf.launch">
+    <arg name="vehicle_state_topic" value="/Competition_topic" />
+    <arg name="imu_topic" value="/imu/data" />
+    <arg name="gps_topic" value="$(arg gps_topic)" />
+    <arg name="publish_tf" value="true" />
+    <arg name="publish_sensor_tf" value="true" />
+  </include>
+
+  <node if="$(arg start_lane_aid)"
+        pkg="moraimpc"
+        type="hdmap_lane_aid.py"
+        name="hdmap_lane_aid"
+        output="screen"
+        required="true">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="metric_topic" value="/lane_detection/metric" />
+    <param name="eskf_odometry_topic" value="/eskf/odom" />
+    <param name="eskf_diagnostics_topic" value="/eskf/diagnostics" />
+    <param name="constraint_topic" value="/localization/lane_constraint" />
+    <!-- Detector-level valid is insufficient for localization.  Only a
+         continuous, unambiguous ego-left/ego-right pair may calibrate or aid
+         ESKF during GPS loss. -->
+    <param name="candidate_minimum_width_m" value="2.8" />
+    <param name="candidate_maximum_width_m" value="4.2" />
+    <param name="candidate_maximum_lateral_m" value="1.0" />
+    <param name="candidate_maximum_heading_deg" value="10.0" />
+    <param name="candidate_minimum_lookahead_m" value="8.0" />
+    <param name="candidate_maximum_lookahead_m" value="35.0" />
+    <param name="candidate_confirm_frames" value="5" />
+    <param name="candidate_maximum_sample_gap_s" value="0.65" />
+    <param name="candidate_maximum_invalid_frames" value="2" />
+    <param name="candidate_maximum_lateral_step_m" value="0.35" />
+    <param name="candidate_maximum_heading_step_deg" value="5.0" />
+    <param name="candidate_maximum_width_step_m" value="0.5" />
+  </node>
+
+  <include file="$(find moraimpc)/launch/perception_hdmap_avoidance.launch">
+    <arg name="start_perception" value="$(arg start_perception)" />
+    <arg name="start_camera_receiver" value="false" />
+    <arg name="start_lidar_receiver" value="false" />
+    <arg name="show_perception_viewer" value="false" />
+    <arg name="start_control" value="$(arg start_control)" />
+    <arg name="rviz" value="$(arg rviz)" />
+    <arg name="cruise_kmh" value="$(arg cruise_kmh)" />
+    <arg name="use_base_route" value="$(arg use_base_route)" />
+    <arg name="competition_mode" value="true" />
+    <arg name="global_path_file" value="$(arg global_path_file)" />
+    <arg name="lane_policy_file" value="$(arg lane_policy_file)" />
+    <arg name="traffic_stop_enable" value="$(arg traffic_stop_enable)" />
+    <arg name="traffic_unknown_is_stop" value="$(arg traffic_unknown_is_stop)" />
+    <arg name="traffic_green_left_is_go" value="$(arg traffic_green_left_is_go)" />
+  </include>
+
+  <include if="$(arg start_lane_detection)"
+           file="$(find lane_detection)/launch/polar_lane_detection.launch">
+    <arg name="input_topic" value="/around_view/camera/front/image_raw" />
+    <arg name="start_camera_receiver" value="false" />
+    <arg name="show_viewer" value="false" />
+    <arg name="model_path" value="$(arg lane_model)" />
+    <arg name="max_inference_hz" value="$(arg lane_inference_hz)" />
+  </include>
+
+  <node pkg="moraimpc"
+        type="hdmap_localization_lane_dashboard.py"
+        name="hdmap_localization_lane_dashboard"
+        output="screen"
+        required="true">
+    <param name="hdmap_zip" value="$(arg hdmap_zip)" />
+    <param name="ground_truth_enabled" value="false" />
+    <param name="localized_ego_topic" value="/localization/ego_status" />
+    <param name="objects_topic" value="/perception/objects_map" />
+    <param name="gps_topic" value="$(arg gps_topic)" />
+    <param name="gps_gate_diagnostics_topic" value="/gps_gate/diagnostics" />
+    <param name="eskf_diagnostics_topic" value="/eskf/diagnostics" />
+    <param name="lane_aid_diagnostics_topic"
+           value="/localization/lane_aid/diagnostics" />
+    <param name="show_window" value="false" />
+    <param name="publish_rate" value="8.0" />
+  </node>
+
+  <node if="$(arg show_dashboard)"
+        pkg="moraimpc"
+        type="hdmap_dashboard_control_gui.py"
+        name="hdmap_dashboard_control_gui"
+        output="screen">
+    <param name="dashboard_topic" value="/hdmap_demo/dashboard" />
+    <param name="gps_gate_diagnostics_topic" value="/gps_gate/diagnostics" />
+    <param name="eskf_diagnostics_topic" value="/eskf/diagnostics" />
+    <param name="connect_service" value="/gps_gate/connect" />
+    <param name="disconnect_service" value="/gps_gate/disconnect" />
+    <param name="max_width" value="1280" />
+  </node>
+</launch>

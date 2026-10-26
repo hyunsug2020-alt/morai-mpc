@@ -1,0 +1,98 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded: ~
+    Splitter Ratio: 0.55
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/MarkerArray
+      Name: HD map + drivable rules
+      Enabled: true
+      Marker Topic: /competition/hdmap
+      Queue Size: 10
+      Namespaces: {}
+    - Class: rviz/Path
+      Name: Corridor left
+      Enabled: true
+      Topic: /student/corridor_left
+      Color: 60; 200; 255
+      Alpha: 1
+      Line Style: Billboards
+      Line Width: 0.15
+      Pose Style: None
+      Buffer Length: 1
+    - Class: rviz/Path
+      Name: Corridor right
+      Enabled: true
+      Topic: /student/corridor_right
+      Color: 60; 200; 255
+      Alpha: 1
+      Line Style: Billboards
+      Line Width: 0.15
+      Pose Style: None
+      Buffer Length: 1
+    - Class: rviz/Path
+      Name: Alpamayo path (control)
+      Enabled: true
+      Topic: /student/processed_path
+      Color: 255; 230; 60
+      Alpha: 1
+      Line Style: Billboards
+      Line Width: 0.35
+      Pose Style: None
+      Buffer Length: 1
+    - Class: rviz/MarkerArray
+      Name: Objects
+      Enabled: true
+      Marker Topic: /competition/objects
+      Queue Size: 10
+      Namespaces: {}
+    - Class: rviz/Marker
+      Name: Ego (localization)
+      Enabled: true
+      Marker Topic: /competition/ego
+      Queue Size: 10
+      Namespaces: {}
+    - Class: rviz/Grid
+      Name: Grid
+      Enabled: false
+      Reference Frame: <Fixed Frame>
+      Cell Size: 10
+      Plane Cell Count: 60
+  Enabled: true
+  Global Options:
+    Background Color: 18; 21; 26
+    Fixed Frame: map
+    Frame Rate: 20
+  Name: root
+  Tools:
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/Measure
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz/TopDownOrtho
+      Name: Follow ego
+      Target Frame: competition_ego
+      Scale: 9
+      Angle: 0
+      X: 0
+      Y: 0
+      Near Clip Distance: 0.01
+      Invert Z Axis: false
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 900
+  Width: 1400
+  X: 60
+  Y: 60

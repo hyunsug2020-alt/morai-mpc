@@ -1,0 +1,199 @@
+# Competition tuning for the MORAI IONIQ 5 (student_v3_follow.sh): eskf_robust.yaml with
+# gps_position_variance 1.0 -> 0.01. MORAI GPS is ~0.05 m sd; at 1.0 the filter leaned on IMU
+# integration and ran up to 0.4 m outside the turn (replay of follow-20260930T143320Z:
+# lateral p95 0.56 -> 0.07 m, left-turn bias -0.18 -> -0.02 m, right-turn +0.38 -> +0.01 m).
+# 0.01 then gated out GPS on small misfits (1-2 m jumps) and raised steering chatter; 0.03 keeps
+# replay p95 at 0.09 m. Wheel speed is never gated: a hard stop (29 -> 0 km/h in 1.5 s) was
+# rejected as an outlier and, in the GPS-denied tunnel, the estimate kept driving away.
+# GPS recovery after the tunnel eases in (0.05 m / 0.3 deg per fix, ~0.5 m/s) instead of snapping
+# 0.86 m in 0.2 s, which made a 1.15 m CTE spike at the tunnel exit (follow-20260930T153744Z).
+# GPS gates widened (soft 30 / hard 400): with 0.03 m^2 the stock 6/14 NIS gates rejected ~200 good
+# fixes per lap, the filter dropped to odometry-only for 10-17 s at a time and drifted 1-8 m
+# (follow-20260930T160235Z: the bicycle collision at 124 s happened with a 6 m error).
+# Recovery 0.15 m / 0.8 deg per fix: still eased at the tunnel exit, but not 10+ s long.
+accel_noise_std: 0.35
+gyro_noise_std: 0.015
+accel_bias_random_walk_std: 0.02
+gyro_bias_random_walk_std: 0.002
+
+gps_position_variance: 0.03
+gps_velocity_variance_floor: 0.5
+wheel_speed_variance: 0.04
+imu_yaw_variance: 0.02
+nhc_variance: 0.09
+zupt_velocity_variance: 0.01
+slam_position_variance: 0.25
+slam_yaw_variance: 0.0025
+
+# Chi-square innovation gates: 95% soft weighting, 99.9% hard rejection.
+gps_nis_soft: 30.0
+gps_nis_hard: 400.0
+velocity_nis_soft: 5.991
+velocity_nis_hard: 13.816
+wheel_speed_nis_soft: 1000000.0
+wheel_speed_nis_hard: 1000000.0
+yaw_nis_soft: 3.841
+yaw_nis_hard: 1000000.0  # IMU yaw is noise-free: soft-gate only (see imu_yaw_variance_override)
+constraint_nis_hard: 10.828
+slam_nis_soft: 7.815
+slam_nis_hard: 16.266
+odometry_nis_soft: 5.991
+odometry_nis_hard: 13.816
+lane_nis_soft: 5.991
+lane_nis_hard: 13.816
+
+adaptive_alpha: 0.04
+adaptive_scale_min: 0.5
+adaptive_scale_max: 16.0
+max_accel_bias: 3.0
+max_gyro_bias: 0.3
+
+max_predict_dt: 0.2
+speed_deadband_mps: 0.15
+# Direct Ego speed aiding remains disabled. The independently validated
+# pure wheel/IMU odometry below owns speed conditioning and timestamp handling.
+wheel_aiding_enabled: false
+# Simulation Time + /clock에서는 1.0이어야 함. Real Time Mode 보정값 금지.
+wheel_speed_scale: 1.0
+wheel_max_message_lag_sec: 0.25
+
+# Validated pure odometry supplies signed forward speed continuously and a
+# conservative aligned relative-position fallback only during GPS shadow.
+odometry_aiding_enabled: true
+odometry_topic: "/odometry/pure"
+# LIO-SAM now already consumes this independent wheel/IMU odometry. Feeding
+# its speed to the downstream ESKF again would double-count the same source.
+odometry_speed_aiding_enabled: false
+odometry_speed_variance: 0.09
+odometry_pose_aiding_enabled: true
+odometry_position_variance: 0.25
+odometry_position_drift_per_meter: 0.03
+odometry_correlation_inflation: 9.0
+odometry_activation_delay_sec: 1.0
+odometry_max_message_lag_sec: 0.25
+odometry_max_alignment_age_sec: 180.0
+odometry_alignment_gps_max_age_sec: 0.75
+odometry_update_rate_hz: 10.0
+odometry_slam_fallback_age_sec: 0.5
+
+# HD-map camera lanes constrain only lane-normal position and yaw. They are
+# learned/validated while GPS is healthy, then fused only in GPS shadow.
+lane_aiding_enabled: false  # see bottom: 2026-10-06 replay, hurt blackout lateral
+lane_constraint_topic: "/localization/lane_constraint"
+lane_activation_gps_age_sec: 1.5
+lane_max_message_lag_sec: 0.35
+lane_update_rate_hz: 5.0
+lane_lateral_variance_min_m2: 0.09
+lane_lateral_variance_max_m2: 2.25
+lane_yaw_variance_min_rad2: 0.0012184697  # 2 deg squared
+lane_yaw_variance_max_rad2: 0.0685389195  # 15 deg squared
+invalid_gps_status: -1
+# MORAI emits status=0 with latitude=longitude=0 during GPS loss.  Reject the
+# sentinel before UTM conversion/reacquisition can move the filter thousands
+# of kilometres away from the local HD map.
+minimum_abs_gps_latitude_deg: 1.0
+minimum_abs_gps_longitude_deg: 1.0
+maximum_local_gps_radius_m: 100000.0
+gps_velocity_window_sec: 0.6
+initialization_window_samples: 7
+initialization_min_inliers: 4
+initialization_radius_m: 6.0
+initialization_min_span_sec: 0.08
+initialization_imu_max_age_sec: 0.25
+# Competition GPS is noise-free (rule 2-6-2): confirm with 5 fixes after a
+# 0.5 s gap, not 20 after 1.5 s (a hard-braking divergence lasted 3.5 s).
+gps_reacquisition_gap_sec: 0.5
+gps_reacquisition_samples: 5
+gps_recovery_moving_reanchor_distance_m: 3.0
+imu_yaw_reject_limit: 25
+gps_reacquisition_radius_m: 6.0
+gps_recovery_position_step_m: 0.15
+gps_recovery_heading_step_deg: 0.8
+gps_recovery_heading_min_speed_mps: 1.0
+gps_recovery_complete_position_m: 0.20
+gps_recovery_complete_heading_deg: 1.0
+# Confirmed stationary simulator/session reset: re-anchor large offsets once.
+gps_recovery_stationary_reanchor_distance_m: 50.0
+
+nhc_rate_hz: 10.0
+nhc_min_speed_mps: 0.5
+zupt_speed_threshold_mps: 0.25
+zupt_accel_threshold_mps2: 0.3
+zupt_gyro_threshold_rps: 0.03
+zupt_hold_sec: 0.8
+
+max_abs_accel_mps2: 20.0
+max_abs_gyro_rps: 2.0
+accel_spike_floor_mps2: 4.0
+gyro_spike_floor_rps: 0.35
+spike_sigma: 6.0
+
+# LIO-SAM is aligned while GPS is healthy and aids ESKF only during GPS loss.
+slam_aiding_enabled: true
+slam_topic: "/lio_sam/mapping/odometry"
+slam_degeneracy_topic: "/lio_sam/mapping/odometry_incremental"
+slam_activation_delay_sec: 1.0
+slam_max_alignment_age_sec: 120.0
+slam_max_message_lag_sec: 0.5
+slam_update_rate_hz: 10.0
+slam_alignment_alpha: 0.05
+slam_alignment_gps_max_age_sec: 0.75
+slam_alignment_reset_distance_m: 5.0
+slam_alignment_reset_yaw_deg: 20.0
+slam_alignment_reset_confirm_samples: 3
+# Short straight GPS tracks make point-only heading fits noisy. Use the
+# averaged IMU-LIO heading until this spatial baseline is available.
+slam_alignment_min_baseline_m: 12.0
+slam_continuity_confirm_samples: 10
+slam_continuity_fast_recovery_gap_sec: 1.0
+slam_position_drift_per_meter: 0.02
+slam_yaw_drift_per_meter_rad: 0.001
+slam_correlation_inflation: 4.0
+# Degenerate LIO still contains useful translation. Use it only as a weak
+# GPS-outage position aid; never use it for map alignment or frame recovery.
+slam_degenerate_aiding_enabled: true
+slam_degenerate_variance_scale: 36.0
+slam_motion_window_sec: 1.2
+slam_stationary_speed_threshold_mps: 0.3
+slam_stationary_filter_speed_max_mps: 1.5
+slam_stationary_release_accel_mps2: 0.45
+slam_stationary_reactivation_delay_sec: 2.0
+slam_stationary_hint_max_age_sec: 6.0
+slam_stationary_max_residual_variance: 0.25
+
+max_gps_lag_sec: 0.5
+# morai_man에서 검증한 고정지연 보정 방식. IMU 이력만 되감으며,
+# wheel/SLAM 보정 이후에는 barrier를 세워 해당 보정을 덮어쓰지 않음.
+gps_replay_enabled: true
+gps_replay_max_age_sec: 2.0
+gps_replay_min_delay_sec: 0.02
+
+# 명시적 GPS 상태기계: starting/normal/gps_lost/reacquiring/degraded.
+gps_rejection_limit: 5
+gps_recovery_accepts: 3
+
+# ---- 2026-10-06 localization fixes (truth analysis of runs 224-258) ----
+# MORAI stamps sensors with wall time; speeds/rates are physics. The clock ratio
+# (real-time factor) moved 0.41-0.95 and jumped 0.70->0.85 in 2 s (run 257): the
+# pure-odometry ratio lagged and the ESKF fell 14 m behind with GPS available.
+# auto = GPS displacement / wheel+IMU-yaw dead-reckoned displacement (~1 s window),
+# then a /Competition_topic message-rate clock calibrated against it, then pure odometry.
+time_scale_source: auto
+gps_time_scale_window_sec: 1.0
+gps_time_scale_min_distance_m: 3.0
+gps_time_scale_alpha: 0.35
+gps_time_scale_max_age_sec: 1.0  # GPS shadow: switch to the clocks quickly (RTF jumped 0.75->0.88 at a blackout start, run 229)
+rate_clock_window_sec: 1.0
+rate_clock_alpha: 0.01
+rate_clock_min_calibrations: 30
+# Residual clock-ratio uncertainty as process noise along velocity/yaw rate.
+time_scale_relative_std: 0.1
+# GPS is noise-free: never inflate its R more than 2x (was 16x -> filter ignored GPS).
+gps_position_adaptive_scale_max: 2.0
+# IMU yaw (after imu_yaw_offset_deg=-1.35) matches truth to 0.03 deg; the bridge's
+# orientation_covariance 0.01 rad^2 let GPS/NHC rotate heading 2-5 deg.
+imu_yaw_variance_override: 3.0e-5
+# Publish the pose propagated to its stamp (IMU predicts at only ~13 Hz).
+publish_extrapolation_max_sec: 0.25
+# Camera lane constraint in GPS shadow made blackout lateral error worse in 27 of 30
+# blackouts (replay of runs 224-258: lateral p95 median 1.13 m with, 0.52 m without).

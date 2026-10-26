@@ -1,0 +1,81 @@
+{
+  "from_idx": 1842,
+  "to_idx": 3500,
+  "kmh": 120.0,
+  "use_mission_speed": true,
+  "overtake_kmh": 120.0,
+  "start_link": "A2256W000866",
+  "end_link": "A2256W000153",
+  "start_xy": [
+    -80.44610373824828,
+    340.5908071131568
+  ],
+  "end_xy": [
+    70.21414883,
+    -365.748477
+  ],
+  "lane_change_goal": 0,
+  "lane_change_policy": "free_three_lane",
+  "lane_selection_model": "mobil",
+  "overtake_left_first": true,
+  "overtake_lane_targets": {
+    "3": 2,
+    "2": 3
+  },
+  "mobil_politeness": 0.1,
+  "mobil_threshold_mps2": 0.2,
+  "mobil_safe_decel_mps2": 2.5,
+  "excluded_lane_links": [
+    "A2256W000429"
+  ],
+  "comfort_decel_mps2": 2.5,
+  "comfort_jerk_mps3": 4.0,
+  "emergency_jerk_mps3": 12.0,
+  "lane_gain_kmh": 2.0,
+  "lane_gain_hold_s": 0.15,
+  "brisk_lane_changes": true,
+  "lane_cancel_gain_kmh": 3.0,
+  "exit_speed_kmh": 58.0,
+  "rule_speed_limit": {
+    "until_idx": 2255,
+    "kmh": 58.0,
+    "link": "A2256W000411",
+    "note": "60 km/h applies before the start of A2256W000411 (idx 2251); +2 m margin"
+  },
+  "decision_hz": 15,
+  "lidar_hz": 15,
+  "lidar_regions": [
+    {
+      "from_idx": 3500,
+      "to_idx": 4080,
+      "name": "tunnel_approach_and_tunnel"
+    }
+  ],
+  "merge_zones": [
+    [
+      3030,
+      3210,
+      1
+    ]
+  ],
+  "entry_lane_change": {
+    "from_idx": 2251,
+    "to_idx": 2350,
+    "source_link": "A2256W000411",
+    "target_link": "A2256W000409",
+    "start_xy": [
+      62.073913682601415,
+      256.4949275725521
+    ],
+    "start_latlon": [
+      37.24527230103773,
+      126.77505080206126
+    ],
+    "policy": "first_safe_adjacent",
+    "commit_until_complete": true,
+    "transition_s": 3.6,
+    "transition_min_m": 45.0,
+    "marker": "B2256W000038",
+    "no_initial_deceleration": true
+  }
+}

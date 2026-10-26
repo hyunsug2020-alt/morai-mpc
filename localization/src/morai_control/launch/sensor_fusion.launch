@@ -1,0 +1,95 @@
+<launch>
+    <arg name="publish_tf" default="false" />
+    <arg name="publish_sensor_tf" default="false" />
+    <arg name="sensor_config_file"
+         default="$(find morai_control)/config/morai_sensor.json" />
+    <arg name="vehicle_config"
+         default="$(find morai_control)/config/ioniq5_vehicle.yaml" />
+    <arg name="eskf_config"
+         default="$(find eskf)/config/eskf_robust.yaml" />
+    <arg name="imu_topic" default="/imu/data" />
+    <arg name="gps_topic" default="/gps" />
+    <arg name="vehicle_state_topic" default="/Competition_topic" />
+    <!-- Sign applied to vehicle_state wheel_angle in /localization/ego_status (-1 for MORAI rosbridge). -->
+    <arg name="ego_wheel_angle_sign" default="1.0" />
+    <!-- IMU yaw (true north) to map grid yaw, and back for the published Ego-style heading. -->
+    <arg name="imu_yaw_offset_deg" default="0.0" />
+    <!-- Added to the published heading. Default restores /Ego_topic's true-north convention;
+         0 publishes the map-grid heading that is consistent with the positions. -->
+    <arg name="ego_heading_offset_deg" default="$(eval -float(arg('imu_yaw_offset_deg')))" />
+    <!-- Initial MORAI physics/wall rate for pure odometry; it adapts only after enough turning. -->
+    <arg name="odometry_motion_rate_scale" default="0.49848" />
+    <arg name="start_pure_odometry" default="true" />
+    <arg name="pure_odometry_topic" default="/odometry/pure" />
+    <arg name="slam_topic" default="/lio_sam/mapping/odometry" />
+    <arg name="slam_degeneracy_topic"
+         default="/lio_sam/mapping/odometry_incremental" />
+    <arg name="eskf_output_topic" default="/eskf/odom" />
+    <arg name="slam_aiding_enabled" default="true" />
+    <arg name="wheel_aiding_enabled" default="true" />
+    <arg name="odometry_speed_aiding_enabled" default="false" />
+    <arg name="odometry_pose_aiding_enabled" default="true" />
+
+    <!-- Independently validated wheel/IMU odometry. It never reads GPS,
+         LiDAR, Ego pose, or Ego heading. -->
+    <include if="$(arg start_pure_odometry)"
+             file="$(find morai_control)/launch/odometry.launch">
+        <arg name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+        <arg name="imu_topic" value="$(arg imu_topic)" />
+        <arg name="output_topic" value="$(arg pure_odometry_topic)" />
+        <arg name="vehicle_config" value="$(arg vehicle_config)" />
+        <arg name="start_analysis" value="false" />
+        <arg name="record_debug_bag" value="false" />
+        <arg name="motion_rate_scale" value="$(arg odometry_motion_rate_scale)" />
+    </include>
+
+    <!-- Canonical localization: MORAI GPS + IMU -> /eskf/odom -->
+    <node pkg="eskf" type="eskf_node.py" name="eskf_node"
+          output="screen">
+        <env name="OMP_NUM_THREADS" value="1" />
+        <env name="MKL_NUM_THREADS" value="1" />
+        <env name="OPENBLAS_NUM_THREADS" value="1" />
+        <!-- The ESKF uses small fixed-size matrices. Multithreaded BLAS adds
+             heavy scheduling latency and can starve the 10 Hz path heartbeat. -->
+        <env name="OMP_NUM_THREADS" value="1" />
+        <env name="MKL_NUM_THREADS" value="1" />
+        <env name="OPENBLAS_NUM_THREADS" value="1" />
+        <rosparam command="load" file="$(arg vehicle_config)" />
+        <rosparam command="load" file="$(arg eskf_config)" />
+        <param name="imu_topic" value="$(arg imu_topic)" />
+        <param name="gps_topic" value="$(arg gps_topic)" />
+        <param name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+        <param name="wheel_aiding_enabled"
+               value="$(arg wheel_aiding_enabled)" />
+        <param name="odometry_topic" value="$(arg pure_odometry_topic)" />
+        <param name="slam_topic" value="$(arg slam_topic)" />
+        <param name="slam_degeneracy_topic"
+               value="$(arg slam_degeneracy_topic)" />
+        <param name="slam_aiding_enabled"
+               value="$(arg slam_aiding_enabled)" />
+        <param name="odometry_speed_aiding_enabled"
+               value="$(arg odometry_speed_aiding_enabled)" />
+        <param name="odometry_pose_aiding_enabled"
+               value="$(arg odometry_pose_aiding_enabled)" />
+        <param name="odom_topic" value="$(arg eskf_output_topic)" />
+        <param name="publish_tf" value="$(arg publish_tf)" />
+        <param name="sensor_config_file" value="$(arg sensor_config_file)" />
+        <param name="imu_yaw_offset_deg" value="$(arg imu_yaw_offset_deg)" />
+    </node>
+
+    <!-- Existing planners consume the same message fields, now sourced from ESKF. -->
+    <node pkg="morai_control" type="ego_status_from_eskf.py"
+          name="ego_status_from_eskf" output="screen">
+        <param name="odom_topic" value="$(arg eskf_output_topic)" />
+        <param name="imu_topic" value="$(arg imu_topic)" />
+        <param name="vehicle_state_topic" value="$(arg vehicle_state_topic)" />
+        <param name="wheel_angle_sign" value="$(arg ego_wheel_angle_sign)" />
+        <param name="heading_offset_deg" value="$(arg ego_heading_offset_deg)" />
+    </node>
+
+    <node if="$(arg publish_sensor_tf)"
+          pkg="morai_control" type="sensor_tf_from_config.py"
+          name="sensor_tf_from_config" output="screen">
+        <param name="sensor_config_file" value="$(arg sensor_config_file)" />
+    </node>
+</launch>

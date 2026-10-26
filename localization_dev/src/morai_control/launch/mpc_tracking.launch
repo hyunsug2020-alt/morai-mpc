@@ -1,0 +1,9 @@
+<launch>
+    <!-- 1. LTV-MPC Node (C++): High Performance Robust Tracking -->
+    <node pkg="moraimpc" type="ltv_mpc_node" name="ltv_mpc_node" output="screen">
+        <param name="path_file" value="/home/david/recorded_path.json" />
+    </node>
+
+    <!-- 2. Unified GUI: 경로 시각화, ESKF 헤딩, MPC 성능 통합 모니터링 -->
+    <node pkg="moraimpc" type="unified_gui.py" name="unified_gui" output="screen" args="/home/david/recorded_path.json" />
+</launch>

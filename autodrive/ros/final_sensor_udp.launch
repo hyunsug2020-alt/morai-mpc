@@ -1,0 +1,26 @@
+<launch>
+  <!-- Sensor receivers are managed by student_v3_follow.sh; this gateway owns
+       only vehicle status, collision input and the UDP control output. -->
+  <param name="/morai_active_transport" value="udp" />
+  <node pkg="morai_launch" type="competition_udp_bridge.py"
+        name="competition_udp_bridge" output="screen" required="true">
+    <param name="simulator_ip" value="$(env MORAI_SIM_IP)" />
+    <param name="bind_ip" value="$(env MORAI_LOCAL_IP)" />
+    <param name="status_port" value="$(env MORAI_STATUS_PORT)" />
+    <param name="collision_port" value="$(env MORAI_COLLISION_PORT)" />
+    <param name="control_port" value="$(env MORAI_CONTROL_PORT)" />
+    <param name="control_bind_port" value="$(env MORAI_CONTROL_BIND_PORT)" />
+    <param name="physical_max_steer_deg" value="40.0" />
+    <param name="enable_control_output" value="true" />
+    <param name="publish_udp_pose_fields" value="false" />
+    <param name="status_topic" value="/Competition_topic" />
+    <param name="collision_topic" value="/CollisionData" />
+    <param name="command_topic" value="/ctrl_cmd" />
+    <param name="gear_topic" value="/competition/gear_cmd" />
+    <param name="command_timeout_s" value="0.25" />
+    <param name="status_timeout_s" value="0.50" />
+    <param name="control_release_timeout_s" value="1.0" />
+    <param name="max_status_clock_skew_s" value="10.0" />
+    <param name="timestamp_source" value="arrival" />
+  </node>
+</launch>
